@@ -5,13 +5,14 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 02 (Research Questions and Hypotheses) complete. Phase 03 (System Requirements) not started.
+Phase 03 (System Requirements) complete. Phase 04 (Architecture and Data Contracts) not started.
 
 ## Completed phases
 
 - Phase 0 — Setup (environment inspection + initial scaffolding)
 - Phase 01 — Research Problem Formalization (`docs/research/problem_definition.md`)
 - Phase 02 — Research Questions and Hypotheses (`docs/research/research_questions.md`)
+- Phase 03 — System Requirements (`docs/requirements/system_requirements.md`)
 
 ## Blocked phases
 
@@ -57,5 +58,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 03 — System Requirements (functional, non-functional, performance, reliability,
-security, reproducibility requirements). Not started; awaiting explicit request.
+Next: Phase 04 — Architecture and Data Contracts (schemas for packet, flow, node, edge, topology,
+behavioral fingerprint, anomaly, snapshot, dependency, failure, simulation, experiment, metric). Not
+started; awaiting explicit request.
