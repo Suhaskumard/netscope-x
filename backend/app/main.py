@@ -1,9 +1,13 @@
-"""Phase 06 placeholder FastAPI app, now wired with the Phase 07
-observability framework (request-ID middleware, structured logging,
-per-request timing) and Phase 08 configuration (settings-driven log
-level). The actual API surface (/capture, /flows, /topology, ...) is
-designed and built in Phase 09 -- this file will be replaced, not
-extended in place, when that phase starts.
+"""NETSCOPE-X FastAPI app.
+
+Wired with: Phase 07 observability (request-ID middleware, structured
+logging, per-request timing), Phase 08 configuration (settings-driven log
+level), and Phase 09 API architecture (the versioned /api/v1 router with
+all 12 required endpoint groups, plus consistent error handling). Every
+domain route currently raises NotYetImplemented (backend/app/api/errors.py)
+because the pipeline stages that will serve real data (Phase 21+) don't
+exist yet -- the contracts are real and validated, the implementations
+are not, and the two are never conflated.
 """
 
 import logging as _logging
@@ -12,6 +16,8 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from fastapi import FastAPI, Request, Response
 
+from backend.app.api.errors import register_exception_handlers
+from backend.app.api.router import api_router
 from backend.app.core.config import get_settings
 from backend.app.core.context import request_context
 from backend.app.core.logging import configure_logging, get_logger
@@ -21,7 +27,9 @@ settings = get_settings()
 configure_logging(level=getattr(_logging, settings.log_level))
 logger = get_logger(__name__)
 
-app = FastAPI(title="NETSCOPE-X (Phase 06 placeholder)")
+app = FastAPI(title="NETSCOPE-X")
+app.include_router(api_router)
+register_exception_handlers(app)
 
 
 @app.middleware("http")

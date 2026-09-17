@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 08 (Configuration and Secrets) complete. Phase 09 (API Architecture) not started.
+Phase 09 (API Architecture) complete. Phase 10 (Research Artifact Architecture) not started.
 
 ## Completed phases
 
@@ -23,6 +23,8 @@ Phase 08 (Configuration and Secrets) complete. Phase 09 (API Architecture) not s
   `backend/app/main.py`, `docs/architecture/observability.md`)
 - Phase 08 — Configuration and Secrets (`backend/app/core/config.py`, `.env.example`, `.env.test`,
   wired into `backend/app/main.py`, `docs/architecture/configuration.md`)
+- Phase 09 — API Architecture (`backend/app/api/` — schemas, errors, 12 route modules, versioned
+  `/api/v1` router — wired into `backend/app/main.py`, `docs/architecture/api_design.md`)
 
 ## Blocked phases
 
@@ -82,6 +84,15 @@ None yet — no code written.
   `.env.example` and `.env.test` are committed (no secrets in them); `.env`/`.env.production` are
   gitignored and were never created. `backend/app/main.py` now derives its log level from
   `get_settings()`.
+- API architecture (`backend/app/api/`, Phase 09): all 12 spec-required endpoint groups
+  (capture/flows/topology/behaviors/anomalies/history/dependencies/causal/simulation/counterfactual/
+  experiments/metrics) mounted under versioned `/api/v1`. Every handler currently raises
+  `NotYetImplemented` (real 501, not fake data) since the pipeline stages that would serve real
+  results (Phase 21+) don't exist yet. One shared `ErrorResponse` envelope for 501/422/500. Pagination
+  via shared `PageParams`/`PaginatedResponse[T]`. Request/response schemas reuse Phase 04
+  `backend.app.models` types where they fit. Known simplification: `/simulation` and
+  `/counterfactual` currently accept the full domain object as the request body rather than a
+  dedicated slim "create" DTO — flagged for revisit alongside their real implementation.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -108,10 +119,10 @@ None yet — no code written.
 
 - `scripts/validate_data_contracts.py` — 38/38 checks passed (re-verified against a freshly recreated
   `.venv`, Phase 06).
-- `pytest backend/tests` — 22/22 passed: 3 environment smoke tests (Phase 06) + 10 observability tests
-  (Phase 07: context propagation, JSON log formatting, error reporting, timing, and a full
-  `TestClient` HTTP request through the request-ID middleware) + 9 configuration/secrets tests
-  (Phase 08: defaults, validation, env-var overrides, production secret guard, `.env.test` selection).
+- `pytest backend/tests` — 40/40 passed: 3 environment smoke tests (Phase 06) + 10 observability tests
+  (Phase 07) + 9 configuration/secrets tests (Phase 08) + 18 API architecture tests (Phase 09: all 12
+  endpoint groups return structured 501s, consistent 422 validation envelope, OpenAPI schema coverage,
+  `/health` unaffected).
 - `frontend`: `npm run build` (tsc type-check + Tailwind + Vite production bundle) succeeds.
 - `docker compose build` succeeds for both `backend` and `frontend` images; `docker compose up`
   verified both containers actually serve traffic (`/health` returns `{"status":"ok"}`, frontend
@@ -129,6 +140,5 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 09 — API Architecture (design API contracts for /capture, /flows, /topology, /behaviors,
-/anomalies, /history, /dependencies, /causal, /simulation, /counterfactual, /experiments, /metrics).
-Not started; awaiting explicit request.
+Next: Phase 10 — Research Artifact Architecture (reproducible formats for PCAP, flows, ground truth,
+graphs, snapshots, experiments, results, metrics). Not started; awaiting explicit request.
