@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 15 (Protocol Workload Generator) complete. Phase 16 (Ground-Truth Generator) not started.
+Phase 16 (Ground-Truth Generator) complete. Phase 17 (Ground-Truth Integrity) not started.
 
 ## Process note
 
@@ -48,6 +48,10 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   required protocols with real wire-level exchanges; TLS-capable `external-service`;
   `simulator/tests/test_protocols.py`; real run of all 6 protocols against the live lab;
   `docs/architecture/protocol_generation.md`; `README.md` updated)
+- Phase 16 — Ground-Truth Generator (`simulator/ground_truth/{topology,models,generate,cli}.py`;
+  reuses Phase 04 schemas + Phase 10 hashed I/O; real run against the live lab with real container
+  IPs, hash-verified read-back, tamper detection re-confirmed; `simulator/tests/test_ground_truth.py`;
+  `docs/architecture/ground_truth.md`; `README.md` updated)
 
 ## Blocked phases
 
@@ -172,6 +176,19 @@ None yet — no code written.
   (DNS wire-format, Postgres magic-number correctness) plus a real run of all 6 protocols against the
   live lab (real DNS rcode=0, real Redis +PONG, real Postgres 'N' response, real negotiated
   TLSv1.3/TLS_AES_256_GCM_SHA384).
+- Ground-truth generator (`simulator/ground_truth/`, Phase 16): lives outside `backend/` deliberately
+  (spec §4 -- no importable path from future inference code into ground truth). `topology.py`
+  declares the lab's true roles/edges (reviewable, hardcoded, cross-checked against
+  `docker-compose.yml`'s real service list on every run); `generate.py` builds a `TopologyGraph`
+  (Phase 04 schema, confidence=1.0 throughout), `GroundTruthRoles`, and `GroundTruthPaths` (real
+  NetworkX/Dijkstra shortest paths -- Phase 05's selected algorithm's first real use); `cli.py`
+  resolves real container IPs via `docker ps`/`docker inspect` (not a naming-convention guess) and
+  persists all three through Phase 10's hashed `write_ground_truth`. `PyYAML` promoted from a
+  transitive to an explicit pin (`requirements.txt`) since ground-truth generation now directly
+  parses `docker-compose.yml`. Verified: 9/9 pure unit tests plus a real run against the live 11-
+  container lab (real distinct IPs matching Phase 12's subnets, e.g. redis/database on
+  172.22.0.0/16; hash-verified read-back of all 3 files; tamper detection re-confirmed on a real
+  generated artifact, then restored). `experiments_data/` (generated output) added to `.gitignore`.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -208,11 +225,12 @@ None yet — no code written.
   preview returns HTTP 200), then torn down.
 - `scripts/setup.sh` run standalone from a clean state (`.venv` and `frontend/node_modules` deleted
   first) and completed successfully — the "fresh installation must work" acceptance bar for Phase 06.
-- `pytest simulator/tests` — 27/27 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
-  wire-format tests (Phase 15), all pure/no-Docker. Plus real Docker-based runs: 3 traffic patterns
-  (Phase 14) and all 6 protocols (Phase 15) against the live lab, producing real JSONL logs with real
-  outcomes (see `docs/architecture/traffic_generation.md` and `docs/architecture/protocol_generation.md`)
-  — not part of the pytest suite, manual integration verification like Phases 11-13.
+- `pytest simulator/tests` — 36/36 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
+  wire-format tests (Phase 15) + 9 ground-truth tests (Phase 16), all pure/no-Docker. Plus real
+  Docker-based runs: 3 traffic patterns (Phase 14), all 6 protocols (Phase 15), and a full ground-truth
+  generation (Phase 16, with hash-verified read-back and tamper-detection re-confirmed) against the
+  live lab — not part of the pytest suite, manual integration verification like Phases 11-13.
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 84/84 passed, no regression.
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -227,6 +245,9 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 16 — Ground-Truth Generator (automatically generate authoritative nodes, edges, roles,
-services, routes, expected paths from the lab's known topology). Not started; awaiting explicit
+Next: Phase 17 — Ground-Truth Integrity (version and hash ground-truth artifacts; prevent accidental
+contamination of inference). Note: per-generation content-hashing already exists via Phase 10/16's
+reuse of `write_ground_truth`/`read_ground_truth`; Phase 17 should focus on what's still missing
+(versioning across multiple generations, structural safeguards against accidental import from future
+inference code) rather than duplicating the hashing already in place. Not started; awaiting explicit
 request.

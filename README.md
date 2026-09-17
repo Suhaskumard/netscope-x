@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 15 of 69 complete.** Next: Phase 16 — Ground-Truth Generator.
+**Current phase: 16 of 69 complete.** Next: Phase 17 — Ground-Truth Integrity.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -63,6 +63,10 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   (HTTP, TCP, UDP/DNS, cache, database, TLS), run against the live lab — real DNS answers, a real
   Redis PONG, a real Postgres handshake byte, a real negotiated TLS 1.3 session —
   `simulator/traffic/protocols.py`, `docs/architecture/protocol_generation.md`.
+- **Ground-truth generator** (Phase 16): automatically generates authoritative nodes, edges, roles,
+  and expected paths from the lab's real running state (real container IPs, hash-verified,
+  deliberately kept outside `backend/` so future inference code has no import path to it) —
+  `simulator/ground_truth/`, `docs/architecture/ground_truth.md`.
 
 ### What doesn't exist yet
 
@@ -84,12 +88,13 @@ experiments/
   artifacts/  Phase 10 reproducible artifact I/O
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
-  docker/     Phase 11-15 multi-tier network laboratory
-  traffic/    Phase 14-15 traffic + protocol workload generators
+  docker/         Phase 11-15 multi-tier network laboratory
+  traffic/        Phase 14-15 traffic + protocol workload generators
+  ground_truth/   Phase 16 authoritative ground-truth generator
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-15 design docs
+  architecture/   Phase 04-05, 09-16 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup and validation scripts
@@ -99,7 +104,7 @@ scripts/      setup and validation scripts
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (75 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (84 tests)
 docker compose up --build      # backend (placeholder API) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 ```
