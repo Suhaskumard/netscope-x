@@ -5,8 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 06 (Reproducible Development Environment) complete. Phase 07 (Observability Framework) not
-started.
+Phase 07 (Observability Framework) complete. Phase 08 (Configuration and Secrets) not started.
 
 ## Completed phases
 
@@ -20,6 +19,8 @@ started.
 - Phase 06 — Reproducible Development Environment (`requirements.txt`, `requirements-dev.txt`,
   `frontend/`, `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`, `scripts/setup.sh`,
   `docs/development/environment.md`)
+- Phase 07 — Observability Framework (`backend/app/core/{context,logging,timing}.py`, wired into
+  `backend/app/main.py`, `docs/architecture/observability.md`)
 
 ## Blocked phases
 
@@ -62,6 +63,15 @@ None yet — no code written.
 - Known accepted risk: `npm audit` reports a moderate esbuild/Vite dev-server advisory
   (GHSA-67mh-4wv8-2f99) with no fix available short of a Vite 8 major upgrade; not applied this phase.
   Documented in `docs/development/environment.md`.
+- Observability (`backend/app/core/`, Phase 07): structured JSON logging via a single `JsonFormatter`
+  (every module logs the same format); `contextvars`-based `request_id`/`experiment_id` propagation
+  (`context.py`) so any log call in the current async task automatically carries the current IDs
+  without explicit passing; `get_logger(__name__)` as the standard module-logger entry point;
+  `log_exception()` for structured error reporting; `Timer`/`@timed` (`timing.py`) for performance
+  timing, feeding the future PERF-1..7 measurements. Wired into `backend/app/main.py` via ASGI
+  middleware that assigns a request ID, times the request, and echoes the ID back as an
+  `X-Request-ID` header. Known constraint: contextvars do not auto-propagate across manually spawned
+  threads/processes — not yet relevant since no such code exists.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -88,8 +98,9 @@ None yet — no code written.
 
 - `scripts/validate_data_contracts.py` — 38/38 checks passed (re-verified against a freshly recreated
   `.venv`, Phase 06).
-- `pytest backend/tests` — 3/3 passed (`test_environment_smoke.py`: pinned deps import, data-contracts
-  package imports, basic NetworkX operation works).
+- `pytest backend/tests` — 13/13 passed: 3 environment smoke tests (Phase 06) + 10 observability tests
+  (Phase 07: context propagation, JSON log formatting, error reporting, timing, and a full
+  `TestClient` HTTP request through the request-ID middleware).
 - `frontend`: `npm run build` (tsc type-check + Tailwind + Vite production bundle) succeeds.
 - `docker compose build` succeeds for both `backend` and `frontend` images; `docker compose up`
   verified both containers actually serve traffic (`/health` returns `{"status":"ok"}`, frontend
@@ -107,5 +118,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 07 — Observability Framework (structured logs, request IDs, experiment IDs, module-level
-logging, error reporting, performance timing). Not started; awaiting explicit request.
+Next: Phase 08 — Configuration and Secrets (`.env.example`, environment configuration, validation,
+secret handling, development/test/prod configuration; no secrets in source control). Not started;
+awaiting explicit request.
