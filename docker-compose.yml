@@ -1,0 +1,20 @@
+# Phase 06 development compose file: backend + frontend dev containers only.
+# The multi-tier network laboratory (client/gateway/LB/API/cache/DB/worker/DNS/
+# external-service simulator) is a separate concern introduced in Phase 11
+# (simulator/docker/) and is NOT this file.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "4173:4173"
+    depends_on:
+      - backend
