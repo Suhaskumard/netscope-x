@@ -1,19 +1,24 @@
 """Phase 06 placeholder FastAPI app, now wired with the Phase 07
-observability framework: request-ID middleware, structured logging, and
-per-request timing. The actual API surface (/capture, /flows, /topology,
-...) is designed and built in Phase 09 -- this file will be replaced, not
+observability framework (request-ID middleware, structured logging,
+per-request timing) and Phase 08 configuration (settings-driven log
+level). The actual API surface (/capture, /flows, /topology, ...) is
+designed and built in Phase 09 -- this file will be replaced, not
 extended in place, when that phase starts.
 """
+
+import logging as _logging
 
 from starlette.middleware.base import RequestResponseEndpoint
 
 from fastapi import FastAPI, Request, Response
 
+from backend.app.core.config import get_settings
 from backend.app.core.context import request_context
 from backend.app.core.logging import configure_logging, get_logger
 from backend.app.core.timing import Timer
 
-configure_logging()
+settings = get_settings()
+configure_logging(level=getattr(_logging, settings.log_level))
 logger = get_logger(__name__)
 
 app = FastAPI(title="NETSCOPE-X (Phase 06 placeholder)")

@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 07 (Observability Framework) complete. Phase 08 (Configuration and Secrets) not started.
+Phase 08 (Configuration and Secrets) complete. Phase 09 (API Architecture) not started.
 
 ## Completed phases
 
@@ -21,6 +21,8 @@ Phase 07 (Observability Framework) complete. Phase 08 (Configuration and Secrets
   `docs/development/environment.md`)
 - Phase 07 — Observability Framework (`backend/app/core/{context,logging,timing}.py`, wired into
   `backend/app/main.py`, `docs/architecture/observability.md`)
+- Phase 08 — Configuration and Secrets (`backend/app/core/config.py`, `.env.example`, `.env.test`,
+  wired into `backend/app/main.py`, `docs/architecture/configuration.md`)
 
 ## Blocked phases
 
@@ -72,6 +74,14 @@ None yet — no code written.
   middleware that assigns a request ID, times the request, and echoes the ID back as an
   `X-Request-ID` header. Known constraint: contextvars do not auto-propagate across manually spawned
   threads/processes — not yet relevant since no such code exists.
+- Configuration (`backend/app/core/config.py`, Phase 08): `pydantic-settings`-based `Settings`, all
+  variables read with an `NETSCOPE_` prefix; `environment` (development/test/production) selects
+  `.env.{environment}` (falling back to `.env`) via `get_settings()`. `secret_key` is a `SecretStr`
+  and a model validator refuses to construct `Settings` with `environment="production"` while it
+  still holds the documented insecure placeholder — a hard startup failure, not a silent gap.
+  `.env.example` and `.env.test` are committed (no secrets in them); `.env`/`.env.production` are
+  gitignored and were never created. `backend/app/main.py` now derives its log level from
+  `get_settings()`.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -98,9 +108,10 @@ None yet — no code written.
 
 - `scripts/validate_data_contracts.py` — 38/38 checks passed (re-verified against a freshly recreated
   `.venv`, Phase 06).
-- `pytest backend/tests` — 13/13 passed: 3 environment smoke tests (Phase 06) + 10 observability tests
+- `pytest backend/tests` — 22/22 passed: 3 environment smoke tests (Phase 06) + 10 observability tests
   (Phase 07: context propagation, JSON log formatting, error reporting, timing, and a full
-  `TestClient` HTTP request through the request-ID middleware).
+  `TestClient` HTTP request through the request-ID middleware) + 9 configuration/secrets tests
+  (Phase 08: defaults, validation, env-var overrides, production secret guard, `.env.test` selection).
 - `frontend`: `npm run build` (tsc type-check + Tailwind + Vite production bundle) succeeds.
 - `docker compose build` succeeds for both `backend` and `frontend` images; `docker compose up`
   verified both containers actually serve traffic (`/health` returns `{"status":"ok"}`, frontend
@@ -118,6 +129,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 08 — Configuration and Secrets (`.env.example`, environment configuration, validation,
-secret handling, development/test/prod configuration; no secrets in source control). Not started;
-awaiting explicit request.
+Next: Phase 09 — API Architecture (design API contracts for /capture, /flows, /topology, /behaviors,
+/anomalies, /history, /dependencies, /causal, /simulation, /counterfactual, /experiments, /metrics).
+Not started; awaiting explicit request.

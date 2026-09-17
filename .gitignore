@@ -4,3 +4,10 @@ __pycache__/
 .pytest_cache/
 frontend/node_modules/
 frontend/dist/
+
+# Real/secret environment configuration -- never commit these.
+# .env.example and .env.test are intentionally NOT ignored (no secrets in them).
+.env
+.env.production
+.env.local
+.env.*.local
