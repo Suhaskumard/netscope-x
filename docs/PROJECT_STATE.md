@@ -5,11 +5,13 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 0 (Setup) complete. Phase 01 (Research Problem Formalization) not started.
+Phase 01 (Research Problem Formalization) complete. Phase 02 (Research Questions and Hypotheses)
+not started.
 
 ## Completed phases
 
 - Phase 0 — Setup (environment inspection + initial scaffolding)
+- Phase 01 — Research Problem Formalization (`docs/research/problem_definition.md`)
 
 ## Blocked phases
 
@@ -55,5 +57,7 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 01 — Research Problem Formalization (`docs/research/problem_definition.md`). Not started
-per explicit scope of this turn (Phase 0 only).
+Next: Phase 02 — Research Questions and Hypotheses (measurable research questions + hypotheses for
+topology reconstruction, behavioral inference, anomaly detection, temporal change detection,
+dependency inference, failure propagation, counterfactual simulation — each with hypothesis,
+variables, evaluation metric, experiment design). Not started; awaiting explicit request.
