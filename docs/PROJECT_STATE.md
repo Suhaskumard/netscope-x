@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 14 (Traffic Workload Generator) complete. Phase 15 (Protocol Workload Generator) not started.
+Phase 15 (Protocol Workload Generator) complete. Phase 16 (Ground-Truth Generator) not started.
 
 ## Process note
 
@@ -44,6 +44,10 @@ what exists); this file remains the detailed, continuously-updated machine-reada
 - Phase 14 — Traffic Workload Generator (`simulator/traffic/{patterns,generate}.py`, all 6 required
   patterns; `simulator/tests/test_patterns.py`; real runs of normal/burst/concurrent against the live
   lab; `docs/architecture/traffic_generation.md`; `README.md` updated)
+- Phase 15 — Protocol Workload Generator (`simulator/traffic/{protocols,generate_protocol}.py`, all 6
+  required protocols with real wire-level exchanges; TLS-capable `external-service`;
+  `simulator/tests/test_protocols.py`; real run of all 6 protocols against the live lab;
+  `docs/architecture/protocol_generation.md`; `README.md` updated)
 
 ## Blocked phases
 
@@ -158,6 +162,16 @@ None yet — no code written.
   19/19 unit tests (determinism, per-pattern shape) plus a real run of 3 patterns against the live lab
   (48 real HTTP 200s total across normal/burst/concurrent, with burst/concurrent's clustering visibly
   confirmed in captured timestamps).
+- Protocol workload generator (`simulator/traffic/`, Phase 15): `protocols.py` provides real
+  wire-level senders for HTTP, generic TCP, UDP/DNS (hand-built RFC 1035 query), cache (raw RESP
+  PING/PONG), database (real Postgres SSLRequest handshake), and TLS (real handshake, reports
+  negotiated version/cipher). `external-service` gained a self-signed-cert HTTPS listener (port 443,
+  lab-only). Key finding: protocol reachability is topology-dependent post-Phase-12 segmentation --
+  `client` reaches HTTP/DNS/TCP (edge), `api-1` reaches cache/database/TLS (data+external); no single
+  container reaches all 6, documented as a realistic finding, not a gap. Verified: 8/8 pure unit tests
+  (DNS wire-format, Postgres magic-number correctness) plus a real run of all 6 protocols against the
+  live lab (real DNS rcode=0, real Redis +PONG, real Postgres 'N' response, real negotiated
+  TLSv1.3/TLS_AES_256_GCM_SHA384).
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -194,11 +208,11 @@ None yet — no code written.
   preview returns HTTP 200), then torn down.
 - `scripts/setup.sh` run standalone from a clean state (`.venv` and `frontend/node_modules` deleted
   first) and completed successfully — the "fresh installation must work" acceptance bar for Phase 06.
-- `pytest simulator/tests` — 19/19 passed (Phase 14: traffic-pattern schedule determinism and shape,
-  pure/no-Docker). Plus a real Docker-based run of 3 patterns (normal/burst/concurrent) against the
-  live lab, producing real JSONL logs with real HTTP 200s (see
-  `docs/architecture/traffic_generation.md`) — not part of the pytest suite, a separate manual
-  integration verification like Phases 11-13.
+- `pytest simulator/tests` — 27/27 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
+  wire-format tests (Phase 15), all pure/no-Docker. Plus real Docker-based runs: 3 traffic patterns
+  (Phase 14) and all 6 protocols (Phase 15) against the live lab, producing real JSONL logs with real
+  outcomes (see `docs/architecture/traffic_generation.md` and `docs/architecture/protocol_generation.md`)
+  — not part of the pytest suite, manual integration verification like Phases 11-13.
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -213,5 +227,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 15 — Protocol Workload Generator (generate realistic TCP/UDP/DNS/HTTP/TLS metadata/
-database/cache traffic). Not started; awaiting explicit request.
+Next: Phase 16 — Ground-Truth Generator (automatically generate authoritative nodes, edges, roles,
+services, routes, expected paths from the lab's known topology). Not started; awaiting explicit
+request.

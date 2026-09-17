@@ -54,11 +54,16 @@ services:
     working_dir: /app
     volumes:
       - ./api/api.py:/app/api.py:ro
+      # Phase 15 -- api-1 doubles as the runner for protocol-diverse traffic
+      # generation (cache/database/TLS targets), since it's the only role
+      # that legitimately reaches app+data+external per Phase 12's segmentation.
+      - ..:/opt/netscope/simulator:ro
     environment:
       APP_NAME: api-1
       REDIS_HOST: redis
       DATABASE_HOST: database
       EXTERNAL_URL: http://external-service/
+      PYTHONPATH: /opt/netscope
     command: python api.py
     depends_on:
       redis: { condition: service_healthy }
@@ -129,8 +134,13 @@ services:
 
   external-service:
     image: nginx:1.27-alpine
+    # Phase 15 -- generates a self-signed, lab-only TLS certificate at startup
+    # so this service can also act as the TLS-handshake / TLS-metadata target
+    # (docs/architecture/protocol_generation.md). Never a production pattern.
+    command: sh -c "apk add --no-cache openssl >/dev/null && mkdir -p /etc/nginx/tls && openssl req -x509 -nodes -newkey rsa:2048 -keyout /etc/nginx/tls/key.pem -out /etc/nginx/tls/cert.pem -days 1 -subj '/CN=external-service.lab' >/dev/null 2>&1 && nginx -g 'daemon off;'"
     volumes:
       - ./external/index.html:/usr/share/nginx/html/index.html:ro
+      - ./external/nginx.conf:/etc/nginx/nginx.conf:ro
     networks: [external]
 
 networks:
