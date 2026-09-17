@@ -1,16 +1,16 @@
 # NETSCOPE-X Multi-Tier Network Laboratory (spec Phase 11, network
-# boundaries added in Phase 12 -- see docs/architecture/network_laboratory.md
-# "Phase 12" section for the full rationale; this is a documented, in-place
-# modification of Phase 11's lab, not a silent architecture change, per
-# spec §38).
+# boundaries added in Phase 12, route redundancy added in Phase 13 -- see
+# docs/architecture/network_laboratory.md for the full rationale of each;
+# these are documented, in-place modifications of the Phase 11 lab, not
+# silent architecture changes, per spec §38).
 #
 # Separate from the repo-root docker-compose.yml (Phase 06 dev environment
 # for the backend/frontend placeholder app) -- this is the controlled lab
-# NETSCOPE-X will eventually observe traffic on. 10 required services:
-# client, gateway, load-balancer, api-1, api-2, redis, database, worker,
-# dns, external-service, now segmented across 4 networks (edge/app/data/
-# external) so that only the containers that should legitimately cross a
-# tier boundary are multi-homed onto both sides of it.
+# NETSCOPE-X will eventually observe traffic on. 10 required service ROLES
+# (client, gateway, load-balancer, api-1, api-2, redis, database, worker,
+# dns, external-service) segmented across 4 networks (edge/app/data/
+# external), plus a second load-balancer instance (Phase 13) giving the
+# gateway->app-tier hop two real, independently-controllable routes.
 #
 # Run:  docker compose -f simulator/docker/docker-compose.yml up -d
 # Stop: docker compose -f simulator/docker/docker-compose.yml down
@@ -24,10 +24,17 @@ services:
     image: nginx:1.27-alpine
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on: [load-balancer]
+    depends_on: [load-balancer, load-balancer-2]
     networks: [edge, app]
 
   load-balancer:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./load_balancer/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [api-1, api-2]
+    networks: [app]
+
+  load-balancer-2:
     image: nginx:1.27-alpine
     volumes:
       - ./load_balancer/nginx.conf:/etc/nginx/nginx.conf:ro

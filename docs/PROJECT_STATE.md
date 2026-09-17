@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 12 (Network Namespace Isolation) complete. Phase 13 (Routing Laboratory) not started.
+Phase 13 (Routing Laboratory) complete. Phase 14 (Traffic Workload Generator) not started.
 
 ## Process note
 
@@ -37,6 +37,9 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/network_laboratory.md`); `README.md` created
 - Phase 12 — Network Namespace Isolation (`simulator/docker/docker-compose.yml` modified in place:
   4 segmented networks — edge/app/data/external; boundaries verified positive+negative;
+  `docs/architecture/network_laboratory.md` updated; `README.md` updated)
+- Phase 13 — Routing Laboratory (added `load-balancer-2` + upstream pool in `gateway/nginx.conf`;
+  live zero-downtime failover actually triggered and verified, then recovery confirmed;
   `docs/architecture/network_laboratory.md` updated; `README.md` updated)
 
 ## Blocked phases
@@ -133,6 +136,16 @@ None yet — no code written.
   not just TCP block) when attempting to reach services outside their assigned networks.
   `docker network inspect` membership and `ip addr` interface counts (client: 1 interface;
   api-1: 3 interfaces) confirmed as real routing evidence, not just declared compose intent.
+- Routing laboratory (`simulator/docker/`, Phase 13): added `load-balancer-2` (same nginx image/config
+  as `load-balancer`); `gateway/nginx.conf`'s single `proxy_pass` became an `upstream` pool of both,
+  with short connect/read timeouts and an `X-Gateway-Upstream` response header exposing the actual
+  route chosen. Verified real alternation across both routes; stopped `load-balancer-2` without
+  restarting `gateway` (live topology change) and confirmed 6/6 requests still succeeded — one
+  showing the explicit failover trail in its header, the rest landing directly on the surviving
+  route; confirmed recovery after restart. Found and documented a real gotcha: restarting `gateway`
+  while a peer container is stopped is fatal (`nginx: host not found in upstream`) because Docker
+  removes a stopped container's DNS entry and nginx resolves upstream hostnames once at config-load
+  time — the proxy must stay running through a peer failure, not be restarted.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -180,5 +193,5 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 13 — Routing Laboratory (create multiple routes and controlled routing changes; verify
-actual packet paths). Not started; awaiting explicit request.
+Next: Phase 14 — Traffic Workload Generator (implement reproducible normal/burst/periodic/concurrent/
+idle/degraded traffic). Not started; awaiting explicit request.

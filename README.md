@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 12 of 69 complete.** Next: Phase 13 — Routing Laboratory.
+**Current phase: 13 of 69 complete.** Next: Phase 14 — Traffic Workload Generator.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -53,6 +53,9 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
 - **Network namespace isolation** (Phase 12): the lab is segmented into 4 controlled network
   boundaries (edge/app/data/external); intended request paths still work, and unintended cross-tier
   access is verifiably blocked at DNS resolution — `docs/architecture/network_laboratory.md`.
+- **Routing laboratory** (Phase 13): a second load balancer gives the gateway two real routes into
+  the app tier; a live failure was triggered (one route stopped) and traffic rerouted with zero
+  downtime, then recovery was confirmed — `docs/architecture/network_laboratory.md`.
 
 ### What doesn't exist yet
 
