@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 13 (Routing Laboratory) complete. Phase 14 (Traffic Workload Generator) not started.
+Phase 14 (Traffic Workload Generator) complete. Phase 15 (Protocol Workload Generator) not started.
 
 ## Process note
 
@@ -41,6 +41,9 @@ what exists); this file remains the detailed, continuously-updated machine-reada
 - Phase 13 — Routing Laboratory (added `load-balancer-2` + upstream pool in `gateway/nginx.conf`;
   live zero-downtime failover actually triggered and verified, then recovery confirmed;
   `docs/architecture/network_laboratory.md` updated; `README.md` updated)
+- Phase 14 — Traffic Workload Generator (`simulator/traffic/{patterns,generate}.py`, all 6 required
+  patterns; `simulator/tests/test_patterns.py`; real runs of normal/burst/concurrent against the live
+  lab; `docs/architecture/traffic_generation.md`; `README.md` updated)
 
 ## Blocked phases
 
@@ -146,6 +149,15 @@ None yet — no code written.
   while a peer container is stopped is fatal (`nginx: host not found in upstream`) because Docker
   removes a stopped container's DNS entry and nginx resolves upstream hostnames once at config-load
   time — the proxy must stay running through a peer failure, not be restarted.
+- Traffic workload generator (`simulator/traffic/`, Phase 14): `patterns.py` provides a pure,
+  seed-reproducible `generate_schedule(pattern, seed, duration)` for all 6 required patterns (normal,
+  burst, periodic, concurrent, idle, degraded); `generate.py` executes a schedule in real time via
+  stdlib `urllib` against a real target, writing JSONL logs. Reproducibility is explicitly scoped to
+  the *schedule*, not real execution timing/network variance (documented, not overclaimed). `client`
+  (Phase 11) gained `python3` + a read-only mount of `simulator/` to run the generator in-lab. Verified:
+  19/19 unit tests (determinism, per-pattern shape) plus a real run of 3 patterns against the live lab
+  (48 real HTTP 200s total across normal/burst/concurrent, with burst/concurrent's clustering visibly
+  confirmed in captured timestamps).
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -182,6 +194,14 @@ None yet — no code written.
   preview returns HTTP 200), then torn down.
 - `scripts/setup.sh` run standalone from a clean state (`.venv` and `frontend/node_modules` deleted
   first) and completed successfully — the "fresh installation must work" acceptance bar for Phase 06.
+- `pytest simulator/tests` — 19/19 passed (Phase 14: traffic-pattern schedule determinism and shape,
+  pure/no-Docker). Plus a real Docker-based run of 3 patterns (normal/burst/concurrent) against the
+  live lab, producing real JSONL logs with real HTTP 200s (see
+  `docs/architecture/traffic_generation.md`) — not part of the pytest suite, a separate manual
+  integration verification like Phases 11-13.
+- Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
+  networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
+  down after each verification run — nothing left running between sessions.
 
 ## Current datasets
 
@@ -193,5 +213,5 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 14 — Traffic Workload Generator (implement reproducible normal/burst/periodic/concurrent/
-idle/degraded traffic). Not started; awaiting explicit request.
+Next: Phase 15 — Protocol Workload Generator (generate realistic TCP/UDP/DNS/HTTP/TLS metadata/
+database/cache traffic). Not started; awaiting explicit request.

@@ -17,7 +17,15 @@
 services:
   client:
     image: alpine:3.20
-    command: sh -c "apk add --no-cache curl bind-tools >/dev/null && sleep infinity"
+    # python3 added in Phase 14 so `client` can also run the reproducible
+    # traffic generator (simulator/traffic/) against the lab -- it already
+    # had curl/bind-tools from Phase 11 for connectivity verification.
+    command: sh -c "apk add --no-cache curl bind-tools python3 >/dev/null && sleep infinity"
+    volumes:
+      - ..:/opt/netscope/simulator:ro
+    working_dir: /opt/netscope
+    environment:
+      PYTHONPATH: /opt/netscope
     networks: [edge]
 
   gateway:

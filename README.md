@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 13 of 69 complete.** Next: Phase 14 — Traffic Workload Generator.
+**Current phase: 14 of 69 complete.** Next: Phase 15 — Protocol Workload Generator.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -56,6 +56,9 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
 - **Routing laboratory** (Phase 13): a second load balancer gives the gateway two real routes into
   the app tier; a live failure was triggered (one route stopped) and traffic rerouted with zero
   downtime, then recovery was confirmed — `docs/architecture/network_laboratory.md`.
+- **Traffic workload generator** (Phase 14): reproducible schedules for all 6 required traffic
+  patterns (normal, burst, periodic, concurrent, idle, degraded), executed for real against the live
+  lab — `simulator/traffic/`, `docs/architecture/traffic_generation.md`.
 
 ### What doesn't exist yet
 
@@ -77,11 +80,12 @@ experiments/
   artifacts/  Phase 10 reproducible artifact I/O
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
-  docker/     Phase 11 multi-tier network laboratory
+  docker/     Phase 11-14 multi-tier network laboratory
+  traffic/    Phase 14 reproducible traffic workload generator
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-11 design docs
+  architecture/   Phase 04-05, 09-14 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup and validation scripts
@@ -91,7 +95,7 @@ scripts/      setup and validation scripts
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests   # run the full test suite
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite
 docker compose up --build      # backend (placeholder API) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 ```
