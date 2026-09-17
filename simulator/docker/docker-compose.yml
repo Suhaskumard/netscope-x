@@ -1,0 +1,117 @@
+# NETSCOPE-X Multi-Tier Network Laboratory (spec Phase 11).
+#
+# Separate from the repo-root docker-compose.yml (Phase 06 dev environment
+# for the backend/frontend placeholder app) -- this is the controlled lab
+# NETSCOPE-X will eventually observe traffic on. 10 required services:
+# client, gateway, load-balancer, api-1, api-2, redis, database, worker,
+# dns, external-service.
+#
+# Run:  docker compose -f simulator/docker/docker-compose.yml up -d
+# Stop: docker compose -f simulator/docker/docker-compose.yml down
+services:
+  client:
+    image: alpine:3.20
+    command: sh -c "apk add --no-cache curl bind-tools >/dev/null && sleep infinity"
+    networks: [lab]
+
+  gateway:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [load-balancer]
+    networks: [lab]
+
+  load-balancer:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./load_balancer/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [api-1, api-2]
+    networks: [lab]
+
+  api-1:
+    image: python:3.12-alpine
+    working_dir: /app
+    volumes:
+      - ./api/api.py:/app/api.py:ro
+    environment:
+      APP_NAME: api-1
+      REDIS_HOST: redis
+      DATABASE_HOST: database
+      EXTERNAL_URL: http://external-service/
+    command: python api.py
+    depends_on:
+      redis: { condition: service_healthy }
+      database: { condition: service_healthy }
+      external-service: { condition: service_started }
+    networks: [lab]
+
+  api-2:
+    image: python:3.12-alpine
+    working_dir: /app
+    volumes:
+      - ./api/api.py:/app/api.py:ro
+    environment:
+      APP_NAME: api-2
+      REDIS_HOST: redis
+      DATABASE_HOST: database
+      EXTERNAL_URL: http://external-service/
+    command: python api.py
+    depends_on:
+      redis: { condition: service_healthy }
+      database: { condition: service_healthy }
+      external-service: { condition: service_started }
+    networks: [lab]
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks: [lab]
+
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: labpassword
+      POSTGRES_DB: netscope
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks: [lab]
+
+  worker:
+    image: python:3.12-alpine
+    working_dir: /app
+    volumes:
+      - ./worker/worker.py:/app/worker.py:ro
+    environment:
+      REDIS_HOST: redis
+      DATABASE_HOST: database
+      WORKER_INTERVAL_SECONDS: "5"
+    command: python worker.py
+    depends_on:
+      redis: { condition: service_healthy }
+      database: { condition: service_healthy }
+    networks: [lab]
+
+  dns:
+    image: alpine:3.20
+    command: sh -c "apk add --no-cache dnsmasq >/dev/null && dnsmasq -k -C /etc/dnsmasq.conf"
+    volumes:
+      - ./dns/dnsmasq.conf:/etc/dnsmasq.conf:ro
+    cap_add: [NET_ADMIN]
+    networks: [lab]
+
+  external-service:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./external/index.html:/usr/share/nginx/html/index.html:ro
+    networks: [lab]
+
+networks:
+  lab:
+    name: netscope-x-lab

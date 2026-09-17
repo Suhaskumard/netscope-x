@@ -5,8 +5,13 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 10 (Research Artifact Architecture) complete. Phase 11 (Multi-Tier Network Laboratory) not
-started.
+Phase 11 (Multi-Tier Network Laboratory) complete. Phase 12 (Network Namespace Isolation) not started.
+
+## Process note
+
+Starting Phase 11, `README.md` (repo root) is created/updated after every completed phase, alongside
+this file. `README.md` is the human-facing front door (what NETSCOPE-X is, current status, how to run
+what exists); this file remains the detailed, continuously-updated machine-readable state.
 
 ## Completed phases
 
@@ -28,6 +33,8 @@ started.
   `/api/v1` router — wired into `backend/app/main.py`, `docs/architecture/api_design.md`)
 - Phase 10 — Research Artifact Architecture (`experiments/artifacts/{paths,io}.py`,
   `docs/architecture/research_artifacts.md`)
+- Phase 11 — Multi-Tier Network Laboratory (`simulator/docker/` — 10-service Docker Compose lab,
+  `docs/architecture/network_laboratory.md`); `README.md` created
 
 ## Blocked phases
 
@@ -107,6 +114,14 @@ None yet — no code written.
   integrity mechanism, built now for phases 16+ to use). No PCAP I/O or dataset registry exists yet
   (Phase 21 and Phase 19 respectively) — only the path convention and generic JSON/JSONL layer are
   established this phase.
+- Multi-tier network laboratory (`simulator/docker/`, Phase 11): 10-service Docker Compose lab
+  (client, gateway, load-balancer, api-1, api-2, redis, database, worker, dns, external-service) on
+  one network (`netscope-x-lab`), separate from Phase 06's dev-only root `docker-compose.yml`. `api-1`/
+  `api-2` perform real TCP/HTTP reachability checks (redis/database/external-service) and report them
+  as JSON, making the dependency structure genuinely observable end-to-end, not just declared.
+  Verified: full client→gateway→load-balancer→api→{redis,database,external} request chain (twice,
+  confirming real round-robin between api-1/api-2); DNS resolution via dnsmasq; worker heartbeat log.
+  Network-namespace isolation and routing are explicitly Phase 12/13, not duplicated here.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -154,6 +169,5 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 11 — Multi-Tier Network Laboratory (build the controlled Docker network: Client, Gateway,
-Load Balancer, API-1, API-2, Redis, Database, Worker, DNS, External-service simulator). Not started;
-awaiting explicit request.
+Next: Phase 12 — Network Namespace Isolation (implement controlled network boundaries and verify
+routing). Not started; awaiting explicit request.
