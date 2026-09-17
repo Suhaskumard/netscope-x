@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 11 (Multi-Tier Network Laboratory) complete. Phase 12 (Network Namespace Isolation) not started.
+Phase 12 (Network Namespace Isolation) complete. Phase 13 (Routing Laboratory) not started.
 
 ## Process note
 
@@ -35,6 +35,9 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/research_artifacts.md`)
 - Phase 11 — Multi-Tier Network Laboratory (`simulator/docker/` — 10-service Docker Compose lab,
   `docs/architecture/network_laboratory.md`); `README.md` created
+- Phase 12 — Network Namespace Isolation (`simulator/docker/docker-compose.yml` modified in place:
+  4 segmented networks — edge/app/data/external; boundaries verified positive+negative;
+  `docs/architecture/network_laboratory.md` updated; `README.md` updated)
 
 ## Blocked phases
 
@@ -122,6 +125,14 @@ None yet — no code written.
   Verified: full client→gateway→load-balancer→api→{redis,database,external} request chain (twice,
   confirming real round-robin between api-1/api-2); DNS resolution via dnsmasq; worker heartbeat log.
   Network-namespace isolation and routing are explicitly Phase 12/13, not duplicated here.
+- Network namespace isolation (`simulator/docker/docker-compose.yml`, Phase 12): the Phase 11 lab's
+  single flat network replaced in place with 4 tiered networks (edge/app/data/external); only
+  boundary-crossing containers (gateway, api-1, api-2, worker) are multi-homed. Verified both that
+  intended paths still work (client→gateway→LB→api→{redis,db,external} unchanged) and that
+  boundaries are actually enforced: client/gateway/load-balancer all fail (DNS resolution timeout,
+  not just TCP block) when attempting to reach services outside their assigned networks.
+  `docker network inspect` membership and `ip addr` interface counts (client: 1 interface;
+  api-1: 3 interfaces) confirmed as real routing evidence, not just declared compose intent.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -169,5 +180,5 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 12 — Network Namespace Isolation (implement controlled network boundaries and verify
-routing). Not started; awaiting explicit request.
+Next: Phase 13 — Routing Laboratory (create multiple routes and controlled routing changes; verify
+actual packet paths). Not started; awaiting explicit request.

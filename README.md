@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 11 of 69 complete.** Next: Phase 12 — Network Namespace Isolation.
+**Current phase: 12 of 69 complete.** Next: Phase 13 — Routing Laboratory.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -50,6 +50,9 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
 - **Multi-tier network laboratory** (Phase 11): a 10-service controlled Docker lab (client, gateway,
   load balancer, 2x API, redis, database, worker, DNS, external-service simulator) that NETSCOPE-X
   will observe starting Phase 21 — `simulator/docker/`.
+- **Network namespace isolation** (Phase 12): the lab is segmented into 4 controlled network
+  boundaries (edge/app/data/external); intended request paths still work, and unintended cross-tier
+  access is verifiably blocked at DNS resolution — `docs/architecture/network_laboratory.md`.
 
 ### What doesn't exist yet
 
