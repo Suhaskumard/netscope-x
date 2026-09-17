@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 04 (Architecture and Data Contracts) complete. Phase 05 (Algorithm Selection) not started.
+Phase 05 (Algorithm Selection) complete. Phase 06 (Reproducible Development Environment) not started.
 
 ## Completed phases
 
@@ -15,6 +15,7 @@ Phase 04 (Architecture and Data Contracts) complete. Phase 05 (Algorithm Selecti
 - Phase 03 — System Requirements (`docs/requirements/system_requirements.md`)
 - Phase 04 — Architecture and Data Contracts (`backend/app/models/`,
   `docs/architecture/data_contracts.md`, validated by `scripts/validate_data_contracts.py`)
+- Phase 05 — Algorithm Selection (`docs/architecture/algorithm_selection.md`)
 
 ## Blocked phases
 
@@ -41,7 +42,15 @@ None yet — no code written.
   `docs/architecture/data_contracts.md` "Design principle" section for the full list.
 - Remainder of the full 25-section project tree (`nettrace/`, `flowmind/`, `archaeology/`, `causal/`,
   `pathforge/`, `counterfactual/`, `simulator/`, `experiments/`, `frontend/`, etc.) still intentionally
-  NOT created — those directories are justified once the phases that populate them (05+) are reached.
+  NOT created — those directories are justified once the phases that populate them (06+) are reached.
+- Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
+  TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
+  per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
+  exact NetworkX degree/betweenness/articulation-points for graph criticality; Dijkstra + Yen's
+  algorithm + BFS/union-find for path analysis; weighted multi-signal scoring (frequency, persistence,
+  directionality, time-lagged cross-correlation) for dependency inference. Heavier alternatives
+  (Random Forest, Isolation Forest/autoencoders, Granger causality/PC algorithm) are documented as
+  deferred options pending Phase 68 evidence, not adopted or dismissed without justification.
 
 ## Environment inspection (Phase 0 findings)
 
@@ -73,7 +82,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 05 — Algorithm Selection (evaluate candidate algorithms for flow reconstruction, role
-inference, anomaly detection, graph criticality, path analysis, dependency inference; document
-alternatives, advantages, limitations, computational complexity, selected method). Not started;
-awaiting explicit request.
+Next: Phase 06 — Reproducible Development Environment (Docker configuration, Python environment,
+frontend environment, pinned dependencies, development scripts; fresh installation must work). Not
+started; awaiting explicit request.
