@@ -91,7 +91,7 @@ evidence of the kind of cross-window recurrence `is_persistent` is meant to repr
 UDP session modeling (spec Phase 25, FR-1.5) is fully implemented and verified end-to-end for real.
 A UDP five-tuple's packets are now split into separate `Flow` records wherever a real, configurable
 idle-timeout is exceeded, with correct per-session direction resolution and no `Flow`/`Packet`
-schema changes needed. TCP flows are provably unaffected. `fingerprinted_protocol` and the
-cross-flow-aggregation-dependent parts of `FlowFeatures` (`is_persistent`, and the true cross-flow
-meaning of `destination_diversity`/`port_diversity`) remain honestly unset/placeholder pending
-Phases 26 and 28 respectively.
+schema changes needed. TCP flows are provably unaffected. `fingerprinted_protocol` is now also real,
+as of Phase 26 (`docs/architecture/protocol_fingerprinting.md`). The cross-flow-aggregation-dependent
+parts of `FlowFeatures` (`is_persistent`, and the true cross-flow meaning of
+`destination_diversity`/`port_diversity`) remain honestly unset/placeholder pending Phase 28.

@@ -73,7 +73,7 @@ def test_reconstruct_flows_merges_both_directions_into_one_flow(tmp_path: Path) 
     assert flow.dst_port == 80
     assert flow.protocol == TransportProtocol.TCP
     assert flow.tcp_state == TCPState.ESTABLISHED
-    assert flow.fingerprinted_protocol is None
+    assert flow.fingerprinted_protocol == "http"
     assert flow.features.packet_count == 3
     assert flow.features.byte_count == 160
     assert flow.features.is_persistent is False

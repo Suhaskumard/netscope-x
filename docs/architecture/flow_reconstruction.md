@@ -59,7 +59,7 @@ work it doesn't own yet:
 | `destination_diversity`, `port_diversity` | `1`, always | A five-tuple flow has exactly *one* destination and *one* port pair by definition — this is not a placeholder, it's the correct value for what these fields mean at flow-record granularity. Their real "diversity across many flows" meaning is Phase 28's cross-flow aggregation job. |
 | `is_persistent` | `False`, always | No cross-window recurrence signal exists within a single capture's flow packets — there's nothing here to compute honestly. Documented as Phase 28's real job (FR-1.8: "connection persistence"), not a guess. |
 | `tcp_state` | Real: retransmission-safe TCP finite state machine over flags/direction/timestamp order | Phase 24 (FR-1.4). See `docs/architecture/tcp_state_tracking.md` for the full transition table. |
-| `fingerprinted_protocol` | `None`, always | Explicitly Phase 26 (FR-1.6). Same reasoning. |
+| `fingerprinted_protocol` | Real: port/transport heuristic lookup | Phase 26 (FR-1.6). See `docs/architecture/protocol_fingerprinting.md`. |
 
 ## `GET /flows` goes live
 
@@ -115,7 +115,7 @@ real, for both TCP and UDP, including live wiring into `GET /flows`. `Packet.dir
 correctly resolved relative to real reconstructed flows rather than left `unknown`. `tcp_state` is
 now also real, as of Phase 24 (`docs/architecture/tcp_state_tracking.md`); UDP five-tuples are now
 also split into real timing-window sessions, as of Phase 25
-(`docs/architecture/udp_session_modeling.md`). `fingerprinted_protocol` and the
-cross-flow-aggregation-dependent parts of `FlowFeatures` (`is_persistent`, and the true cross-flow
-meaning of `destination_diversity`/`port_diversity`) remain honestly unset/placeholder pending
-Phase 26 and Phase 28 respectively.
+(`docs/architecture/udp_session_modeling.md`); `fingerprinted_protocol` is now also real, as of
+Phase 26 (`docs/architecture/protocol_fingerprinting.md`). The cross-flow-aggregation-dependent
+parts of `FlowFeatures` (`is_persistent`, and the true cross-flow meaning of
+`destination_diversity`/`port_diversity`) remain honestly unset/placeholder pending Phase 28.

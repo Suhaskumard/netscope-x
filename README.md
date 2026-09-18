@@ -17,9 +17,9 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 25 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
+**Current phase: 26 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
 remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`). Next: Phase 26 — Protocol Fingerprinting.
+`docs/architecture/packet_capture.md`). Next: Phase 27 — Encrypted Traffic Metadata.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -136,15 +136,23 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   bursts separated by a real gap past the configured timeout, plus a TCP flow with an equally large
   gap): the UDP five-tuple produced exactly 2 real flows, the TCP flow stayed exactly 1 —
   `backend/nettrace/reconstruct.py`, `docs/architecture/udp_session_modeling.md`.
+- **Protocol fingerprinting** (Phase 26): `Flow.fingerprinted_protocol` is now real — a small,
+  explicit port/transport lookup table (`http`/TCP:80, `tls`/TCP:443, `postgresql`/TCP:5432,
+  `redis`/TCP:6379, `dns`/UDP:53), since `Packet` carries no payload for deep packet inspection.
+  Scoped to exactly the protocols the lab's own traffic generator produces real traffic for, so every
+  entry is independently verifiable; anything else stays honestly `None`, never a guess. Proven by a
+  real end-to-end run (HTTP-shaped, DNS-shaped, and unrecognized-port exchanges ingested then
+  queried, yielding `"http"`/`"dns"`/`None` exactly as expected) — `backend/nettrace/fingerprint.py`,
+  `docs/architecture/protocol_fingerprinting.md`.
 
 ### What doesn't exist yet
 
-Protocol fingerprinting, topology inference, behavioral modeling, anomaly detection, digital twin,
-simulation, and counterfactual engines have not been implemented yet — those begin at Phase 26 and
-continue through the 69-phase plan. The API surface and data contracts are real and tested; most of
-the research intelligence they will eventually serve is not built yet. Nothing in this repository
-currently fabricates results — every phase's completion report documents exactly what was and wasn't
-verified by actual execution.
+Encrypted traffic metadata extraction, topology inference, behavioral modeling, anomaly detection,
+digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
+Phase 27 and continue through the 69-phase plan. The API surface and data contracts are real and
+tested; most of the research intelligence they will eventually serve is not built yet. Nothing in
+this repository currently fabricates results — every phase's completion report documents exactly what
+was and wasn't verified by actual execution.
 
 ## Repository layout
 

@@ -33,13 +33,18 @@ explicitly later phases' jobs (FR-1.8, Phase 28): `destination_diversity`/
 destination/port pair by definition -- their real "diversity across many
 flows" meaning is Phase 28's cross-flow aggregation), and `is_persistent`
 has no real signal available from a single capture's flow packets, so it is
-a documented, conservative `False` rather than a fabricated guess.
-`fingerprinted_protocol` stays `None`, matching the model's own "`None`
-means not yet determined" design (see `Flow`'s own docstring) -- that is
-Phase 26's job. Every other `FlowFeatures` field (packet/byte counts,
-duration, mean inter-arrival, forward_byte_ratio, and burstiness as a real
+a documented, conservative `False` rather than a fabricated guess. Every
+other `FlowFeatures` field (packet/byte counts, duration, mean
+inter-arrival, forward_byte_ratio, and burstiness as a real
 coefficient-of-variation computation) is computed for real from the
 packets already grouped here.
+
+`Flow.fingerprinted_protocol` (spec Phase 26, FR-1.6) is now real: a
+small, explicit (transport, well-known port) -> protocol-name lookup
+(`backend.nettrace.fingerprint.fingerprint_protocol`), since `Packet`
+carries no payload for deep packet inspection. Anything not in that table
+stays honestly `None`, never a guess -- see
+`docs/architecture/protocol_fingerprinting.md`.
 
 `Flow.tcp_state` (spec Phase 24, FR-1.4) is now real for TCP flows: a
 finite state machine (`_compute_tcp_state`) walks each flow's packets in
@@ -66,6 +71,7 @@ from typing import Dict, List, Optional, Tuple
 
 from backend.app.models.flow import Flow, FlowFeatures, TCPState
 from backend.app.models.packet import Packet, PacketDirection, TransportProtocol
+from backend.nettrace.fingerprint import fingerprint_protocol
 from experiments.artifacts.io import read_jsonl, write_jsonl
 from experiments.artifacts.paths import flows_path, packets_path
 
@@ -249,6 +255,9 @@ def reconstruct_flows(
             if canonical.protocol == TransportProtocol.TCP
             else None
         )
+        fingerprinted_protocol = fingerprint_protocol(
+            canonical.protocol, canonical.src_port, canonical.dst_port
+        )
 
         flows.append(
             Flow(
@@ -262,7 +271,7 @@ def reconstruct_flows(
                 first_seen=group[0].timestamp,
                 last_seen=group[-1].timestamp,
                 tcp_state=tcp_state,
-                fingerprinted_protocol=None,
+                fingerprinted_protocol=fingerprinted_protocol,
                 features=_compute_features(group, forward_bytes),
             )
         )

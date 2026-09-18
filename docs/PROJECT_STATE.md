@@ -5,13 +5,12 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 25 (UDP Session Modeling) complete, real-verified end-to-end, including live wiring through
-`GET /flows` (no route changes needed beyond threading the new configurable idle-timeout setting
-through — it already recomputes flows fresh on every request). Phase 21 (High-Fidelity Packet
-Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
-not yet verified against a real Docker lab (this session's environment has no Docker installation —
-see `docs/architecture/packet_capture.md` "Known limitations"). Phase 26 (Protocol Fingerprinting)
-not started.
+Phase 26 (Protocol Fingerprinting) complete, real-verified end-to-end, including live wiring through
+`GET /flows` (no route changes needed — it already recomputes flows fresh on every request). Phase 21
+(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
+and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see `docs/architecture/packet_capture.md` "Known limitations"). Phase 27
+(Encrypted Traffic Metadata) not started.
 
 ## Process note
 
@@ -237,6 +236,36 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   five-tuple produced exactly 2 real flows (2 packets each), the TCP flow stayed exactly 1 real flow
   (4 packets, real `tcp_state: "closing"`), confirming the heuristic is real, correctly
   gap-triggered, and correctly UDP-only. `docs/architecture/udp_session_modeling.md` has full detail.
+
+- Phase 26 — Protocol Fingerprinting (`backend/nettrace/fingerprint.py`; `fingerprint_protocol`,
+  FR-1.6). Unlike Phases 23-25, `docs/architecture/algorithm_selection.md` (Phase 05) did not cover
+  this area at all — an honest gap in the original planning, not silently worked around; the
+  algorithm decision is made and justified in the new `docs/architecture/protocol_fingerprinting.md`
+  instead. Since `Packet` carries no application-layer payload (metadata-only, consistent with the
+  project's established non-payload-reassembly observability model), deep packet inspection is not
+  possible, so the fingerprinter is a small, explicit `(transport, well-known port) -> protocol name`
+  lookup table (`http`/TCP:80, `tls`/TCP:443, `postgresql`/TCP:5432, `redis`/TCP:6379, `dns`/UDP:53),
+  scoped exactly to the protocols `simulator/traffic/protocols.py` (Phase 15) generates real traffic
+  for, so every entry is independently end-to-end verifiable against known ground truth. Anything not
+  in the table stays honestly `None`, never a guess — directly satisfying FR-1.6's "shall not claim
+  protocol coverage it cannot support." Called from `reconstruct_flows` for every flow (TCP and UDP
+  alike, unlike Phase 24's TCP-only `tcp_state`), using the flow's own canonical `dst_port` first,
+  falling back to `src_port` for a reversed canonical orientation. No `Flow`/`Packet` schema changes
+  needed (`Flow.fingerprinted_protocol` already existed from Phase 04). Verified: new
+  `backend/tests/test_nettrace_fingerprint.py` (13/13: all 5 table entries, unrecognized port ->
+  `None`, `dst_port`-then-`src_port` fallback priority, both ports `None` -> `None`, wrong transport
+  for a well-known port -> `None`, plus 3 real `reconstruct_flows` integration cases); one existing
+  `backend/tests/test_nettrace_reconstruct.py` assertion corrected from Phase 23's honest `None`
+  placeholder (its fixture uses port 80) to the real `"http"`; combined suite 198/198 (up from
+  185/185), no other regressions; `scripts.validate_data_contracts` and
+  `check_ground_truth_boundary.py` both re-verified clean; a real, manual end-to-end run (no Docker
+  needed): a real Scapy pcap with an HTTP-shaped exchange (TCP/80), a DNS-shaped exchange (UDP/53),
+  and a generic TCP exchange on an unrecognized port (9999), ingested through the live FastAPI app's
+  real `POST /capture`, then queried through the real `GET /flows` — all three real
+  `fingerprinted_protocol` outcomes confirmed exactly as expected (`"http"`, `"dns"`, `None`).
+  `docs/architecture/protocol_fingerprinting.md` has full detail, including an explicit "known
+  limitations" section (non-standard-port services unrecognized; a different service squatting on a
+  well-known port would be misidentified — both honest, documented heuristic limitations, not gaps).
 
 ## Blocked phases
 
@@ -512,7 +541,7 @@ None yet — no code written.
   allowlist).
 - `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
   5/5 checks passed (see Phase 20 note above for detail).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 185/185 passed, no
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 198/198 passed, no
   regression (up from 136/136 after Phase 20: +9 `backend/tests/test_nettrace_capture.py`,
   +2 `simulator/tests/test_capture.py`, +7 net new/changed `backend/tests/test_api.py` capture
   cases minus the 1 removed generic-501 case, Phase 21; +6 `backend/tests/test_nettrace_normalize.py`,
@@ -522,12 +551,15 @@ None yet — no code written.
   `tcp_state` assertion in that file and one in `backend/tests/test_api.py` corrected from Phase
   23's honest `None` placeholder to the real computed value; +6
   `backend/tests/test_nettrace_reconstruct.py` UDP session-splitting cases and +2
-  `backend/tests/test_config.py` idle-timeout config cases, Phase 25).
+  `backend/tests/test_config.py` idle-timeout config cases, Phase 25; +13 new
+  `backend/tests/test_nettrace_fingerprint.py`, Phase 26, with one Phase 23
+  `fingerprinted_protocol` assertion corrected from `None` to the real `"http"`).
 - `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21, re-verified
-  Phase 22-25).
+  Phase 22-26).
 - `python scripts/check_ground_truth_boundary.py` — clean, zero violations; `backend/nettrace/`
-  (including `normalize.py` and `reconstruct.py`) and `simulator/capture/` packages correctly do
-  not import `simulator.ground_truth` (Phase 21, re-verified Phase 22-25).
+  (including `normalize.py`, `reconstruct.py`, and the new `fingerprint.py`) and
+  `simulator/capture/` packages correctly do not import `simulator.ground_truth` (Phase 21,
+  re-verified Phase 22-26).
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -553,6 +585,11 @@ None yet — no experiments have been run.
   scope: `Packet` carries no TCP sequence/ack field. Documented as an honest limitation in
   `docs/architecture/tcp_state_tracking.md`, not a gap; would require extending `Packet`'s schema
   and `normalize.py` if a later phase's requirements actually need it.
-- Next: Phase 26 — Protocol Fingerprinting (spec FR-1.6: fingerprint the application-layer protocol
-  from observable evidence only, never claiming coverage the system can't support). Not started;
-  awaiting explicit request.
+- Protocol fingerprinting is a small, explicit port/transport heuristic table, honestly limited to 5
+  protocols verifiable against the lab's real Phase 15 traffic generator (`http`, `tls`,
+  `postgresql`, `redis`, `dns`); a service on a non-standard port, or a different service reusing a
+  well-known port, is out of scope by design — documented in
+  `docs/architecture/protocol_fingerprinting.md`, not a gap.
+- Next: Phase 27 — Encrypted Traffic Metadata (spec FR-1.7: extract permitted metadata from
+  encrypted traffic — TLS version, duration, sizes, timing, endpoint relationships — without
+  attempting decryption). Not started; awaiting explicit request.
