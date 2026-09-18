@@ -17,11 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 29 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 30 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`; Phase 29's node discovery is implemented and unit-verified but
-not yet wired into any API route, pending Phase 30's edge discovery and Phase 32's combined topology
-graph — see `docs/architecture/node_discovery.md`). Next: Phase 30.
+`docs/architecture/packet_capture.md`; Phase 29-30's node/edge discovery are implemented and
+unit-verified but not yet wired into any API route, pending Phase 32's combined topology graph — see
+`docs/architecture/node_discovery.md` and `docs/architecture/edge_discovery.md`). Next: Phase 31.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -174,12 +174,23 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   including one that seeds an ICMP-only exchange and confirms both endpoints are discovered as nodes
   while the same fixture produces zero flows from `reconstruct_flows` —
   `backend/nettrace/topology/discovery.py`, `docs/architecture/node_discovery.md`.
+- **Edge discovery** (Phase 30): `discover_edges` aggregates a capture's already-reconstructed flows
+  (not raw packets — the opposite source choice from node discovery, since `Edge.protocols`/evidence
+  need flow-level data) into one `Edge` per communicating node pair, with real
+  `observation_count`/`evidence`/`protocols`/timestamps and a real, evidence-backed (if provisional
+  and not yet Phase-31-calibrated) confidence score:
+  `confidence = 1 - exp(-total_packet_count / edge_confidence_packet_scale)`, strictly monotonic and
+  saturating, never claiming certainty. Edges are undirected (no initiator claim at the edge level);
+  an ICMP-only capture produces nodes but zero edges, matching flow reconstruction's own documented
+  scope. Proven by 12 real unit tests, including one confirming that exact node/edge asymmetry on a
+  shared fixture and one confirming confidence strictly increases with more observed packets —
+  `backend/nettrace/topology/edges.py`, `docs/architecture/edge_discovery.md`.
 
 ### What doesn't exist yet
 
-Edge discovery, behavioral modeling, anomaly detection, digital twin, simulation, and counterfactual
-engines have not been implemented yet — those begin at Phase 30 and continue through the 69-phase
-plan. The API surface and data contracts are real and tested; most of the research
+Edge confidence calibration, behavioral modeling, anomaly detection, digital twin, simulation, and
+counterfactual engines have not been implemented yet — those begin at Phase 31 and continue through
+the 69-phase plan. The API surface and data contracts are real and tested; most of the research
 intelligence they will eventually serve is not built yet. Nothing in this repository currently
 fabricates results — every phase's completion report documents exactly what was and wasn't verified by
 actual execution.
@@ -196,6 +207,7 @@ backend/nettrace/
   normalize.py  Phase 22 packet normalization (raw.pcap -> Packet -> packets.jsonl)
   reconstruct.py  Phase 23 five-tuple flow reconstruction (packets.jsonl -> Flow -> flows.jsonl)
   topology/discovery.py  Phase 29 node discovery (packets.jsonl -> Node; not yet persisted or API-wired)
+  topology/edges.py  Phase 30 edge discovery (flows.jsonl + Node list -> Edge; not yet persisted or API-wired)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
@@ -208,7 +220,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-29 design docs
+  architecture/   Phase 04-05, 09-30 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -219,7 +231,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (220 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (232 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

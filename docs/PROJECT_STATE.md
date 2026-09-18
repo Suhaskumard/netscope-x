@@ -5,19 +5,27 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 29 (Node Discovery) complete, unit-verified. `discover_nodes` (`backend/nettrace/topology/
-discovery.py`) reads a capture's normalized `packets.jsonl` directly -- not `flows.jsonl` -- so that
-IP addresses only ever seen in ICMP/OTHER traffic (which Phase 23's flow reconstruction structurally
-excludes) are still discovered as nodes; this keeps the node set a strict superset of anything a
-future flow-derived edge (Phase 30) could reference. One IP currently maps to exactly one `Node`
-(NAT/multi-homed correlation is a documented, deliberate limitation, not a gap). Nothing is persisted
-to disk yet (no `nodes_path()` was added), and nothing calls `discover_nodes` yet -- `GET /topology`
-still raises `NotYetImplemented`, since a real topology response needs edges (Phase 30) and the
-combined graph assembly (Phase 32) too. See `docs/architecture/node_discovery.md` for the full
-algorithm decision and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item
-still stands: controlled live capture is implemented and unit-verified but not yet verified against a
-real Docker lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 30 (Edge Discovery) complete, unit-verified. `discover_edges` (`backend/nettrace/topology/
+edges.py`) reads a capture's already-reconstructed `flows.jsonl` -- the opposite source choice from
+Phase 29's `discover_nodes`, since `Edge.protocols`/evidence need flow-level aggregation raw packets
+don't provide -- and aggregates flows sharing a node pair (resolved via a `List[Node]` the caller
+passes in, not re-derived) into one `Edge` each, with real `observation_count`/`evidence`/
+`protocols`/timestamps and a real, evidence-backed confidence score:
+`confidence = 1 - exp(-total_packet_count / edge_confidence_packet_scale)` (new `Settings` field,
+default `20.0`, `NETSCOPE_EDGE_CONFIDENCE_PACKET_SCALE`-overridable, ties to NFR-4) -- strictly
+monotonic and saturating, so more observed evidence never lowers confidence and confidence never
+claims exact certainty. This is explicitly a provisional, uncalibrated formula: Phase 04's `Edge`
+schema makes `confidence` required and non-optional, so Phase 30 had to supply a real value even
+though FR-1.10's "non-arbitrary confidence" requirement is formally tagged "(spec Phase 31)" --
+Phase 31 is expected to calibrate or replace this formula, not merely confirm it. Edges are
+undirected (`source_node_id`/`target_node_id` assigned by sorted `node_id`, no initiator claim); an
+ICMP-only capture produces nodes (Phase 29) but zero edges (Phase 30), an intentional, tested
+asymmetry. Nothing is persisted to disk yet, and nothing calls `discover_edges` yet -- `GET /topology`
+still raises `NotYetImplemented`, pending Phase 32's combined `TopologyGraph` assembly. See
+`docs/architecture/edge_discovery.md` for the full algorithm decision and verification record. Phase
+21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
+and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -356,6 +364,31 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `scripts.check_ground_truth_boundary` re-verified clean. `docs/architecture/node_discovery.md` has
   full detail, including the packets-vs-flows algorithm justification.
 
+- Phase 30 — Edge Discovery (`backend/nettrace/topology/edges.py`; FR-1.9/FR-1.10;
+  `backend/app/core/config.py` gains `edge_confidence_packet_scale`). `discover_edges(root,
+  capture_id, nodes, edge_confidence_packet_scale=20.0)` reads `flows_path` (not `packets_path` --
+  the opposite of Phase 29), resolves each flow's `src_ip`/`dst_ip` against the caller-supplied
+  `nodes` list, skips flows with an unresolved or self-referential endpoint (never raises), buckets
+  the rest by canonical sorted node-pair, and aggregates each bucket into one `Edge`: `protocols`
+  deduplicated/sorted, `first_observed`/`last_observed` spanning every contributing flow, `evidence`
+  one descriptive line per flow ordered by `(first_seen, flow_id)`, `observation_count = len(flows)`,
+  and `confidence = 1 - exp(-total_packet_count / edge_confidence_packet_scale)` where
+  `total_packet_count` sums `Flow.features.packet_count` across the bucket -- monotonic and
+  saturating by construction, explicitly flagged as provisional/uncalibrated pending Phase 31.
+  Deterministic `edge_id = f"{capture_id}:edge:{index}"`, ordered by `(first_observed,
+  source_node_id, target_node_id)`, mirroring Phase 29's own node-ordering convention. Verified: new
+  `backend/tests/test_nettrace_topology_edges.py` (12/12: single and multiple distinct node-pair
+  edges; multi-flow aggregation widening observation_count/evidence/timestamps; protocol
+  dedup/growth across a TCP+UDP+TCP mix; deterministic ordering/ids across repeated runs; missing and
+  empty `flows.jsonl` both returning `[]`; an ICMP-only capture producing nodes but zero edges;
+  a self-referential flow producing no edge; confidence strictly higher for a heavily- vs.
+  lightly-observed pair; confidence always in `[0, 1]` and never exactly `1.0` even for a 500-packet
+  flow; a flow whose IP is absent from the supplied `nodes` contributing no edge); combined suite
+  232/232 (up from 220/220), no regressions; `scripts.validate_data_contracts` re-verified clean
+  (38/38, `Edge` unchanged since Phase 04); `scripts.check_ground_truth_boundary` re-verified clean.
+  `docs/architecture/edge_discovery.md` has full detail, including the confidence-formula
+  justification and the undirected-edge design decision.
+
 ## Blocked phases
 
 None.
@@ -691,6 +724,10 @@ None yet — no experiments have been run.
 - Node discovery (Phase 29) treats one observed IP as exactly one node; NAT/multi-homed-host
   correlation is out of scope pending additional evidence a future phase's requirements would need to
   justify — documented in `docs/architecture/node_discovery.md`, not a gap.
-- Next: Phase 30 (Edge Discovery). Not yet scoped in this repo's docs beyond FR-1.9's one-line mention
-  (the master spec PDF names it, but no `docs/requirements`/`docs/architecture` text describes its
-  content the way earlier "Next" phases were previewed). Not started; awaiting explicit request.
+- Edge discovery (Phase 30) reports edges as undirected (no initiator claim) and scores confidence
+  with a single-signal, uncalibrated formula (`edge_confidence_packet_scale`, default `20.0`) —
+  documented in `docs/architecture/edge_discovery.md` as explicitly provisional, pending Phase 31's
+  real calibration/validation work, not a gap.
+- Next: Phase 31 (Probabilistic Edge Confidence). Expected to calibrate or replace Phase 30's
+  provisional confidence formula against real evidence rather than inventing confidence scoring from
+  nothing — not yet scoped beyond FR-1.10's one-line mention. Not started; awaiting explicit request.

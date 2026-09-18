@@ -71,6 +71,19 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Phase 30 -- edge confidence scoring (ties to NFR-4, FR-1.10's "not-arbitrary" intent).
+    edge_confidence_packet_scale: float = Field(
+        default=20.0,
+        gt=0,
+        description=(
+            "Saturation scale for edge confidence = 1 - exp(-total_packet_count / scale); "
+            "at total_packet_count == scale, confidence is ~0.63, approaching but never "
+            "reaching 1.0 as more packets are observed between a node pair (spec FR-1.10). "
+            "A provisional default pending real calibration (spec Phase 31/68), not a "
+            "claimed-accurate value."
+        ),
+    )
+
     @field_validator("log_level")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:
