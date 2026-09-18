@@ -17,9 +17,9 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 21 of 69 (PCAP ingestion complete and real-verified; controlled live capture
-implemented and unit-verified, live-Docker-lab verification pending — see
-`docs/architecture/packet_capture.md`).** Next: Phase 22 — Packet Normalization.
+**Current phase: 22 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
+remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
+`docs/architecture/packet_capture.md`). Next: Phase 23 — Five-Tuple Flow Reconstruction.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -102,11 +102,18 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   half is implemented and unit-verified but not yet run against a real Docker lab in this session
   (no Docker available in this environment) — `backend/nettrace/capture/`,
   `simulator/capture/live.py`, `docs/architecture/packet_capture.md`.
+- **Packet normalization** (Phase 22): `normalize_pcap()` reads a real `raw.pcap` via Scapy and
+  produces one normalized `Packet` (timestamp, IPs, ports, protocol, size, TCP flags) per real
+  captured frame with an IP layer, written to `captures/<capture_id>/packets.jsonl` — proven by a
+  real end-to-end run (a real TCP handshake, a UDP packet, and an ICMP packet, ingested and then
+  normalized, every field checked against the synthetic input). `direction` is deliberately left
+  `unknown` at this stage — it's relative to a flow, and flows are Phase 23 —
+  `backend/nettrace/normalize.py`, `docs/architecture/packet_normalization.md`.
 
 ### What doesn't exist yet
 
 Flow reconstruction, topology inference, behavioral modeling, anomaly detection, digital twin,
-simulation, and counterfactual engines have not been implemented yet — those begin at Phase 22 and
+simulation, and counterfactual engines have not been implemented yet — those begin at Phase 23 and
 continue through the 69-phase plan. The API surface and data contracts are real and tested; most of
 the research intelligence they will eventually serve is not built yet. Nothing in this repository
 currently fabricates results — every phase's completion report documents exactly what was and wasn't
@@ -121,6 +128,7 @@ backend/app/
   api/        Phase 09 API routes (versioned /api/v1)
 backend/nettrace/
   capture/    Phase 21 PCAP ingestion (pure logic; no Docker/live-socket dependency)
+  normalize.py  Phase 22 packet normalization (raw.pcap -> Packet -> packets.jsonl)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
@@ -133,7 +141,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-21 design docs
+  architecture/   Phase 04-05, 09-22 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -144,7 +152,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (153 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (159 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

@@ -5,11 +5,11 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 21 (High-Fidelity Packet Capture) complete for PCAP ingestion, real-verified end-to-end;
-controlled live capture is implemented and unit-verified but not yet verified against a real Docker
-lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations"). Phase 22 (Packet Normalization) not
-started.
+Phase 22 (Packet Normalization) complete, real-verified end-to-end. Phase 21 (High-Fidelity Packet
+Capture)'s one open item still stands: controlled live capture is implemented and unit-verified
+but not yet verified against a real Docker lab (this session's environment has no Docker
+installation — see `docs/architecture/packet_capture.md` "Known limitations"). Phase 23 (Five-Tuple
+Flow Reconstruction) not started.
 
 ## Process note
 
@@ -111,6 +111,28 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   all (confirmed: `docker` not on PATH, no Docker Desktop install found), unlike the environment
   Phases 11-20 were verified in. Honestly reported as an open item rather than fabricated (spec
   Rule 2/3); see `docs/architecture/packet_capture.md` "Known limitations" and "Status".
+- Phase 22 — Packet Normalization (`backend/nettrace/normalize.py`; `normalize_pcap(root,
+  capture_id)`). Reads a real `raw.pcap` via Scapy's streaming `PcapReader` (same convention as
+  Phase 21's `ingest.py`) and produces one frozen `Packet` (Phase 04 schema) per real captured
+  frame that carries an IP layer: real timestamp, real src/dst IP, real ports, real protocol
+  (TCP/UDP/ICMP/OTHER), real size (`wirelen`), and for TCP a real comma-separated flag string
+  (e.g. `"SYN,ACK"`) built from Scapy's own flag representation. `direction` is always left
+  `PacketDirection.UNKNOWN` -- it is documented as relative to a flow, and flows don't exist until
+  Phase 23 groups packets by five-tuple; resolving it here would be a guess, not an observation.
+  A frame without an IP layer (e.g. bare Ethernet/ARP) is skipped, not fabricated with a
+  placeholder address. New `packets_path()` (`experiments/artifacts/paths.py`,
+  `captures/<capture_id>/packets.jsonl`), written via the existing generic `write_jsonl` (not
+  ground truth, no hash sidecar). No new API endpoint -- this is an internal pipeline step for
+  Phase 23's future flow reconstruction, not one of the 12 fixed Phase 09 endpoint groups.
+  Verified: `backend/tests/test_nettrace_normalize.py` (6/6: TCP/UDP/ICMP field extraction, real
+  flag-string formatting, non-IP-frame skipping without breaking numbering, real capture-order
+  `packet_id`s, full `write_jsonl`/`read_jsonl` round-trip); combined suite 159/159 (up from
+  153/153), no regression; a real, manual end-to-end run (no Docker needed, same as Phase 21's
+  `pcap_upload` half): a real 5-packet Scapy pcap (TCP handshake-style SYN/SYN-ACK/ACK, a UDP
+  packet, an ICMP packet) ingested through the live FastAPI app's real `POST /capture`, then
+  normalized -- every field confirmed exactly matching the synthetic input, both in memory and by
+  reading back the real `packets.jsonl` written to disk. `docs/architecture/packet_normalization.md`
+  has full detail.
 
 ## Blocked phases
 
@@ -386,14 +408,16 @@ None yet — no code written.
   allowlist).
 - `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
   5/5 checks passed (see Phase 20 note above for detail).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 153/153 passed, no
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 159/159 passed, no
   regression (up from 136/136 after Phase 20: +9 `backend/tests/test_nettrace_capture.py`,
   +2 `simulator/tests/test_capture.py`, +7 net new/changed `backend/tests/test_api.py` capture
-  cases minus the 1 removed generic-501 case, Phase 21).
-- `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21).
-- `python scripts/check_ground_truth_boundary.py` — clean, zero violations; new
-  `backend/nettrace/` and `simulator/capture/` packages correctly do not import
-  `simulator.ground_truth` (Phase 21).
+  cases minus the 1 removed generic-501 case, Phase 21; +6 `backend/tests/test_nettrace_normalize.py`,
+  Phase 22).
+- `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21, re-verified
+  Phase 22).
+- `python scripts/check_ground_truth_boundary.py` — clean, zero violations; `backend/nettrace/`
+  (including the new `normalize.py`) and `simulator/capture/` packages correctly do not import
+  `simulator.ground_truth` (Phase 21, re-verified Phase 22).
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -415,6 +439,7 @@ None yet — no experiments have been run.
   "Known limitations". Not blocking Phase 22, since Phase 22 (Normalization) consumes any real
   `captures/<capture_id>/raw.pcap`, regardless of whether it arrived via `pcap_upload` or a
   completed live-capture-then-upload workflow.
-- Next: Phase 22 — Packet Normalization (spec: normalize timestamps, IPs, ports, protocol, size,
-  direction, transport info into the existing `Packet` model, `backend/app/models/packet.py`). Not
-  started; awaiting explicit request.
+- Next: Phase 23 — Five-Tuple Flow Reconstruction (spec: reconstruct bidirectional five-tuple flows
+  for TCP and UDP from Phase 22's normalized `packets.jsonl` into the existing `Flow` model,
+  `backend/app/models/flow.py`; this is also where `Packet.direction` (forward/reverse) finally
+  gets resolved, once a flow's two sides are known). Not started; awaiting explicit request.
