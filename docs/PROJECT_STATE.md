@@ -5,13 +5,18 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 28 (Flow Feature Completion) complete, real-verified end-to-end, including live wiring through
-`GET /flows` (no route changes needed — it already recomputes flows fresh on every request). Every
-`FlowFeatures` field is now real: `destination_diversity`/`port_diversity` are cross-flow aggregates
-per canonical source IP, and `is_persistent` reflects real five-tuple recurrence within a capture (see
-`docs/architecture/flow_feature_completion.md`). Phase 21 (High-Fidelity Packet Capture)'s one open
-item still stands: controlled live capture is implemented and unit-verified but not yet verified
-against a real Docker lab (this session's environment has no Docker installation — see
+Phase 29 (Node Discovery) complete, unit-verified. `discover_nodes` (`backend/nettrace/topology/
+discovery.py`) reads a capture's normalized `packets.jsonl` directly -- not `flows.jsonl` -- so that
+IP addresses only ever seen in ICMP/OTHER traffic (which Phase 23's flow reconstruction structurally
+excludes) are still discovered as nodes; this keeps the node set a strict superset of anything a
+future flow-derived edge (Phase 30) could reference. One IP currently maps to exactly one `Node`
+(NAT/multi-homed correlation is a documented, deliberate limitation, not a gap). Nothing is persisted
+to disk yet (no `nodes_path()` was added), and nothing calls `discover_nodes` yet -- `GET /topology`
+still raises `NotYetImplemented`, since a real topology response needs edges (Phase 30) and the
+combined graph assembly (Phase 32) too. See `docs/architecture/node_discovery.md` for the full
+algorithm decision and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item
+still stands: controlled live capture is implemented and unit-verified but not yet verified against a
+real Docker lab (this session's environment has no Docker installation — see
 `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
@@ -331,6 +336,25 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   from one source to two destinations, one UDP five-tuple idle-gap-split into two sessions) confirmed
   every aggregate matched hand-computed expected values exactly. `docs/architecture/flow_feature_completion.md`
   has full detail. This closes the last placeholder item from Phase 23's flow-reconstruction scope.
+
+- Phase 29 — Node Discovery (`backend/nettrace/topology/{__init__,discovery}.py`; FR-1.9). The first
+  topology-inference phase, and the first real use of the `Node` data contract since Phase 04.
+  `discover_nodes(root, capture_id)` reads every packet in `packets.jsonl` (not `flows.jsonl`, so
+  ICMP/OTHER-only hosts aren't missed the way flow reconstruction would miss them), tracks a running
+  per-IP first/last-observed timestamp, and emits one deterministically-ordered/-ided `Node` per
+  distinct IP address seen as a source or destination. No ground-truth access anywhere in the module
+  (`scripts/check_ground_truth_boundary.py` confirms). Not yet wired into any API route or persisted
+  to disk — both deferred to Phase 30 (edge discovery) and Phase 32 (combined `TopologyGraph`).
+  Verified: new `backend/tests/test_nettrace_topology_discovery.py` (8/8: multiple distinct IPs each
+  become their own node; first/last-observed correctly spans multiple packets for the same IP across
+  both roles; two runs on identical input are byte-identical and a same-timestamp tie breaks
+  lexicographically by IP; a missing `packets.jsonl` and an empty one both return `[]` without
+  raising; an ICMP-only exchange's two endpoints are discovered as nodes even though the identical
+  fixture produces zero flows via `reconstruct_flows`; a destination-only IP and a source-only IP are
+  each still discovered); combined suite 220/220 (up from 212/212), no regressions;
+  `scripts.validate_data_contracts` re-verified clean (38/38, `Node` unchanged since Phase 04);
+  `scripts.check_ground_truth_boundary` re-verified clean. `docs/architecture/node_discovery.md` has
+  full detail, including the packets-vs-flows algorithm justification.
 
 ## Blocked phases
 
@@ -664,6 +688,9 @@ None yet — no experiments have been run.
 - Flow feature completion's `is_persistent` only ever fires for UDP, and true cross-*capture*
   persistence (the same five-tuple recurring across separately-ingested captures) remains out of
   scope — documented in `docs/architecture/flow_feature_completion.md`, not a gap.
-- Next: Phase 29. Not yet scoped in this repo's docs (the master spec PDF names it, but no
-  `docs/requirements`/`docs/architecture` text describes its content the way earlier "Next" phases
-  were previewed). Not started; awaiting explicit request.
+- Node discovery (Phase 29) treats one observed IP as exactly one node; NAT/multi-homed-host
+  correlation is out of scope pending additional evidence a future phase's requirements would need to
+  justify — documented in `docs/architecture/node_discovery.md`, not a gap.
+- Next: Phase 30 (Edge Discovery). Not yet scoped in this repo's docs beyond FR-1.9's one-line mention
+  (the master spec PDF names it, but no `docs/requirements`/`docs/architecture` text describes its
+  content the way earlier "Next" phases were previewed). Not started; awaiting explicit request.

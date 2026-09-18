@@ -17,9 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 28 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
-remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`). Next: Phase 29.
+**Current phase: 29 of 69 complete** (Phase 21's controlled live capture remains
+implemented-and-unit-verified-but-not-yet-Docker-verified — see
+`docs/architecture/packet_capture.md`; Phase 29's node discovery is implemented and unit-verified but
+not yet wired into any API route, pending Phase 30's edge discovery and Phase 32's combined topology
+graph — see `docs/architecture/node_discovery.md`). Next: Phase 30.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -162,12 +164,22 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   from one source to two destinations correctly reporting diversity `2`/`2`; a UDP five-tuple
   idle-gap-split into two sessions correctly reporting `is_persistent=True` for both) —
   `backend/nettrace/reconstruct.py`, `docs/architecture/flow_feature_completion.md`.
+- **Node discovery** (Phase 29, the first topology-inference phase): `discover_nodes` reads a
+  capture's normalized `packets.jsonl` directly (not `flows.jsonl`), so every distinct IP address
+  observed as a packet source or destination becomes a real `Node` — including hosts whose only
+  traffic is ICMP/OTHER, which flow reconstruction excludes by design. One IP currently maps to
+  exactly one node (NAT/multi-homed correlation is a documented, deliberate limitation); nothing is
+  persisted to disk yet, and nothing calls this from the API layer yet — both wait on Phase 30 (edge
+  discovery) and Phase 32 (the combined probabilistic topology graph). Proven by 8 real unit tests,
+  including one that seeds an ICMP-only exchange and confirms both endpoints are discovered as nodes
+  while the same fixture produces zero flows from `reconstruct_flows` —
+  `backend/nettrace/topology/discovery.py`, `docs/architecture/node_discovery.md`.
 
 ### What doesn't exist yet
 
-Topology inference, behavioral modeling, anomaly detection, digital twin, simulation, and
-counterfactual engines have not been implemented yet — those begin at Phase 29 and continue through
-the 69-phase plan. The API surface and data contracts are real and tested; most of the research
+Edge discovery, behavioral modeling, anomaly detection, digital twin, simulation, and counterfactual
+engines have not been implemented yet — those begin at Phase 30 and continue through the 69-phase
+plan. The API surface and data contracts are real and tested; most of the research
 intelligence they will eventually serve is not built yet. Nothing in this repository currently
 fabricates results — every phase's completion report documents exactly what was and wasn't verified by
 actual execution.
@@ -183,6 +195,7 @@ backend/nettrace/
   capture/    Phase 21 PCAP ingestion (pure logic; no Docker/live-socket dependency)
   normalize.py  Phase 22 packet normalization (raw.pcap -> Packet -> packets.jsonl)
   reconstruct.py  Phase 23 five-tuple flow reconstruction (packets.jsonl -> Flow -> flows.jsonl)
+  topology/discovery.py  Phase 29 node discovery (packets.jsonl -> Node; not yet persisted or API-wired)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
@@ -195,7 +208,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-23 design docs
+  architecture/   Phase 04-05, 09-29 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -206,7 +219,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (168 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (220 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
