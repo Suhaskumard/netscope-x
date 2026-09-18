@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 19 of 69 complete.** Next: Phase 20 — Observatory Validation.
+**Current phase: 20 of 69 complete.** Next: Phase 21 — High-Fidelity Packet Capture.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -85,6 +85,12 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   capturing a real burst-pattern recording against the live lab and replaying it twice, producing
   identical replay logs (excluding wall-clock-only fields) with real observed jitter of roughly
   2-18ms — `simulator/traffic/replay.py`, `docs/architecture/traffic_replay.md`.
+- **Observatory validation** (Phase 20): a standalone, repeatable gate (`scripts/validate_observatory.py`)
+  that automates Phases 11-13/15's own one-off manual lab checks — expected services, expected
+  connectivity (positive and negative/boundary), expected routes, and expected traffic — proven by a
+  real run against the live lab (all 5 checks passing) plus a deliberately induced `load-balancer-2`
+  outage confirming the gate can actually detect a real problem, not just always pass —
+  `scripts/validate_observatory.py`, `docs/architecture/observatory_validation.md`.
 
 ### What doesn't exist yet
 
@@ -113,19 +119,21 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-19 design docs
+  architecture/   Phase 04-05, 09-20 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
-scripts/      setup, validation, and (Phase 17) ground-truth import-boundary scripts
+scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
+              observatory validation scripts
 ```
 
 ## Getting started
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (120 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (136 tests)
 docker compose up --build      # backend (placeholder API) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
+python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
 ```
 
 See `docs/development/environment.md` for what's actually been verified to work, and

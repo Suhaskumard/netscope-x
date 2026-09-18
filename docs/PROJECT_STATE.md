@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 19 (Traffic Replay Engine) complete. Phase 20 (Observatory Validation) not started.
+Phase 20 (Observatory Validation) complete. Phase 21 (High-Fidelity Packet Capture) not started.
 
 ## Process note
 
@@ -72,6 +72,12 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   replayed twice against the live lab, replay logs structurally identical excluding wall-clock
   fields; `simulator/tests/test_replay.py`; `docs/architecture/traffic_replay.md`; `README.md`
   updated)
+- Phase 20 — Observatory Validation (`scripts/validate_observatory.py`; automates Phases 11-13/15's
+  own manual verification procedures into one repeatable pass/fail gate covering expected
+  services/connectivity/routes/traffic; real run against the live lab, all 5 checks passing, plus a
+  deliberately induced failure (`load-balancer-2` stopped) proving the gate can actually detect a
+  real problem; `simulator/tests/test_observatory_validation.py`;
+  `docs/architecture/observatory_validation.md`; `README.md` updated)
 
 ## Blocked phases
 
@@ -262,6 +268,27 @@ None yet — no code written.
   excluding wall-clock-only fields (proving determinism concretely, not just asserting it), and
   real observed inter-arrival jitter of roughly 2-18ms against the original recording (honestly
   reported, not hidden); lab torn down after.
+- Observatory validation (`scripts/validate_observatory.py`, Phase 20): a standalone,
+  argument-free script (same convention as `validate_data_contracts.py`/
+  `check_ground_truth_boundary.py`) that automates Phases 11-13/15's own one-off manual lab
+  verification into one repeatable gate: expected services (reuses Phase 16's
+  `check_services_match_compose` unchanged), expected connectivity positive+negative (reruns Phase
+  11/12's `curl` chain and boundary checks), expected routes (reruns Phase 13's
+  `X-Gateway-Upstream` alternation check), expected traffic (reruns Phase 15's
+  `generate_protocol.py` as a one-shot smoke test per reachability-correct container/protocol
+  pair). Kept as a standalone script rather than a pytest addition -- there is no existing
+  precedent in this project for a Docker-dependent pytest fixture, so the Docker-touching parts
+  stay in the script and only the pure parsing/decision logic each check reduces to
+  (`_evaluate_reachability_payload`, `_parse_upstream_header`, `_summarize_protocol_attempt`) is
+  unit-tested. Scoped to the fixed Phase 11-13 lab only, not Phase 18's independently-deployed
+  generated scenarios (already explicitly out of scope per `network_laboratory.md`'s "Explicitly
+  deferred" section). Verified: 16/16 unit tests; a real run against the live lab with all 5
+  checks passing (real JSON reachability report, real DNS-resolution-failure boundary
+  enforcement, real observed upstream alternation, real DNS/HTTP/cache/database/TLS traffic
+  attempts); a deliberately induced failure (`load-balancer-2` stopped) confirmed the routes
+  check's output honestly reflects nginx's own failover-trail behavior (a degraded-but-succeeding
+  header, matching Phase 13's own documented finding) rather than being smoothed over, then
+  recovery was confirmed after restarting the container; lab torn down after.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -298,29 +325,35 @@ None yet — no code written.
   preview returns HTTP 200), then torn down.
 - `scripts/setup.sh` run standalone from a clean state (`.venv` and `frontend/node_modules` deleted
   first) and completed successfully — the "fresh installation must work" acceptance bar for Phase 06.
-- `pytest simulator/tests` — 72/72 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
+- `pytest simulator/tests` — 88/88 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
   wire-format tests (Phase 15) + 9 ground-truth tests (Phase 16) + 11 ground-truth integrity tests
   (Phase 17: versioning round-trips, manifest/artifact hash cross-check, boundary-checker real-repo
   scan + synthetic-violation detection) + 15 scenario generator tests (Phase 18: real NetworkX
   structural property per archetype, declaration/role builders, topology-graph construction) +
   10 traffic replay tests (Phase 19: offset derivation from `sent_at` deltas for both pattern-log
   and protocol-log shapes, load-twice determinism, malformed/missing-field/unknown-protocol
-  rejection with line numbers, blank-line skipping, frozen dataclass equality), all pure/no-Docker.
+  rejection with line numbers, blank-line skipping, frozen dataclass equality) + 16 observatory
+  validation tests (Phase 20: reachability-payload evaluation, upstream-header parsing,
+  protocol-attempt summarization), all pure/no-Docker.
   Plus real Docker-based runs: 3 traffic patterns (Phase 14), all 6 protocols
   (Phase 15), a full ground-truth generation (Phase 16, with hash-verified read-back and
   tamper-detection re-confirmed), two successive ground-truth generations for one capture_id
   (Phase 17, v1 confirmed unchanged after v2 was written, tamper detection re-confirmed on the
   versioned layout), a full `generate-all` + real deploy of the generated star-4 scenario
   (Phase 18, live reachability confirmed, ground truth captured with 5 real container IPs, torn
-  down), and a real burst-pattern recording replayed twice against the live lab (Phase 19, 14/14
+  down), a real burst-pattern recording replayed twice against the live lab (Phase 19, 14/14
   real requests both times, replay-1 and replay-2 logs structurally identical excluding
   wall-clock-only fields, real observed inter-arrival jitter of roughly 2-18ms against the
-  original recording) — not part of the pytest suite, manual integration verification like
-  Phases 11-13.
+  original recording), and a full observatory-validation run (Phase 20, all 5 checks passing
+  against the live lab, plus a deliberately induced `load-balancer-2` outage confirming the
+  script can actually detect a real problem, then recovery confirmed) — not part of the pytest
+  suite, manual integration verification like Phases 11-13.
 - `python scripts/check_ground_truth_boundary.py` (Phase 17) — run standalone, zero violations found
   in the real repository (including the new `simulator/scenarios/` package, correctly inside the
   allowlist).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 120/120 passed, no
+- `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
+  5/5 checks passed (see Phase 20 note above for detail).
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 136/136 passed, no
   regression.
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
@@ -336,6 +369,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 20 — Observatory Validation (verify the laboratory itself behaves correctly --
-expected connectivity, routes, services, traffic -- before NETTRACE receives data). Not started;
-awaiting explicit request.
+Next: Phase 21 — High-Fidelity Packet Capture (PCAP ingestion + controlled live capture --
+the first NETTRACE phase; only in authorized/controlled environments). Not started; awaiting
+explicit request.
