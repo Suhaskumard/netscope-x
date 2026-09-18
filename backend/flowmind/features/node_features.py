@@ -48,6 +48,15 @@ class NodeBehavioralFeatures:
     is_persistent_talker: bool
 
 
+def flows_touching_node(flows: List[Flow], node: Node) -> List[Flow]:
+    """Returns every flow in `flows` whose `src_ip`/`dst_ip` matches one of
+    `node.ip_addresses`. Extracted so Phase 34's window-filtering code can
+    reuse the exact same node-membership test this function already uses
+    internally, rather than duplicating it."""
+    node_ips = {str(ip) for ip in node.ip_addresses}
+    return [f for f in flows if str(f.src_ip) in node_ips or str(f.dst_ip) in node_ips]
+
+
 def compute_node_behavioral_features(flows: List[Flow], node: Node) -> NodeBehavioralFeatures:
     """Computes `node`'s behavioral features from every flow in `flows`
     that touches one of `node.ip_addresses`, either as source or
@@ -57,7 +66,7 @@ def compute_node_behavioral_features(flows: List[Flow], node: Node) -> NodeBehav
     """
     node_ips = {str(ip) for ip in node.ip_addresses}
 
-    touching = [f for f in flows if str(f.src_ip) in node_ips or str(f.dst_ip) in node_ips]
+    touching = flows_touching_node(flows, node)
 
     if not touching:
         return NodeBehavioralFeatures(

@@ -100,6 +100,39 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Phase 34 -- multi-window behavior modeling (ties to NFR-4, FR-1.12).
+    behavior_window_short_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description=(
+            "Trailing-window length for 'short' behavioral observation (spec Phase 34, "
+            "ObservationWindow.SHORT), anchored on a node's own latest observed flow "
+            "activity, not calendar time. Matches this lab's own real, exercised capture "
+            "duration (simulator/capture/live.py's default `--duration`), not an arbitrary "
+            "guess."
+        ),
+    )
+    behavior_window_medium_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description=(
+            "Trailing-window length for 'medium' behavioral observation (spec Phase 34, "
+            "ObservationWindow.MEDIUM). Matches the scale simulator/tests/test_patterns.py "
+            "already needs for burst/periodic traffic patterns to complete multiple cycles."
+        ),
+    )
+    behavior_window_long_seconds: float = Field(
+        default=300.0,
+        gt=0,
+        description=(
+            "Trailing-window length for 'long' behavioral observation (spec Phase 34, "
+            "ObservationWindow.LONG). Unlike short/medium, this has no direct supporting "
+            "evidence in this repo's own captures/tests (all of which run under a minute) -- "
+            "an explicit extrapolation, provisional pending real multi-minute lab data, not "
+            "a claimed-accurate value."
+        ),
+    )
+
     @field_validator("log_level")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:
@@ -113,6 +146,20 @@ class Settings(BaseSettings):
         if self.environment == "production" and self.secret_key.get_secret_value() == _INSECURE_DEFAULT_SECRET:
             raise ValueError(
                 "NETSCOPE_SECRET_KEY must be set to a real value when NETSCOPE_ENVIRONMENT=production"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _behavior_windows_strictly_nested(self) -> "Settings":
+        if not (
+            self.behavior_window_short_seconds
+            < self.behavior_window_medium_seconds
+            < self.behavior_window_long_seconds
+        ):
+            raise ValueError(
+                "behavior_window_{short,medium,long}_seconds must be strictly increasing -- "
+                "Phase 34's nested-window design (long superset of medium superset of short) "
+                "depends on this ordering"
             )
         return self
 

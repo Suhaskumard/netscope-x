@@ -17,12 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 33 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 34 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Phase 33 begins FLOWMIND: `compute_node_behavioral_features` computes real, per-node behavioral
-features (port set, protocol mix, directionality, persistence, destination diversity) from any
-caller-supplied flow list — window-agnostic and not yet assembled into a `BehavioralFingerprint`,
-both explicitly Phase 34/35's job — see `docs/architecture/behavioral_feature_store.md`. Next: Phase 34.
+Phase 33's per-node behavioral features are now computed over real, nested short/medium/long trailing
+windows (10s/60s/300s, evidence-graded against this repo's own capture timescales) anchored on each
+node's own latest activity — still not yet assembled into a `BehavioralFingerprint`, explicitly Phase
+35's job — see `docs/architecture/multi_window_behavior_modeling.md`. Next: Phase 35.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -219,13 +219,21 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   tests, including a hand-computed `outbound_byte_ratio` and a real end-to-end run through
   `reconstruct_flows`/`discover_nodes` — `backend/flowmind/features/node_features.py`,
   `docs/architecture/behavioral_feature_store.md`.
+- **Multi-window behavior modeling** (Phase 34): `compute_node_features_all_windows` runs Phase 33's
+  feature computation over three real, nested trailing windows — short (10s), medium (60s), long
+  (300s) — each anchored on the node's *own* latest observed activity, not the whole capture's or
+  calendar time, so `long ⊇ medium ⊇ short` by construction. Durations are evidence-graded: short/medium
+  match this repo's own real capture/test timescales, long is an explicit, documented extrapolation.
+  Still produces a plain feature dict, not a `BehavioralFingerprint` — that assembly is Phase 35's job.
+  Proven by 8 real tests, including a hand-verified nesting property and a real end-to-end run —
+  `backend/flowmind/features/windows.py`, `docs/architecture/multi_window_behavior_modeling.md`.
 
 ### What doesn't exist yet
 
-Multi-window behavioral modeling, fingerprint assembly, role inference, anomaly detection, temporal
-archaeology, dependency/causal reasoning, the digital twin, simulation, and counterfactual engines have
-not been implemented yet — those begin at Phase 34 and continue through the 69-phase plan. The API
-surface and data contracts are real and tested; most of
+Fingerprint assembly, role inference, anomaly detection, temporal archaeology, dependency/causal
+reasoning, the digital twin, simulation, and counterfactual engines have not been implemented yet —
+those begin at Phase 35 and continue through the 69-phase plan. The API surface and data contracts are
+real and tested; most of
 the research intelligence they will eventually serve is not built yet. Nothing in this repository
 currently fabricates results — every phase's completion report documents exactly what was and wasn't
 verified by
@@ -247,6 +255,7 @@ backend/nettrace/
   topology/graph.py  Phase 32 topology assembly (Node + Edge lists -> TopologyGraph), real via GET /topology
 backend/flowmind/
   features/node_features.py  Phase 33 reusable per-node behavioral features (Flow list + Node -> NodeBehavioralFeatures)
+  features/windows.py  Phase 34 multi-window modeling (nested short/medium/long trailing windows)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32 evaluation-only ground-truth comparison (never reachable from backend/)
@@ -260,7 +269,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-33 design docs
+  architecture/   Phase 04-05, 09-34 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -271,7 +280,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (257 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (265 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

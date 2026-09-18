@@ -5,29 +5,29 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 33 (Behavioral Feature Store) complete, unit-verified -- the first FLOWMIND-pipeline phase.
-`compute_node_behavioral_features` (`backend/flowmind/features/node_features.py`) computes a real
-per-node feature vector -- `distinct_ports`, `distinct_protocols`, `distinct_destinations`,
-`mean_flow_duration_seconds`, `outbound_byte_ratio`, `is_persistent_talker` -- from any
-caller-supplied `Flow` list, covering exactly the feature vocabulary `docs/architecture/
-algorithm_selection.md` §2 already committed a future Naive-Bayes-style role classifier (Phase 36-37)
-to (port set entropy, protocol mix, traffic directionality, persistence, destination diversity).
-`distinct_ports` deliberately counts only ports where the node is the flow's destination (its own
-"listening" ports), excluding a client's ephemeral source ports, which would otherwise dilute the
-signal with no informational value. `distinct_destinations` counts only outbound (node-as-source)
-flows' distinct destinations -- fan-out, not "how many clients contact me." The function is
-deliberately window-agnostic (filters only by "does this flow touch this node," never by time) and
-returns a plain `NodeBehavioralFeatures` dataclass, not a real `BehavioralFingerprint` --
-`backend/app/models/behavior.py`'s schema needs `node_id`/`window`/`computed_at` identity fields that
-belong to Phase 34 (deciding the three observation-window boundaries) and Phase 35 (assembling and
-persisting the fingerprint), neither reached ahead of here. `NodeBehavioralFeatures`'s field names
-deliberately match `BehavioralFingerprint`'s own feature fields so that future assembly is a plain
-field copy. New package `backend/flowmind/` (nested under `backend/`, following the same
-deployment-boundary convention already established for `backend/nettrace/`). See
-`docs/architecture/behavioral_feature_store.md` for the full design, per-feature rationale, and
-verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
-live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
-session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+Phase 34 (Multi-Window Behavior Modeling) complete, unit-verified.
+`compute_node_features_all_windows`/`compute_node_features_for_window`
+(`backend/flowmind/features/windows.py`) decide how Phase 33's window-agnostic
+`compute_node_behavioral_features` gets invoked per `ObservationWindow`: a TRAILING window anchored
+on the node's own latest observed activity (not the whole capture's latest activity, and not calendar
+time) -- for window size `S`, keep only the node's touching flows within `S` seconds of that node's
+own latest `last_seen`. Anchoring per-node (not per-capture) means a quiet node's window isn't dragged
+forward by unrelated nodes' later traffic, and it makes the three windows naturally NESTED
+(`long ⊇ medium ⊇ short`) rather than mutually exclusive partitions, matching RQ2's own "does *more*
+observation improve accuracy" framing. Default durations -- `behavior_window_short_seconds=10.0`,
+`_medium_seconds=60.0`, `_long_seconds=300.0` (new `Settings` fields, `backend/app/core/config.py`,
+guarded by a `model_validator` requiring strict ordering) -- are evidence-graded, not uniformly
+guessed: short/medium match this repo's own real capture/test timescales (`simulator/capture/live.py`'s
+default duration; the scale `simulator/tests/test_patterns.py` needs for multi-cycle patterns); long
+(5 minutes) has no direct repo evidence and is documented explicitly as a provisional extrapolation.
+`flows_touching_node` was extracted from Phase 33's `node_features.py` (behavior-preserving refactor,
+re-verified against Phase 33's own test suite) so window-filtering code reuses the exact same
+node-membership test rather than duplicating it. Still produces `Dict[ObservationWindow,
+NodeBehavioralFeatures]`, not a real `BehavioralFingerprint` with persistence -- explicitly Phase 35's
+job. See `docs/architecture/multi_window_behavior_modeling.md` for the full design and verification
+record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture
+is implemented and unit-verified but not yet verified against a real Docker lab (this session's
+environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
 limitations").
 
 ## Process note
@@ -483,6 +483,33 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/behavioral_feature_store.md` has full detail, including the Phase 33/34/35
   scope-boundary argument.
 
+- Phase 34 — Multi-Window Behavior Modeling (`backend/flowmind/features/windows.py`;
+  `backend/app/core/config.py` gains `behavior_window_{short,medium,long}_seconds`; FR-1.12).
+  `compute_node_features_for_window`/`compute_node_features_all_windows` invoke Phase 33's
+  `compute_node_behavioral_features` once per `ObservationWindow`, using a trailing window anchored
+  on the node's own latest observed activity (not capture-wide, not calendar time) -- making
+  `long ⊇ medium ⊇ short` by construction. Default durations 10s/60s/300s: short/medium
+  evidence-graded against this repo's own real capture/test timescales
+  (`simulator/capture/live.py`, `simulator/tests/test_patterns.py`); long is an explicit,
+  documented extrapolation with no direct repo evidence. A new `Settings.model_validator` enforces
+  strictly increasing order across the three durations. `flows_touching_node` extracted from Phase
+  33's `node_features.py` (behavior-preserving refactor) for reuse by the windowing code. Still
+  produces `Dict[ObservationWindow, NodeBehavioralFeatures]`, not a `BehavioralFingerprint` --
+  fingerprint assembly/persistence remains Phase 35's job. Verified: new
+  `backend/tests/test_flowmind_windows.py` (8/8: trailing short window excludes an older flow;
+  anchor confirmed to be the node's own activity, not unrelated later traffic elsewhere in the flow
+  list; the three windows confirmed strictly nested via a hand-constructed timestamp spread;
+  `compute_node_features_all_windows` returns exactly three keys; a zero-flow node returns honest
+  zeros for all windows; a custom `window_seconds` override changes the windowing; defaults match
+  `Settings`; a real end-to-end run through `reconstruct_flows`/`discover_nodes` with a
+  deliberately-45s-later second flow, confirmed excluded from short but included in medium/long);
+  Phase 33's own `test_flowmind_node_features.py` re-run (9/9) confirming the `flows_touching_node`
+  extraction didn't change established behavior; combined suite 265/265 (up from 257/257), no
+  regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no schema changes);
+  `scripts.check_ground_truth_boundary` re-verified clean. `docs/architecture/
+  multi_window_behavior_modeling.md` has full detail, including the nesting-vs-partitioning design
+  argument.
+
 ## Blocked phases
 
 None.
@@ -833,7 +860,11 @@ None yet — no experiments have been run.
 - Behavioral features (Phase 33) don't yet account for a node with multiple correlated IP addresses
   (Phase 29's "one IP → one Node" simplification still applies) — inherited, not introduced, by this
   phase; documented in `docs/architecture/behavioral_feature_store.md`.
-- Next: Phase 34 (Multi-Window Behavior Modeling). Expected to decide the three
-  `ObservationWindow` (short/medium/long) boundaries and invoke Phase 33's
-  `compute_node_behavioral_features` once per window per node — not yet scoped beyond FR-1.12's
-  parenthetical mention. Not started; awaiting explicit request.
+- Multi-window modeling's (Phase 34) `long` (300s) window duration has no direct supporting evidence
+  in this repo's own captures/tests (all of which run under a minute) — a documented, explicit
+  extrapolation pending real multi-minute lab data, not a gap; see
+  `docs/architecture/multi_window_behavior_modeling.md`.
+- Next: Phase 35 (Node Behavioral Fingerprints). Expected to assemble Phase 34's per-window
+  `NodeBehavioralFeatures` results into real, persisted `BehavioralFingerprint` instances
+  (`node_id`/`window`/`computed_at` identity plus the feature fields) for every node in a topology —
+  not yet scoped beyond FR-1.13's one-line mention. Not started; awaiting explicit request.
