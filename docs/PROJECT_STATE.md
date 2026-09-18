@@ -5,34 +5,29 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 32 (Probabilistic Topology Reconstruction) complete, real-verified end-to-end. `GET /topology`
-now returns a genuine `TopologyGraph`: `build_topology_graph` (`backend/nettrace/topology/graph.py`)
-combines Phase 29's `discover_nodes` and Phase 30-31's `discover_edges` (nothing new inferred, pure
-assembly), the route mirrors `GET /flows`'s "recompute fresh, no cache" contract exactly (404
-`capture_not_found` via `CaptureNotFoundError` on a missing capture; `normalize_pcap` +
-`reconstruct_flows` run inline since a freshly-ingested capture has no `packets.jsonl`/`flows.jsonl`
-yet), and persists the result via `write_json(topology_path(...), graph)` on every call -- a
-write-through research artifact, not a cache (the route never reads it back). `graph_id` is the
-`capture_id` itself: a stable, non-timestamped, non-content-hashed identity label, so re-running the
-route against an unchanged capture always reports the same `graph_id` regardless of wall-clock time
-or `Settings` tuning (NFR-3). A new, evaluation-only `compare_topology_to_ground_truth`
-(`experiments/metrics/topology_comparison.py`, first real population of that spec-named directory)
-matches inferred and ground-truth nodes/edges by resolved `ip_addresses` (the two sides' `node_id`/
-`edge_id` schemes are independently generated -- lab service names vs. `f"{capture_id}:node:{index}"`
--- and not otherwise comparable), matches edges as *unordered* IP-pairs (ground truth is directed by
-declaration; inference is deliberately undirected per Phase 30 -- comparing directionally would
-penalize inference for correctly declining a claim it has no basis for), and reports real node/edge
-precision/recall/F1 plus a self-defined `graph_similarity = (node_f1 + edge_f1) / 2` (equal weighting,
-the same "no principled basis to weight one signal over another" reasoning already used for Phase 31's
-noisy-OR signals). Returns a plain `TopologyComparisonResult`, not a `MetricResult` --
-`MetricResult.experiment_id` is required and no experiment registry exists yet anywhere in this repo,
-so fabricating one would violate spec §21 "No Fake Metrics." This comparison capability is never
-reachable from any API route or anything under `backend/` -- confirmed by
-`scripts/check_ground_truth_boundary.py` and traced explicitly in the architecture doc. See
-`docs/architecture/topology_reconstruction.md` for the full design, worked examples, and verification
-record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture
-is implemented and unit-verified but not yet verified against a real Docker lab (this session's
-environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+Phase 33 (Behavioral Feature Store) complete, unit-verified -- the first FLOWMIND-pipeline phase.
+`compute_node_behavioral_features` (`backend/flowmind/features/node_features.py`) computes a real
+per-node feature vector -- `distinct_ports`, `distinct_protocols`, `distinct_destinations`,
+`mean_flow_duration_seconds`, `outbound_byte_ratio`, `is_persistent_talker` -- from any
+caller-supplied `Flow` list, covering exactly the feature vocabulary `docs/architecture/
+algorithm_selection.md` §2 already committed a future Naive-Bayes-style role classifier (Phase 36-37)
+to (port set entropy, protocol mix, traffic directionality, persistence, destination diversity).
+`distinct_ports` deliberately counts only ports where the node is the flow's destination (its own
+"listening" ports), excluding a client's ephemeral source ports, which would otherwise dilute the
+signal with no informational value. `distinct_destinations` counts only outbound (node-as-source)
+flows' distinct destinations -- fan-out, not "how many clients contact me." The function is
+deliberately window-agnostic (filters only by "does this flow touch this node," never by time) and
+returns a plain `NodeBehavioralFeatures` dataclass, not a real `BehavioralFingerprint` --
+`backend/app/models/behavior.py`'s schema needs `node_id`/`window`/`computed_at` identity fields that
+belong to Phase 34 (deciding the three observation-window boundaries) and Phase 35 (assembling and
+persisting the fingerprint), neither reached ahead of here. `NodeBehavioralFeatures`'s field names
+deliberately match `BehavioralFingerprint`'s own feature fields so that future assembly is a plain
+field copy. New package `backend/flowmind/` (nested under `backend/`, following the same
+deployment-boundary convention already established for `backend/nettrace/`). See
+`docs/architecture/behavioral_feature_store.md` for the full design, per-feature rationale, and
+verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
+live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
+session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
 limitations").
 
 ## Process note
@@ -462,6 +457,32 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   was performed -- comparison verified against synthetic `TopologyGraph` fixtures only, consistent with
   every other Docker-dependent phase's own limitation note.
 
+- Phase 33 — Behavioral Feature Store (`backend/flowmind/features/node_features.py`, new
+  `backend/flowmind/` package; FR-1.12). `compute_node_behavioral_features(flows, node) ->
+  NodeBehavioralFeatures` computes six real, evidence-derived features per node from a
+  caller-supplied `Flow` list: `distinct_ports` (destination-side ports only -- a node's own
+  listening-port set, deliberately excluding a client's ephemeral source ports, which would dilute
+  the signal); `distinct_protocols` (both directions); `distinct_destinations` (outbound/node-as-source
+  flows only -- fan-out, not inbound popularity); `mean_flow_duration_seconds`; `outbound_byte_ratio`
+  (real per-flow `forward_byte_ratio` reused, flipped when the node is the canonical destination);
+  `is_persistent_talker` (any-flow-exhibits-it existence semantics, the same convention already
+  established for Phase 31's noisy-OR signal indicators). Covers exactly the feature vocabulary
+  `docs/architecture/algorithm_selection.md` §2 already committed Phase 36-37's future role classifier
+  to (port set entropy, protocol mix, traffic directionality, persistence, destination diversity) --
+  no new feature invented. Deliberately window-agnostic (filters only by node-IP membership, never by
+  time) and returns a plain `NodeBehavioralFeatures` dataclass, not a `BehavioralFingerprint` --
+  window-boundary decisions (Phase 34) and fingerprint assembly/persistence (Phase 35) are explicitly
+  out of scope, consistent with every prior phase's narrow spec-line scoping. Verified: new
+  `backend/tests/test_flowmind_node_features.py` (9/9: destination-only port counting; cross-direction
+  protocol aggregation; outbound-only destination counting; correct duration averaging; a
+  hand-computed `outbound_byte_ratio` of 0.7; persistent-talker detection; honest zero values for a
+  zero-flow node; unrelated flows contributing nothing; a real end-to-end run through
+  `reconstruct_flows`/`discover_nodes`); combined suite 257/257 (up from 248/248), no regressions;
+  `scripts.validate_data_contracts` re-verified clean (38/38, no schema changes -- this phase
+  populates no Pydantic model); `scripts.check_ground_truth_boundary` re-verified clean.
+  `docs/architecture/behavioral_feature_store.md` has full detail, including the Phase 33/34/35
+  scope-boundary argument.
+
 ## Blocked phases
 
 None.
@@ -809,6 +830,10 @@ None yet — no experiments have been run.
   `graph_similarity` equal-weighting formula is a documented, provisional choice pending empirical
   validation, and no end-to-end run against real Docker-lab ground truth was performed this phase (no
   Docker in this session's environment) — documented in `docs/architecture/topology_reconstruction.md`.
-- Next: Phase 33. Not yet scoped in this repo's docs beyond the master spec PDF's own phase list
-  (§"PHASE 33" onward covers behavioral feature stores, multi-window behavior modeling, and the start
-  of FLOWMIND). Not started; awaiting explicit request.
+- Behavioral features (Phase 33) don't yet account for a node with multiple correlated IP addresses
+  (Phase 29's "one IP → one Node" simplification still applies) — inherited, not introduced, by this
+  phase; documented in `docs/architecture/behavioral_feature_store.md`.
+- Next: Phase 34 (Multi-Window Behavior Modeling). Expected to decide the three
+  `ObservationWindow` (short/medium/long) boundaries and invoke Phase 33's
+  `compute_node_behavioral_features` once per window per node — not yet scoped beyond FR-1.12's
+  parenthetical mention. Not started; awaiting explicit request.

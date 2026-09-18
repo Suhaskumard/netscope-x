@@ -17,11 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 32 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
-remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`). `GET /topology` is now real, combining Phase 29-31's node/edge
-discovery into a persisted, probabilistic `TopologyGraph`, with an evaluation-only ground-truth
-comparison capability — see `docs/architecture/topology_reconstruction.md`. Next: Phase 33.
+**Current phase: 33 of 69 complete** (Phase 21's controlled live capture remains
+implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
+Phase 33 begins FLOWMIND: `compute_node_behavioral_features` computes real, per-node behavioral
+features (port set, protocol mix, directionality, persistence, destination diversity) from any
+caller-supplied flow list — window-agnostic and not yet assembled into a `BehavioralFingerprint`,
+both explicitly Phase 34/35's job — see `docs/architecture/behavioral_feature_store.md`. Next: Phase 34.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -207,12 +208,24 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   reachable from any API route, strictly evaluation-only per FR-1.11. Proven by 9 real tests (4 API-level,
   5 comparison-level) — `backend/nettrace/topology/graph.py`, `backend/app/api/routes/topology.py`,
   `experiments/metrics/topology_comparison.py`, `docs/architecture/topology_reconstruction.md`.
+- **Behavioral feature store** (Phase 33, the first FLOWMIND phase): `compute_node_behavioral_features`
+  computes a real per-node feature vector from any caller-supplied `Flow` list — `distinct_ports`
+  (destination-side ports only, a deliberate choice to isolate server-like listening-port signal from
+  client ephemeral-port noise), `distinct_protocols`, `distinct_destinations` (outbound fan-out only),
+  `mean_flow_duration_seconds`, `outbound_byte_ratio` (real per-flow directionality data reused), and
+  `is_persistent_talker`. Deliberately window-agnostic (no time-window decision made here — Phase 34)
+  and produces a plain `NodeBehavioralFeatures` dataclass, not yet a `BehavioralFingerprint` (Phase 35)
+  — field names match that future schema exactly so assembly will be a plain copy. Proven by 9 real
+  tests, including a hand-computed `outbound_byte_ratio` and a real end-to-end run through
+  `reconstruct_flows`/`discover_nodes` — `backend/flowmind/features/node_features.py`,
+  `docs/architecture/behavioral_feature_store.md`.
 
 ### What doesn't exist yet
 
-Behavioral modeling, anomaly detection, temporal archaeology, dependency/causal reasoning, the digital
-twin, simulation, and counterfactual engines have not been implemented yet — those begin at Phase 33
-and continue through the 69-phase plan. The API surface and data contracts are real and tested; most of
+Multi-window behavioral modeling, fingerprint assembly, role inference, anomaly detection, temporal
+archaeology, dependency/causal reasoning, the digital twin, simulation, and counterfactual engines have
+not been implemented yet — those begin at Phase 34 and continue through the 69-phase plan. The API
+surface and data contracts are real and tested; most of
 the research intelligence they will eventually serve is not built yet. Nothing in this repository
 currently fabricates results — every phase's completion report documents exactly what was and wasn't
 verified by
@@ -232,6 +245,8 @@ backend/nettrace/
   topology/discovery.py  Phase 29 node discovery (packets.jsonl -> Node)
   topology/edges.py  Phase 30-31 edge discovery + probabilistic confidence (flows.jsonl + Node list -> Edge)
   topology/graph.py  Phase 32 topology assembly (Node + Edge lists -> TopologyGraph), real via GET /topology
+backend/flowmind/
+  features/node_features.py  Phase 33 reusable per-node behavioral features (Flow list + Node -> NodeBehavioralFeatures)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32 evaluation-only ground-truth comparison (never reachable from backend/)
@@ -245,7 +260,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-32 design docs
+  architecture/   Phase 04-05, 09-33 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -256,7 +271,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (248 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (257 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
