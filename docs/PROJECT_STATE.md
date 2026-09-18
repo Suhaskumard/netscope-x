@@ -5,27 +5,31 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 30 (Edge Discovery) complete, unit-verified. `discover_edges` (`backend/nettrace/topology/
-edges.py`) reads a capture's already-reconstructed `flows.jsonl` -- the opposite source choice from
-Phase 29's `discover_nodes`, since `Edge.protocols`/evidence need flow-level aggregation raw packets
-don't provide -- and aggregates flows sharing a node pair (resolved via a `List[Node]` the caller
-passes in, not re-derived) into one `Edge` each, with real `observation_count`/`evidence`/
-`protocols`/timestamps and a real, evidence-backed confidence score:
-`confidence = 1 - exp(-total_packet_count / edge_confidence_packet_scale)` (new `Settings` field,
-default `20.0`, `NETSCOPE_EDGE_CONFIDENCE_PACKET_SCALE`-overridable, ties to NFR-4) -- strictly
-monotonic and saturating, so more observed evidence never lowers confidence and confidence never
-claims exact certainty. This is explicitly a provisional, uncalibrated formula: Phase 04's `Edge`
-schema makes `confidence` required and non-optional, so Phase 30 had to supply a real value even
-though FR-1.10's "non-arbitrary confidence" requirement is formally tagged "(spec Phase 31)" --
-Phase 31 is expected to calibrate or replace this formula, not merely confirm it. Edges are
-undirected (`source_node_id`/`target_node_id` assigned by sorted `node_id`, no initiator claim); an
-ICMP-only capture produces nodes (Phase 29) but zero edges (Phase 30), an intentional, tested
-asymmetry. Nothing is persisted to disk yet, and nothing calls `discover_edges` yet -- `GET /topology`
-still raises `NotYetImplemented`, pending Phase 32's combined `TopologyGraph` assembly. See
-`docs/architecture/edge_discovery.md` for the full algorithm decision and verification record. Phase
-21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
-and unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 31 (Probabilistic Edge Confidence) complete, unit-verified. `discover_edges`
+(`backend/nettrace/topology/edges.py`, same function as Phase 30) now computes `Edge.confidence` via
+a multi-signal noisy-OR combination instead of Phase 30's single packet-volume term:
+`confidence = 1 - (1-p_volume) * prod(1 - s*indicator)` over `p_volume` (Phase 30's original term)
+plus five independent `Flow`-derived signals -- TCP handshake completion (`tcp_state == ESTABLISHED`,
+TCP only), confident protocol fingerprint, negotiated TLS (TCP only), five-tuple persistence
+(structurally UDP-only today), and bidirectionality (`2*min(r,1-r)` on `forward_byte_ratio`, peaking
+at balanced traffic). All four boolean signals share one new `Settings` field,
+`edge_confidence_signal_strength` (default `0.3`, `NETSCOPE_EDGE_CONFIDENCE_SIGNAL_STRENGTH`-
+overridable, ties to NFR-4) -- deliberately uniform across signals, since nothing today justifies
+weighting one above another, and asserting otherwise would itself be the "arbitrary" judgment FR-1.10
+forbids. Noisy-OR keeps confidence bounded to `[0,1)` and monotonic by construction (more evidence
+never lowers confidence), and a structurally-inapplicable signal (e.g. TCP-only signals on a UDP-only
+bucket) contributes a neutral identity factor, never a penalty. This is still explicitly provisional
+and uncalibrated: RQ1 (`docs/research/research_questions.md`) defers all ground-truth-based
+accuracy/calibration work to Phase 32/68, and REPRO-4 forbids ground truth as an inference-time
+input, so "probabilistic" here means "combining independent real evidence honestly," not "validated
+against known-correct labels." `evidence` now also carries a bucket-level summary line explaining
+which signals fired. Nothing is persisted to disk yet, and nothing calls `discover_edges` yet --
+`GET /topology` still raises `NotYetImplemented`, pending Phase 32's combined `TopologyGraph`
+assembly. See `docs/architecture/edge_discovery.md` for the full algorithm decision, worked numeric
+examples, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still
+stands: controlled live capture is implemented and unit-verified but not yet verified against a real
+Docker lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -389,6 +393,34 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/edge_discovery.md` has full detail, including the confidence-formula
   justification and the undirected-edge design decision.
 
+- Phase 31 — Probabilistic Edge Confidence (`backend/nettrace/topology/edges.py`, same function
+  modified, not a new one; FR-1.10; `backend/app/core/config.py` gains
+  `edge_confidence_signal_strength`). Replaces Phase 30's single-signal `confidence` with a
+  noisy-OR combination of Phase 30's packet-volume term and five new independent `Flow`-derived
+  signals: `tcp_state == ESTABLISHED` (TCP only), `fingerprinted_protocol is not None`,
+  `tls_version is not None` (TCP only), `features.is_persistent`, and a bidirectionality term
+  (`2*min(forward_byte_ratio, 1-forward_byte_ratio)`, peaking at balanced traffic). All four boolean
+  signals share one uniform `edge_confidence_signal_strength` (default `0.3`) rather than per-signal
+  weights, since nothing yet justifies weighting one signal above another. `confidence =
+  1 - (1-p_volume) * prod(1 - s*indicator)`: bounded to `[0,1)` and monotonic by construction (every
+  term in `[0,1)`, so the product only shrinks as evidence grows), and a structurally-inapplicable
+  signal (e.g. TCP-only signals on a UDP-only bucket) contributes a neutral identity factor, never a
+  penalty. `evidence` gained per-flow signal facts plus one bucket-level summary line. Explicitly
+  still provisional/uncalibrated -- RQ1 defers ground-truth-based calibration to Phase 32/68, and
+  REPRO-4 forbids ground truth at inference time, so this phase mirrors `algorithm_selection.md`
+  §6's "multi-signal, interpretable, evidence-backed" pattern (a different phase/field,
+  `DependencyEdge.strength`) rather than attempting real statistical calibration. Verified: revised
+  `backend/tests/test_nettrace_topology_edges.py` (20/20: the 12 Phase 30 tests, one updated for
+  `evidence`'s new length, plus 8 new -- established-vs-partial, TLS-vs-none,
+  fingerprinted-vs-not, and bidirectional-vs-one-way comparisons each isolating one signal at equal
+  packet counts; a pure-math combined-signal monotonicity test; an all-positive-signals-exceeds-
+  packet-volume-alone test; a UDP-only edge reaching high confidence via non-TCP signals with no
+  penalty for inapplicable TCP-only signals; the evidence summary line's presence/content); combined
+  suite 240/240 (up from 232/232), no regressions; `scripts.validate_data_contracts` re-verified
+  clean (38/38, `Edge` unchanged since Phase 04); `scripts.check_ground_truth_boundary` re-verified
+  clean. `docs/architecture/edge_discovery.md` (updated in place, not a new doc) has full detail,
+  including three worked numeric examples.
+
 ## Blocked phases
 
 None.
@@ -724,10 +756,14 @@ None yet — no experiments have been run.
 - Node discovery (Phase 29) treats one observed IP as exactly one node; NAT/multi-homed-host
   correlation is out of scope pending additional evidence a future phase's requirements would need to
   justify — documented in `docs/architecture/node_discovery.md`, not a gap.
-- Edge discovery (Phase 30) reports edges as undirected (no initiator claim) and scores confidence
-  with a single-signal, uncalibrated formula (`edge_confidence_packet_scale`, default `20.0`) —
-  documented in `docs/architecture/edge_discovery.md` as explicitly provisional, pending Phase 31's
-  real calibration/validation work, not a gap.
-- Next: Phase 31 (Probabilistic Edge Confidence). Expected to calibrate or replace Phase 30's
-  provisional confidence formula against real evidence rather than inventing confidence scoring from
-  nothing — not yet scoped beyond FR-1.10's one-line mention. Not started; awaiting explicit request.
+- Edge discovery (Phase 30) reports edges as undirected (no initiator claim) — documented in
+  `docs/architecture/edge_discovery.md`, not a gap.
+- Edge confidence (Phase 31) combines six real signals via noisy-OR with one uniform strength
+  constant (`edge_confidence_signal_strength`, default `0.3`) rather than empirically-justified
+  per-signal weights, and `is_persistent`'s contribution is structurally UDP-only (Phase 28's own
+  scope) — both documented in `docs/architecture/edge_discovery.md` as explicitly provisional, real
+  calibration deferred to Phase 32/68's ground-truth-backed evaluation, not a gap.
+- Next: Phase 32 (Probabilistic Topology Reconstruction). Combines Phase 29's nodes and Phase
+  30-31's edges into one `TopologyGraph`, wires `GET /topology` for real, and compares against
+  ground truth for evaluation purposes only (FR-1.11, RQ1) — not yet scoped beyond that one-line
+  mention. Not started; awaiting explicit request.

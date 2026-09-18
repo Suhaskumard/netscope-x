@@ -84,6 +84,22 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Phase 31 -- multi-signal edge confidence (ties to NFR-4, FR-1.10's "not-arbitrary" intent).
+    edge_confidence_signal_strength: float = Field(
+        default=0.3,
+        gt=0,
+        lt=1,
+        description=(
+            "Noisy-OR evidence strength applied uniformly to each corroborating edge "
+            "signal (TCP handshake completion, protocol fingerprinting, TLS negotiation, "
+            "five-tuple persistence, bidirectionality) on top of the packet-volume term "
+            "(spec Phase 31, FR-1.10). Uniform because no empirical basis yet justifies "
+            "weighting one signal above another -- that is Phase 32/68's job, not invented "
+            "here. A provisional default pending real calibration, not a claimed-accurate "
+            "value."
+        ),
+    )
+
     @field_validator("log_level")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:

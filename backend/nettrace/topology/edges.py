@@ -1,4 +1,4 @@
-"""Edge discovery (spec Phase 30, FR-1.9/FR-1.10).
+"""Edge discovery and probabilistic edge confidence (spec Phase 30-31, FR-1.9/FR-1.10).
 
 Infers communication relationships exclusively from a capture's already-
 reconstructed flows -- never from `simulator.ground_truth`
@@ -33,15 +33,33 @@ initiator to report at the edge level -- each flow's own `src_ip`/
 `direction` still captures real per-flow initiation; it is just not
 collapsed into one edge-level claim.
 
-Confidence is a provisional, evidence-backed heuristic, not yet Phase-31-
-calibrated: `confidence = 1 - exp(-total_packet_count / packet_scale)`,
-where `total_packet_count` sums `Flow.features.packet_count` across every
-flow aggregated into this edge. Strictly monotonic and saturating (never
-reaches exactly 1.0), so "more observed evidence never lowers confidence"
-holds by construction, not just via `Edge.confidence`'s `[0, 1]` range
-validator. See `docs/architecture/edge_discovery.md` for the full
-justification of why this single-signal formula was chosen over a
-multi-signal weighted score.
+Confidence (spec Phase 31) is a multi-signal, evidence-backed heuristic --
+still provisional and uncalibrated (real calibration against ground truth
+is Phase 32/68's job, off-limits here per spec §4/REPRO-4), but no longer
+single-signal. Six independent terms are combined via noisy-OR:
+
+    confidence = 1 - (1 - p_volume) * prod(1 - s * i_signal)
+
+`p_volume = 1 - exp(-total_packet_count / packet_scale)` is Phase 30's
+original packet-volume term. Each `i_signal` is a boolean (or, for
+bidirectionality, a bounded continuous value) indicating whether a bucket
+exhibits that signal on ANY of its flows; `s` (`edge_confidence_signal_
+strength`) is one shared evidence-strength constant applied uniformly to
+every signal, since nothing today justifies weighting one signal above
+another -- asserting relative importance without evidence would itself be
+the "arbitrary" confidence FR-1.10 forbids. Every term lies in `[0, 1)`, so
+the product is always `> 0` and confidence always `< 1` -- bounded by
+construction, and monotonic by construction (a new positive signal can
+only shrink the product, never grow it, so more evidence never lowers
+confidence). A signal that is structurally inapplicable to a bucket (e.g.
+`tcp_state`/`tls_version` are always `None` for a UDP-only bucket)
+contributes indicator `0`, i.e. a multiplicative identity factor of `1` --
+never a penalty for evidence a bucket cannot structurally produce. See
+`docs/architecture/edge_discovery.md` for the full justification, worked
+numeric examples, and why this differs from Phase 30's deliberate decision
+NOT to add a second weighted term for `observation_count` (that signal is
+redundant with packet volume; these five are independent of it and of
+each other).
 """
 
 from __future__ import annotations
@@ -51,19 +69,85 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from backend.app.models.flow import Flow
+from backend.app.models.flow import Flow, TCPState
 from backend.app.models.topology import Edge, Node
 from experiments.artifacts.io import read_jsonl
 from experiments.artifacts.paths import flows_path
 
 _DEFAULT_PACKET_SCALE = 20.0  # mirrors Settings.edge_confidence_packet_scale's own default
+_DEFAULT_SIGNAL_STRENGTH = 0.3  # mirrors Settings.edge_confidence_signal_strength's own default
+
+
+def _bidirectionality(ratio: float) -> float:
+    """Maps a flow's forward_byte_ratio (0..1) to a bounded, parameter-free
+    "genuine two-way traffic" strength: 0 at pure one-way traffic (ratio in
+    {0, 1}), peaking at 1 for perfectly balanced traffic (ratio == 0.5)."""
+    return 2 * min(ratio, 1 - ratio)
+
+
+def _signal_indicators(bucket_flows: List[Flow]) -> Dict[str, float]:
+    """The five Phase-31 signal terms for one node-pair bucket, each in
+    [0, 1), computed by "any flow in the bucket exhibits this" existence
+    semantics (not a fraction) -- required for monotonicity, since a
+    fraction would shrink as more (unrelated) flows join the same bucket."""
+    return {
+        "established": 1.0 if any(f.tcp_state == TCPState.ESTABLISHED for f in bucket_flows) else 0.0,
+        "fingerprinted": 1.0 if any(f.fingerprinted_protocol is not None for f in bucket_flows) else 0.0,
+        "tls": 1.0 if any(f.tls_version is not None for f in bucket_flows) else 0.0,
+        "persistent": 1.0 if any(f.features.is_persistent for f in bucket_flows) else 0.0,
+        "bidirectional": max(
+            (_bidirectionality(f.features.forward_byte_ratio) for f in bucket_flows), default=0.0
+        ),
+    }
+
+
+def _confidence(
+    bucket_flows: List[Flow],
+    edge_confidence_packet_scale: float,
+    edge_confidence_signal_strength: float,
+) -> float:
+    total_packet_count = sum(f.features.packet_count for f in bucket_flows)
+    p_volume = 1 - math.exp(-total_packet_count / edge_confidence_packet_scale)
+
+    s = edge_confidence_signal_strength
+    indicators = _signal_indicators(bucket_flows)
+
+    survival = 1 - p_volume
+    for value in indicators.values():
+        survival *= 1 - s * value
+    return 1 - survival
 
 
 def _evidence_line(flow: Flow) -> str:
-    return (
+    parts = [
         f"flow {flow.flow_id}: {flow.protocol.value} "
         f"{flow.src_ip}:{flow.src_port}->{flow.dst_ip}:{flow.dst_port}, "
         f"{flow.features.packet_count} packets, {flow.features.byte_count} bytes"
+    ]
+    if flow.tcp_state is not None:
+        parts.append(f"tcp_state={flow.tcp_state.value}")
+    if flow.fingerprinted_protocol is not None:
+        parts.append(f"fingerprinted_protocol={flow.fingerprinted_protocol}")
+    if flow.tls_version is not None:
+        parts.append(f"tls_version={flow.tls_version}")
+    if flow.features.is_persistent:
+        parts.append("is_persistent=True")
+    parts.append(f"forward_byte_ratio={flow.features.forward_byte_ratio:.3f}")
+    return ", ".join(parts)
+
+
+def _evidence_summary_line(
+    bucket_flows: List[Flow], confidence: float, edge_confidence_signal_strength: float
+) -> str:
+    indicators = _signal_indicators(bucket_flows)
+    return (
+        "confidence signals: "
+        f"established_handshake={'yes' if indicators['established'] else 'no'}, "
+        f"fingerprinted_protocol={'yes' if indicators['fingerprinted'] else 'no'}, "
+        f"tls={'yes' if indicators['tls'] else 'no'}, "
+        f"persistent={'yes' if indicators['persistent'] else 'no'}, "
+        f"bidirectional_strength={indicators['bidirectional']:.3f} "
+        f"(signal_strength={edge_confidence_signal_strength}) -> confidence={confidence:.3f}"
     )
 
 
@@ -72,6 +156,7 @@ def discover_edges(
     capture_id: str,
     nodes: List[Node],
     edge_confidence_packet_scale: float = _DEFAULT_PACKET_SCALE,
+    edge_confidence_signal_strength: float = _DEFAULT_SIGNAL_STRENGTH,
 ) -> List[Edge]:
     """Reads `flows_path(root, capture_id)` and aggregates flows sharing a
     node pair into one `Edge` each. `nodes` must be (an equivalent IP
@@ -100,15 +185,18 @@ def discover_edges(
     aggregated = []
     for (source_node_id, target_node_id), bucket_flows in buckets.items():
         ordered_flows = sorted(bucket_flows, key=lambda f: (f.first_seen, f.flow_id))
-        total_packet_count = sum(f.features.packet_count for f in bucket_flows)
-        confidence = 1 - math.exp(-total_packet_count / edge_confidence_packet_scale)
+        confidence = _confidence(
+            bucket_flows, edge_confidence_packet_scale, edge_confidence_signal_strength
+        )
+        evidence = [_evidence_line(f) for f in ordered_flows]
+        evidence.append(_evidence_summary_line(bucket_flows, confidence, edge_confidence_signal_strength))
 
         aggregated.append(
             {
                 "source_node_id": source_node_id,
                 "target_node_id": target_node_id,
                 "confidence": confidence,
-                "evidence": [_evidence_line(f) for f in ordered_flows],
+                "evidence": evidence,
                 "observation_count": len(bucket_flows),
                 "first_observed": min(f.first_seen for f in bucket_flows),
                 "last_observed": max(f.last_seen for f in bucket_flows),

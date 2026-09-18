@@ -17,11 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 30 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 31 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`; Phase 29-30's node/edge discovery are implemented and
-unit-verified but not yet wired into any API route, pending Phase 32's combined topology graph — see
-`docs/architecture/node_discovery.md` and `docs/architecture/edge_discovery.md`). Next: Phase 31.
+`docs/architecture/packet_capture.md`; Phase 29-31's node/edge discovery and probabilistic edge
+confidence are implemented and unit-verified but not yet wired into any API route, pending Phase 32's
+combined topology graph — see `docs/architecture/node_discovery.md` and
+`docs/architecture/edge_discovery.md`). Next: Phase 32.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -177,20 +178,29 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
 - **Edge discovery** (Phase 30): `discover_edges` aggregates a capture's already-reconstructed flows
   (not raw packets — the opposite source choice from node discovery, since `Edge.protocols`/evidence
   need flow-level data) into one `Edge` per communicating node pair, with real
-  `observation_count`/`evidence`/`protocols`/timestamps and a real, evidence-backed (if provisional
-  and not yet Phase-31-calibrated) confidence score:
-  `confidence = 1 - exp(-total_packet_count / edge_confidence_packet_scale)`, strictly monotonic and
-  saturating, never claiming certainty. Edges are undirected (no initiator claim at the edge level);
-  an ICMP-only capture produces nodes but zero edges, matching flow reconstruction's own documented
-  scope. Proven by 12 real unit tests, including one confirming that exact node/edge asymmetry on a
-  shared fixture and one confirming confidence strictly increases with more observed packets —
-  `backend/nettrace/topology/edges.py`, `docs/architecture/edge_discovery.md`.
+  `observation_count`/`evidence`/`protocols`/timestamps. Edges are undirected (no initiator claim at
+  the edge level); an ICMP-only capture produces nodes but zero edges, matching flow reconstruction's
+  own documented scope — `backend/nettrace/topology/edges.py`, `docs/architecture/edge_discovery.md`.
+- **Probabilistic edge confidence** (Phase 31): `Edge.confidence` is now a real multi-signal score,
+  combining Phase 30's packet-volume term with five independent, already-real `Flow`-derived signals
+  (TCP handshake completion, protocol fingerprinting, TLS negotiation, five-tuple persistence,
+  bidirectionality) via noisy-OR: `confidence = 1 - (1-p_volume) * prod(1 - signal_strength *
+  indicator)`, bounded and monotonic by construction — more evidence never lowers confidence, and
+  confidence never claims exact certainty. All corroborating signals share one uniform strength
+  constant (`edge_confidence_signal_strength`, default `0.3`) since nothing yet justifies weighting
+  one signal above another; real calibration remains Phase 32/68's job (ground truth is off-limits at
+  inference time). `evidence` now includes a bucket-level summary line explaining which signals fired.
+  Proven by 20 real unit tests total (12 from Phase 30 plus 8 new), including isolated
+  established-vs-partial, TLS-vs-none, fingerprinted-vs-not, and bidirectional-vs-one-way comparisons,
+  a combined-signal monotonicity test, and confirmation that structurally-inapplicable signals (e.g.
+  TCP-only signals on a UDP-only edge) never incur a penalty — `backend/nettrace/topology/edges.py`,
+  `backend/app/core/config.py`, `docs/architecture/edge_discovery.md`.
 
 ### What doesn't exist yet
 
-Edge confidence calibration, behavioral modeling, anomaly detection, digital twin, simulation, and
-counterfactual engines have not been implemented yet — those begin at Phase 31 and continue through
-the 69-phase plan. The API surface and data contracts are real and tested; most of the research
+The combined probabilistic topology graph, behavioral modeling, anomaly detection, digital twin,
+simulation, and counterfactual engines have not been implemented yet — those begin at Phase 32 and
+continue through the 69-phase plan. The API surface and data contracts are real and tested; most of the research
 intelligence they will eventually serve is not built yet. Nothing in this repository currently
 fabricates results — every phase's completion report documents exactly what was and wasn't verified by
 actual execution.
@@ -220,7 +230,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-30 design docs
+  architecture/   Phase 04-05, 09-31 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -231,7 +241,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (232 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (240 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
