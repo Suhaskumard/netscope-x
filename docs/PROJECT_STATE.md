@@ -5,26 +5,31 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 35 (Node Behavioral Fingerprints) complete, unit-verified.
-`assemble_node_fingerprint`/`assemble_all_node_fingerprints`
-(`backend/flowmind/fingerprints/node_fingerprint.py`) wrap Phase 33-34's per-window
-`NodeBehavioralFeatures` into real `BehavioralFingerprint` instances by a plain field copy
-(`node_id`/`window`/`computed_at` identity added, the six feature fields unchanged -- no new
-computation), verified byte-for-byte against `compute_node_features_for_window`'s own output. One
-fingerprint is produced per node **per window** (all three `ObservationWindow` values, not a single
-default), since Phase 34's own deliverable was explicitly per-window results and nothing forecloses
-keeping all three; every fingerprint from one batch call shares a single `computed_at`. Persisted as
-JSON Lines via a new `experiments/artifacts/paths.py::fingerprints_path` and the existing generic
-`write_jsonl`/`read_jsonl` -- no new I/O code. `GET /behaviors/{node_id}` (`backend/app/api/routes/
-behaviors.py`) stays a 501 stub: its response schema, fixed back in Phase 09, is `NodeBehavior {
-fingerprint: BehavioralFingerprint, role: RoleClassification }`, and `role` is explicitly Phase
-36-37's job -- wiring the route now would mean fabricating a role, which this project's "no fake
-metrics" discipline forbids. This is a structural fact about the route's fixed contract, not a scope
-choice this phase made. See `docs/architecture/node_behavioral_fingerprints.md` for the full design
-and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands:
-controlled live capture is implemented and unit-verified but not yet verified against a real Docker
-lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 36 (Service Role Inference) complete, unit-verified. `fit_role_model`/`classify_node_role`
+(`backend/flowmind/classification/role_classifier.py`) implement exactly the algorithm
+`docs/architecture/algorithm_selection.md` §2 already selected back in Phase 05: a Naive-Bayes-style
+probabilistic classifier over engineered `BehavioralFingerprint` features. Per-role Gaussian
+likelihoods (mean/variance, variance-floored against divide-by-zero) for continuous features
+(`distinct_destinations`, `mean_flow_duration_seconds`, `outbound_byte_ratio`, and `port_count =
+len(distinct_ports)` as an honest proxy for "port set entropy," since the schema carries no per-port
+frequency data) and Laplace-smoothed Bernoulli likelihoods for binary features (`is_persistent_talker`,
+protocol-presence over `{TCP, UDP, ICMP, OTHER}`, and well-known-port presence reusing Phase 26's
+exact 5-port `fingerprint.py` table, not a new vocabulary), combined via Bayes' rule and a
+numerically-stable softmax into a real, genuinely-computed `RoleClassification` posterior. §2's own
+selection commits to training on "a held-out labeled split of lab-generated data" -- this session has
+no Docker, so no real lab traffic can be captured/labeled; `fit_role_model` takes already-labeled data
+as a plain parameter (never reads `simulator.ground_truth` itself) and is verified this session only
+against synthetic labeled fixtures, the same convention every other phase's tests already use for
+`Flow`/`Packet` data. No model trained on real data is shipped, and `GET /behaviors/{node_id}` stays a
+501 stub -- wiring it would mean either a fabricated role or presenting a synthetic-only "trained"
+model as real, both forbidden. FR-1.14's "calibrated confidence distribution" requirement is only
+partially met: the posterior is real and correctly-shaped, but *calibration* (predicted confidence
+matching observed correctness frequency) requires ground-truth-scored evaluation, explicitly Phase
+37's job per RQ2's own framing -- the same Phase 30→31→32/68 edge-confidence precedent. See
+`docs/architecture/service_role_inference.md` for the full design and verification record. Phase 21
+(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
+and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -531,6 +536,37 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   node_behavioral_fingerprints.md` has full detail, including the structural argument for why the API
   route stays unwired.
 
+- Phase 36 — Service Role Inference (`backend/flowmind/classification/role_classifier.py`, new
+  `backend/flowmind/classification/` package; FR-1.14). Implements `algorithm_selection.md` §2's
+  already-selected Naive-Bayes-style classifier: `fit_role_model(labeled, variance_floor=1e-6,
+  laplace_smoothing=1.0) -> RoleModel` fits per-role Gaussian likelihoods (4 continuous features --
+  `distinct_destinations`, `mean_flow_duration_seconds`, `outbound_byte_ratio`, `port_count`) and
+  Laplace-smoothed Bernoulli likelihoods (7 binary features -- `is_persistent_talker`, 4
+  protocol-presence flags, 5 well-known-port-presence flags reusing Phase 26's exact
+  `fingerprint.py` table) plus frequency-based priors, from labeled `(BehavioralFingerprint,
+  ServiceRole)` pairs; raises `ValueError` on empty input (a classifier cannot be fit from nothing).
+  `classify_node_role(model, fingerprint, computed_at=None) -> RoleClassification` computes real
+  Bayes-rule log-posteriors and normalizes via a numerically-stable softmax into a genuine
+  `RoleClassification` (its own Phase 04 validator is the real acceptance test). §2's own selection
+  requires training on "a held-out labeled split of lab-generated data" -- no Docker this session
+  means no real lab traffic exists to label, so `fit_role_model` (which takes labels as a plain
+  parameter, never reading `simulator.ground_truth` itself) is verified only against synthetic
+  labeled fixtures this session, the same convention every phase's tests already use. No model
+  trained on real data is shipped; `GET /behaviors/{node_id}` stays a 501 stub. FR-1.14's
+  "calibrated" requirement is only partially satisfied -- the posterior is real, not fabricated, but
+  not yet validated as calibrated against ground truth, explicitly Phase 37's job (mirrors the Phase
+  30->31->32/68 edge-confidence precedent). Verified: new
+  `backend/tests/test_flowmind_role_classifier.py` (7/7: empty-input `ValueError`; two
+  clearly-separated synthetic profiles -- DNS-like and Database-like -- each classify correctly on
+  held-out data; `role_probabilities` always valid; a single-training-example role still classifies
+  via the variance floor; two profiles differing *only* in protocol correctly isolate the
+  protocol-mix signal; deterministic output across repeated calls; a real pipeline-types
+  end-to-end test via `assemble_node_fingerprint` from constructed `Flow`/`Node` data); combined
+  suite 279/279 (up from 272/272), no regressions; `scripts.validate_data_contracts` re-verified
+  clean (38/38, `RoleClassification` schema unchanged); `scripts.check_ground_truth_boundary`
+  re-verified clean. `docs/architecture/service_role_inference.md` has full detail, including the
+  feature-engineering mapping and the Phase 36 vs. 37 calibration-boundary argument.
+
 ## Blocked phases
 
 None.
@@ -889,8 +925,11 @@ None yet — no experiments have been run.
   response requires a `RoleClassification` that doesn't exist until Phase 36-37 — a structural
   blocker on the route's own contract, not a gap in Phase 35's own scope; documented in
   `docs/architecture/node_behavioral_fingerprints.md`.
-- Next: Phase 36 (Service Role Inference). Expected to implement the Naive-Bayes-style probabilistic
-  classifier `docs/architecture/algorithm_selection.md` §2 already selected, consuming Phase 35's
-  `BehavioralFingerprint`s to produce real `RoleClassification` instances — likely also what finally
-  lets `GET /behaviors/{node_id}` go real (jointly with Phase 37's calibration work) — not yet scoped
-  beyond FR-1.14/RQ2. Not started; awaiting explicit request.
+- Role inference (Phase 36) has no model trained on real Docker-lab data — verified only against
+  synthetic labeled fixtures this session (no Docker), and `GET /behaviors/{node_id}` remains a 501
+  stub as a direct consequence; documented in `docs/architecture/service_role_inference.md`. Producing
+  a genuine labeled training set from the lab is left to a future phase with real Docker/lab access.
+- Next: Phase 37 (Uncertainty-Aware Classification). Expected to validate/calibrate Phase 36's real
+  but uncalibrated posterior against ground truth (RQ2's calibration-error metric) — likely also
+  requires the real lab-trained model Phase 36 couldn't produce this session — not yet scoped beyond
+  FR-1.14/RQ2's calibration language. Not started; awaiting explicit request.

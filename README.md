@@ -17,12 +17,13 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 35 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 36 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Real `BehavioralFingerprint` instances are now assembled for every node over every observation window
-— see `docs/architecture/node_behavioral_fingerprints.md`. `GET /behaviors/{node_id}` stays a 501
-stub: its Phase-09-fixed response also needs a `RoleClassification`, which is Phase 36-37's job, not
-reached yet. Next: Phase 36.
+A real Naive Bayes role classifier (`fit_role_model`/`classify_node_role`) now implements the exact
+algorithm `docs/architecture/algorithm_selection.md` §2 selected — genuinely computed posteriors, not
+fabricated, but not yet validated as calibrated (Phase 37) and not yet trained on real Docker-lab data
+(no Docker this session) — see `docs/architecture/service_role_inference.md`. `GET /behaviors/{node_id}`
+stays a 501 stub. Next: Phase 37.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -236,13 +237,26 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   exist until Phase 36-37 — wiring it now would mean fabricating a role. Proven by 7 real tests,
   including exact field-copy verification and a real end-to-end run —
   `backend/flowmind/fingerprints/node_fingerprint.py`, `docs/architecture/node_behavioral_fingerprints.md`.
+- **Service role inference** (Phase 36): `fit_role_model`/`classify_node_role` implement exactly the
+  Naive-Bayes-style classifier `algorithm_selection.md` §2 already selected — per-role Gaussian
+  likelihoods for continuous features (destination diversity, mean flow duration, outbound byte
+  ratio, port count as an honest proxy for "port set entropy") and Laplace-smoothed Bernoulli
+  likelihoods for binary features (persistence, protocol-mix presence, well-known-port presence reusing
+  Phase 26's exact port table), combined via Bayes' rule into a real, numerically-stable softmax
+  posterior — a genuine `RoleClassification`, not a fabricated one, but not yet validated as
+  *calibrated* (Phase 37's job) and not yet trained on real Docker-lab data (no Docker this session —
+  verified instead with synthetic labeled fixtures, the same convention every phase's tests already
+  use). No model is shipped; `GET /behaviors/{node_id}` stays unwired. Proven by 7 real tests,
+  including a protocol-mix-isolation test and a real pipeline-types end-to-end test —
+  `backend/flowmind/classification/role_classifier.py`, `docs/architecture/service_role_inference.md`.
 
 ### What doesn't exist yet
 
-Role inference, anomaly detection, temporal archaeology, dependency/causal reasoning, the digital
-twin, simulation, and counterfactual engines have not been implemented yet — those begin at Phase 36
-and continue through the 69-phase plan. The API surface and data contracts are real and tested; most of
-the research intelligence they will eventually serve is not built yet. Nothing in this repository
+Calibrated uncertainty, anomaly detection, temporal archaeology, dependency/causal reasoning, the
+digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
+Phase 37 and continue through the 69-phase plan. The API surface and data contracts are real and
+tested; most of the research intelligence they will eventually serve is not built yet. Nothing in this
+repository
 currently fabricates results — every phase's completion report documents exactly what was and wasn't
 verified by
 actual execution.
@@ -265,6 +279,7 @@ backend/flowmind/
   features/node_features.py  Phase 33 reusable per-node behavioral features (Flow list + Node -> NodeBehavioralFeatures)
   features/windows.py  Phase 34 multi-window modeling (nested short/medium/long trailing windows)
   fingerprints/node_fingerprint.py  Phase 35 fingerprint assembly (features -> real BehavioralFingerprint)
+  classification/role_classifier.py  Phase 36 Naive Bayes role classifier (fingerprint -> RoleClassification)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32 evaluation-only ground-truth comparison (never reachable from backend/)
@@ -278,7 +293,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-35 design docs
+  architecture/   Phase 04-05, 09-36 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -289,7 +304,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (272 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (279 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
