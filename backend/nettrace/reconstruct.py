@@ -11,6 +11,22 @@ left `UNKNOWN` because direction only means something relative to a flow.
 Scope: only TCP and UDP are grouped into flows (FR-1.3's literal wording).
 ICMP/OTHER packets are excluded and keep `direction=UNKNOWN`.
 
+UDP session modeling (spec Phase 25, FR-1.5) layers a second heuristic on
+top of the five-tuple grouping: a UDP five-tuple's packets are further
+split into separate *sessions* -- each becoming its own `Flow` -- wherever
+the gap to the next packet (in timestamp order) exceeds a configurable
+idle-timeout (`_split_udp_sessions`, `Settings.udp_session_idle_timeout_seconds`,
+NFR-4: no hardcoded thresholds). This is the "timing-window" heuristic
+FR-1.5 names, alongside the "endpoint, port" heuristic the five-tuple key
+already provides. TCP is unaffected -- it already has a real
+session-boundary signal via Phase 24's state machine, so timing-window
+splitting only applies to UDP. Canonical forward/reverse orientation is
+resolved per session, not per five-tuple: UDP has no persistent notion of
+"initiator" across an idle gap, so each session's own first-observed
+packet defines its own forward direction, consistent with Phase 23's
+"first packet observed defines canonical orientation" rule applied at
+session granularity. See `docs/architecture/udp_session_modeling.md`.
+
 `Flow.features` is a required field, but several of its sub-fields are
 explicitly later phases' jobs (FR-1.8, Phase 28): `destination_diversity`/
 `port_diversity` are honestly `1` (a five-tuple flow has exactly one
@@ -153,11 +169,35 @@ def _compute_tcp_state(directed_group: List[Tuple[Packet, PacketDirection]]) -> 
     return TCPState.ESTABLISHED
 
 
-def reconstruct_flows(root: Path, capture_id: str) -> List[Flow]:
+def _split_udp_sessions(group: List[Packet], idle_timeout_seconds: float) -> List[List[Packet]]:
+    """Splits one UDP five-tuple's packets into separate sessions wherever
+    the gap to the next packet (in timestamp order) exceeds
+    `idle_timeout_seconds` -- the timing-window heuristic FR-1.5 requires
+    on top of the five-tuple's own endpoint/port grouping. A gap exactly
+    equal to the timeout does not split (strict `>`).
+    """
+    ordered = sorted(group, key=lambda p: p.timestamp)
+    sessions: List[List[Packet]] = [[ordered[0]]]
+    for pkt in ordered[1:]:
+        gap = (pkt.timestamp - sessions[-1][-1].timestamp).total_seconds()
+        if gap > idle_timeout_seconds:
+            sessions.append([pkt])
+        else:
+            sessions[-1].append(pkt)
+    return sessions
+
+
+def reconstruct_flows(
+    root: Path,
+    capture_id: str,
+    udp_session_idle_timeout_seconds: float = 30.0,
+) -> List[Flow]:
     """Reads `packets_path(root, capture_id)`, groups TCP/UDP packets into
-    bidirectional five-tuple flows, resolves each grouped packet's
-    direction, rewrites `packets_path` with the resolved directions, and
-    persists the resulting flows to `flows_path`. Returns the flow list.
+    bidirectional five-tuple flows -- further split into timing-window
+    sessions for UDP (spec Phase 25, FR-1.5) -- resolves each grouped
+    packet's direction, rewrites `packets_path` with the resolved
+    directions, and persists the resulting flows to `flows_path`. Returns
+    the flow list.
     """
     packets = read_jsonl(packets_path(root, capture_id), Packet)
 
@@ -172,9 +212,18 @@ def reconstruct_flows(root: Path, capture_id: str) -> List[Flow]:
     flows: List[Flow] = []
     resolved_by_id: Dict[str, Packet] = {}
 
+    # Each TCP five-tuple stays one unit; each UDP five-tuple is further
+    # split into timing-window sessions (Phase 25) -- one unit per session.
+    units: List[List[Packet]] = []
+    for key, group in groups.items():
+        if key[2] == TransportProtocol.UDP:
+            units.extend(_split_udp_sessions(group, udp_session_idle_timeout_seconds))
+        else:
+            units.append(group)
+
     # Deterministic ordering: flows are numbered by their first packet's
     # timestamp across the whole capture, not dict/group iteration order.
-    ordered_groups = sorted(groups.values(), key=lambda g: min(p.timestamp for p in g))
+    ordered_groups = sorted(units, key=lambda g: min(p.timestamp for p in g))
 
     for index, group in enumerate(ordered_groups):
         group = sorted(group, key=lambda p: p.timestamp)

@@ -32,7 +32,11 @@ def list_flows(
         raise CaptureNotFoundError(f"no ingested capture found for capture_id={capture_id!r}")
 
     normalize_pcap(settings.artifact_root, capture_id)
-    flows = reconstruct_flows(settings.artifact_root, capture_id)
+    flows = reconstruct_flows(
+        settings.artifact_root,
+        capture_id,
+        udp_session_idle_timeout_seconds=settings.udp_session_idle_timeout_seconds,
+    )
 
     window = flows[page.offset : page.offset + page.limit]
     return PaginatedResponse[Flow](items=window, limit=page.limit, offset=page.offset, total=len(flows))

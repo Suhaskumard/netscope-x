@@ -21,12 +21,18 @@ canonical direction, O(1) amortized per packet. `reconstruct_flows(root, capture
 3. Groups packets by a **symmetric** key — `tuple(sorted([(src_ip, src_port), (dst_ip, dst_port)]))
    + (protocol,)` — so `A→B` and `B→A` packets land in the same bucket regardless of which side
    sent the first observed packet.
-4. Within each group, sorts by `timestamp`. **The first packet observed** defines the canonical
-   direction: its `(src_ip, src_port, dst_ip, dst_port)` becomes the `Flow` record's own
-   `src_ip`/`dst_ip`/ports, and every packet sharing that exact orientation is `FORWARD`; the
-   opposite orientation is `REVERSE`. This matches the natural "initiator" semantic (the SYN-sender
-   for TCP) without an arbitrary numeric tie-break like "lower IP wins," and it is equally
-   well-defined for UDP, which has no handshake to anchor on.
+3a. **UDP only** (spec Phase 25, FR-1.5): each UDP five-tuple's group is further split into separate
+   timing-window *sessions* wherever the gap between consecutive packets exceeds a configurable
+   idle-timeout — a UDP five-tuple can now honestly produce more than one `Flow`. TCP groups are
+   never split this way. See `docs/architecture/udp_session_modeling.md` for the full algorithm.
+4. Within each resulting unit (a TCP five-tuple group, or one UDP session), sorts by `timestamp`.
+   **The first packet observed** defines the canonical direction: its
+   `(src_ip, src_port, dst_ip, dst_port)` becomes the `Flow` record's own `src_ip`/`dst_ip`/ports,
+   and every packet sharing that exact orientation is `FORWARD`; the opposite orientation is
+   `REVERSE`. This matches the natural "initiator" semantic (the SYN-sender for TCP) without an
+   arbitrary numeric tie-break like "lower IP wins," and it is equally well-defined for UDP, which
+   has no handshake to anchor on — resolved per session as of Phase 25, since UDP has no persistent
+   notion of "initiator" across an idle gap either.
 5. `Packet` is frozen (`model_config = {"frozen": True}`), so direction resolution never mutates in
    place — it produces new instances via `.model_copy(update={"direction": ...})`. The full packet
    list (direction-resolved flow packets, plus untouched ICMP/OTHER passthrough packets) is
@@ -107,7 +113,9 @@ earmarked it for this phase. Given a `capture_id`, the route:
 Five-tuple flow reconstruction (spec Phase 23) is fully implemented and verified end-to-end for
 real, for both TCP and UDP, including live wiring into `GET /flows`. `Packet.direction` is now
 correctly resolved relative to real reconstructed flows rather than left `unknown`. `tcp_state` is
-now also real, as of Phase 24 (`docs/architecture/tcp_state_tracking.md`). `fingerprinted_protocol`
-and the cross-flow-aggregation-dependent parts of `FlowFeatures` (`is_persistent`, and the true
-cross-flow meaning of `destination_diversity`/`port_diversity`) remain honestly
-unset/placeholder pending Phases 26 and 28 respectively.
+now also real, as of Phase 24 (`docs/architecture/tcp_state_tracking.md`); UDP five-tuples are now
+also split into real timing-window sessions, as of Phase 25
+(`docs/architecture/udp_session_modeling.md`). `fingerprinted_protocol` and the
+cross-flow-aggregation-dependent parts of `FlowFeatures` (`is_persistent`, and the true cross-flow
+meaning of `destination_diversity`/`port_diversity`) remain honestly unset/placeholder pending
+Phase 26 and Phase 28 respectively.

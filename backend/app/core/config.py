@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     # so simulator/capture/live.py can share the exact same check without
     # needing Pydantic installed inside its lab container.
 
+    # Phase 25 -- UDP session modeling (ties to NFR-4).
+    udp_session_idle_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "Idle-timeout splitting a UDP five-tuple's packets into separate "
+            "timing-window sessions (spec FR-1.5)."
+        ),
+    )
+
     @field_validator("log_level")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:

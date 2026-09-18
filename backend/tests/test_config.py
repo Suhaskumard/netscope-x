@@ -21,6 +21,20 @@ def test_defaults_load() -> None:
     assert settings.log_level == "INFO"
     assert settings.api_host == "0.0.0.0"
     assert settings.api_port == 8000
+    assert settings.udp_session_idle_timeout_seconds == 30.0
+
+
+def test_invalid_udp_session_idle_timeout_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(udp_session_idle_timeout_seconds=0)
+    with pytest.raises(ValidationError):
+        Settings(udp_session_idle_timeout_seconds=-1)
+
+
+def test_udp_session_idle_timeout_env_var_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NETSCOPE_UDP_SESSION_IDLE_TIMEOUT_SECONDS", "45.5")
+    settings = get_settings()
+    assert settings.udp_session_idle_timeout_seconds == 45.5
 
 
 def test_invalid_log_level_rejected() -> None:

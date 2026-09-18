@@ -336,3 +336,110 @@ def test_reconstruct_flows_udp_flow_tcp_state_always_none(tmp_path: Path) -> Non
 
     assert flows[0].protocol == TransportProtocol.UDP
     assert flows[0].tcp_state is None
+
+
+def test_reconstruct_flows_udp_packets_close_together_stay_one_session(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 2000, "10.0.0.3", 53, TransportProtocol.UDP),
+        _pkt("p1", BASE + timedelta(seconds=1), "10.0.0.3", 53, "10.0.0.1", 2000, TransportProtocol.UDP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert len(flows) == 1
+    assert flows[0].features.packet_count == 2
+
+
+def test_reconstruct_flows_udp_idle_gap_splits_into_separate_sessions(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 2000, "10.0.0.3", 53, TransportProtocol.UDP),
+        _pkt("p1", BASE + timedelta(seconds=1), "10.0.0.3", 53, "10.0.0.1", 2000, TransportProtocol.UDP),
+        # Second burst, well past a 5-second idle timeout.
+        _pkt("p2", BASE + timedelta(seconds=20), "10.0.0.1", 2000, "10.0.0.3", 53, TransportProtocol.UDP),
+        _pkt("p3", BASE + timedelta(seconds=21), "10.0.0.3", 53, "10.0.0.1", 2000, TransportProtocol.UDP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1", udp_session_idle_timeout_seconds=5.0)
+
+    assert len(flows) == 2
+    assert flows[0].features.packet_count == 2
+    assert flows[1].features.packet_count == 2
+    # Each session's own first packet defines its own forward direction.
+    for flow in flows:
+        assert str(flow.src_ip) == "10.0.0.1"
+        assert flow.src_port == 2000
+
+
+def test_reconstruct_flows_udp_gap_exactly_at_timeout_does_not_split(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 2000, "10.0.0.3", 53, TransportProtocol.UDP),
+        _pkt("p1", BASE + timedelta(seconds=5), "10.0.0.3", 53, "10.0.0.1", 2000, TransportProtocol.UDP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1", udp_session_idle_timeout_seconds=5.0)
+
+    assert len(flows) == 1
+
+
+def test_reconstruct_flows_udp_gap_just_over_timeout_splits(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 2000, "10.0.0.3", 53, TransportProtocol.UDP),
+        _pkt("p1", BASE + timedelta(seconds=5, milliseconds=1), "10.0.0.3", 53, "10.0.0.1", 2000, TransportProtocol.UDP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1", udp_session_idle_timeout_seconds=5.0)
+
+    assert len(flows) == 2
+
+
+def test_reconstruct_flows_tcp_flow_with_large_gap_does_not_split(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(seconds=1), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        _pkt("p2", BASE + timedelta(seconds=2), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+        # A gap far larger than the (small) UDP idle timeout used below --
+        # TCP flows must never be split by the UDP session heuristic.
+        _pkt("p3", BASE + timedelta(seconds=100), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="FIN,ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1", udp_session_idle_timeout_seconds=5.0)
+
+    assert len(flows) == 1
+    assert flows[0].features.packet_count == 4
+
+
+def test_reconstruct_flows_mixed_tcp_and_split_udp_sessions_ordered_deterministically(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        # TCP flow starting at t=0.
+        _pkt("t0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("t1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        # UDP five-tuple with two sessions: one starting at t=5, one at t=30.
+        _pkt("u0", BASE + timedelta(seconds=5), "10.0.0.5", 4000, "10.0.0.6", 53, TransportProtocol.UDP),
+        _pkt("u1", BASE + timedelta(seconds=30), "10.0.0.5", 4000, "10.0.0.6", 53, TransportProtocol.UDP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1", udp_session_idle_timeout_seconds=5.0)
+
+    assert len(flows) == 3
+    # Ordered by each unit's earliest packet timestamp: TCP (t=0), UDP
+    # session 1 (t=5), UDP session 2 (t=30).
+    assert [f.protocol for f in flows] == [
+        TransportProtocol.TCP,
+        TransportProtocol.UDP,
+        TransportProtocol.UDP,
+    ]
+    assert flows[0].first_seen == BASE
+    assert flows[1].first_seen == BASE + timedelta(seconds=5)
+    assert flows[2].first_seen == BASE + timedelta(seconds=30)

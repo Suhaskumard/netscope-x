@@ -5,12 +5,13 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 24 (TCP State Tracking) complete, real-verified end-to-end, including live wiring through
-`GET /flows` (no route changes needed — it already recomputes flows fresh on every request). Phase 21
-(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
-and unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see `docs/architecture/packet_capture.md` "Known limitations"). Phase 25 (UDP
-Session Modeling) not started.
+Phase 25 (UDP Session Modeling) complete, real-verified end-to-end, including live wiring through
+`GET /flows` (no route changes needed beyond threading the new configurable idle-timeout setting
+through — it already recomputes flows fresh on every request). Phase 21 (High-Fidelity Packet
+Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
+not yet verified against a real Docker lab (this session's environment has no Docker installation —
+see `docs/architecture/packet_capture.md` "Known limitations"). Phase 26 (Protocol Fingerprinting)
+not started.
 
 ## Process note
 
@@ -203,6 +204,39 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   through the real `GET /flows` — all three real `tcp_state` outcomes confirmed exactly as expected
   (`"closed"`, `"reset"`, `"partial"`), and Phase 23's `packets.jsonl` direction resolution confirmed
   unaffected. `docs/architecture/tcp_state_tracking.md` has full detail.
+
+- Phase 25 — UDP Session Modeling (`backend/nettrace/reconstruct.py`; `_split_udp_sessions`, per
+  `docs/architecture/algorithm_selection.md` §1's selected timing-window-based UDP session grouping,
+  FR-1.5). A UDP five-tuple's timestamp-sorted packets are now split into separate sessions wherever
+  the gap to the next packet strictly exceeds a configurable idle-timeout — the "timing-window"
+  heuristic layered on top of the five-tuple's own "endpoint, port" heuristic — with each session
+  becoming its own `Flow` (no `Flow`/`Packet` schema changes needed; a session is represented exactly
+  like a TCP flow already was, just with a UDP five-tuple now honestly able to produce more than
+  one). `reconstruct_flows` restructured to build a flat list of units (one per TCP five-tuple, one
+  per UDP session) before assigning flow indices, still ordered deterministically by each unit's own
+  earliest packet timestamp. Canonical forward/reverse orientation is resolved per session, not per
+  five-tuple, matching UDP's honest lack of a persistent "initiator" across an idle gap. The
+  idle-timeout is configuration-driven per NFR-4: new `Settings.udp_session_idle_timeout_seconds`
+  (`backend/app/core/config.py`), default `30.0`s (a documented, conntrack-convention-matching
+  default, not a magic number), env-overridable as
+  `NETSCOPE_UDP_SESSION_IDLE_TIMEOUT_SECONDS`, `gt=0`-validated, threaded explicitly from
+  `GET /flows` (`backend/app/api/routes/flows.py`) into `reconstruct_flows`. `is_persistent` stays
+  `False` for every flow including UDP sessions — a deliberate scoping decision, since FR-1.8's
+  cross-observation-window recurrence (Phase 28's job) is a different concept from in-capture
+  idle-gap session splitting. Verified: `backend/tests/test_nettrace_reconstruct.py` grew from 16/16
+  to 22/22 (close-together UDP packets stay one session; an idle gap splits a five-tuple into two
+  correctly-oriented sessions; boundary cases at exactly the timeout and one millisecond over; a TCP
+  flow with an equally large gap stays unsplit; deterministic ordering across a mix of TCP and split
+  UDP sessions); `backend/tests/test_config.py` grew from 9/9 to 11/11 (default value, `gt=0`
+  rejection, env-var override); combined suite 185/185 (up from 177/177), no other regressions;
+  `scripts.validate_data_contracts` and `check_ground_truth_boundary.py` both re-verified clean; a
+  real, manual end-to-end run (no Docker needed): a real Scapy pcap with explicit per-packet
+  timestamps — a UDP five-tuple with two 2-packet bursts separated by a gap comfortably past the real
+  configured 30.0s default, plus a TCP flow with an equally large internal gap — ingested through the
+  live FastAPI app's real `POST /capture`, then queried through the real `GET /flows`: the UDP
+  five-tuple produced exactly 2 real flows (2 packets each), the TCP flow stayed exactly 1 real flow
+  (4 packets, real `tcp_state: "closing"`), confirming the heuristic is real, correctly
+  gap-triggered, and correctly UDP-only. `docs/architecture/udp_session_modeling.md` has full detail.
 
 ## Blocked phases
 
@@ -478,7 +512,7 @@ None yet — no code written.
   allowlist).
 - `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
   5/5 checks passed (see Phase 20 note above for detail).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 177/177 passed, no
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 185/185 passed, no
   regression (up from 136/136 after Phase 20: +9 `backend/tests/test_nettrace_capture.py`,
   +2 `simulator/tests/test_capture.py`, +7 net new/changed `backend/tests/test_api.py` capture
   cases minus the 1 removed generic-501 case, Phase 21; +6 `backend/tests/test_nettrace_normalize.py`,
@@ -486,12 +520,14 @@ None yet — no code written.
   `backend/tests/test_api.py` minus the 1 removed generic-501 case, Phase 23; +9
   `backend/tests/test_nettrace_reconstruct.py` TCP state cases, Phase 24, with one Phase 23 test's
   `tcp_state` assertion in that file and one in `backend/tests/test_api.py` corrected from Phase
-  23's honest `None` placeholder to the real computed value).
+  23's honest `None` placeholder to the real computed value; +6
+  `backend/tests/test_nettrace_reconstruct.py` UDP session-splitting cases and +2
+  `backend/tests/test_config.py` idle-timeout config cases, Phase 25).
 - `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21, re-verified
-  Phase 22-24).
+  Phase 22-25).
 - `python scripts/check_ground_truth_boundary.py` — clean, zero violations; `backend/nettrace/`
   (including `normalize.py` and `reconstruct.py`) and `simulator/capture/` packages correctly do
-  not import `simulator.ground_truth` (Phase 21, re-verified Phase 22-24).
+  not import `simulator.ground_truth` (Phase 21, re-verified Phase 22-25).
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -517,5 +553,6 @@ None yet — no experiments have been run.
   scope: `Packet` carries no TCP sequence/ack field. Documented as an honest limitation in
   `docs/architecture/tcp_state_tracking.md`, not a gap; would require extending `Packet`'s schema
   and `normalize.py` if a later phase's requirements actually need it.
-- Next: Phase 25 — UDP Session Modeling (spec FR-1.5: model UDP sessions using endpoint, port, and
-  timing-window heuristics). Not started; awaiting explicit request.
+- Next: Phase 26 — Protocol Fingerprinting (spec FR-1.6: fingerprint the application-layer protocol
+  from observable evidence only, never claiming coverage the system can't support). Not started;
+  awaiting explicit request.
