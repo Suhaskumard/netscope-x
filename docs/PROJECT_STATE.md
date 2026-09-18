@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 18 (Scenario Generator) complete. Phase 19 (Traffic Replay Engine) not started.
+Phase 19 (Traffic Replay Engine) complete. Phase 20 (Observatory Validation) not started.
 
 ## Process note
 
@@ -66,6 +66,12 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   ground truth captured; `simulator/tests/test_scenarios.py`;
   `docs/architecture/scenario_generation.md`; `docs/architecture/network_laboratory.md` updated;
   `README.md` updated)
+- Phase 19 — Traffic Replay Engine (`simulator/traffic/replay.py`; deterministic schedule
+  derivation from a recorded Phase 14/15 JSON-Lines log's `sent_at` timestamps, reusing Phase
+  14/15's own request senders for real execution; real burst-pattern recording captured then
+  replayed twice against the live lab, replay logs structurally identical excluding wall-clock
+  fields; `simulator/tests/test_replay.py`; `docs/architecture/traffic_replay.md`; `README.md`
+  updated)
 
 ## Blocked phases
 
@@ -240,6 +246,22 @@ None yet — no code written.
   scenarios; real `docker compose up` of the generated star-4 scenario (5 containers), live
   reachability confirmed from inside the hub container (`reachability: {leaf-1..4: true}`), ground
   truth captured with 5 distinct real container IPs, torn down after.
+- Traffic replay engine (`simulator/traffic/replay.py`, Phase 19): reads back a Phase 14 pattern
+  log or Phase 15 protocol log (auto-detected by record shape) and re-derives a replay schedule
+  from each record's `sent_at` timestamp (not `scheduled_offset_seconds`, which only exists in
+  Phase 14 logs and represents the pre-execution plan rather than what was actually observed) --
+  `load_recording` is pure arithmetic, so it is provably deterministic across repeated loads of
+  the same file. `run()` reuses Phase 14's `generate._send_request` and Phase 15's
+  `generate_protocol._send` rather than reimplementing request logic. Does not introduce a new
+  Pydantic schema or `experiments/artifacts/` path convention -- replay logs stay outside that
+  scheme, consistent with how Phase 14/15's own generator logs are written directly to an
+  arbitrary `--out` path. Verified: 10/10 unit tests (offset derivation for both log shapes,
+  load-twice determinism, malformed/missing-field/unknown-protocol rejection, blank-line
+  skipping); real run against the live lab -- a real burst-pattern recording (14 real requests,
+  all HTTP 200) replayed twice from `client`, the two replay logs structurally identical
+  excluding wall-clock-only fields (proving determinism concretely, not just asserting it), and
+  real observed inter-arrival jitter of roughly 2-18ms against the original recording (honestly
+  reported, not hidden); lab torn down after.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -276,22 +298,29 @@ None yet — no code written.
   preview returns HTTP 200), then torn down.
 - `scripts/setup.sh` run standalone from a clean state (`.venv` and `frontend/node_modules` deleted
   first) and completed successfully — the "fresh installation must work" acceptance bar for Phase 06.
-- `pytest simulator/tests` — 62/62 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
+- `pytest simulator/tests` — 72/72 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
   wire-format tests (Phase 15) + 9 ground-truth tests (Phase 16) + 11 ground-truth integrity tests
   (Phase 17: versioning round-trips, manifest/artifact hash cross-check, boundary-checker real-repo
   scan + synthetic-violation detection) + 15 scenario generator tests (Phase 18: real NetworkX
-  structural property per archetype, declaration/role builders, topology-graph construction), all
-  pure/no-Docker. Plus real Docker-based runs: 3 traffic patterns (Phase 14), all 6 protocols
+  structural property per archetype, declaration/role builders, topology-graph construction) +
+  10 traffic replay tests (Phase 19: offset derivation from `sent_at` deltas for both pattern-log
+  and protocol-log shapes, load-twice determinism, malformed/missing-field/unknown-protocol
+  rejection with line numbers, blank-line skipping, frozen dataclass equality), all pure/no-Docker.
+  Plus real Docker-based runs: 3 traffic patterns (Phase 14), all 6 protocols
   (Phase 15), a full ground-truth generation (Phase 16, with hash-verified read-back and
   tamper-detection re-confirmed), two successive ground-truth generations for one capture_id
   (Phase 17, v1 confirmed unchanged after v2 was written, tamper detection re-confirmed on the
-  versioned layout), and a full `generate-all` + real deploy of the generated star-4 scenario
+  versioned layout), a full `generate-all` + real deploy of the generated star-4 scenario
   (Phase 18, live reachability confirmed, ground truth captured with 5 real container IPs, torn
-  down) — not part of the pytest suite, manual integration verification like Phases 11-13.
+  down), and a real burst-pattern recording replayed twice against the live lab (Phase 19, 14/14
+  real requests both times, replay-1 and replay-2 logs structurally identical excluding
+  wall-clock-only fields, real observed inter-arrival jitter of roughly 2-18ms against the
+  original recording) — not part of the pytest suite, manual integration verification like
+  Phases 11-13.
 - `python scripts/check_ground_truth_boundary.py` (Phase 17) — run standalone, zero violations found
   in the real repository (including the new `simulator/scenarios/` package, correctly inside the
   allowlist).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 110/110 passed, no
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 120/120 passed, no
   regression.
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
@@ -307,5 +336,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 19 — Traffic Replay Engine (support deterministic replay of recorded workloads). Not
-started; awaiting explicit request.
+Next: Phase 20 — Observatory Validation (verify the laboratory itself behaves correctly --
+expected connectivity, routes, services, traffic -- before NETTRACE receives data). Not started;
+awaiting explicit request.

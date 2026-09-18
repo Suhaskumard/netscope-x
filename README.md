@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 18 of 69 complete.** Next: Phase 19 — Traffic Replay Engine.
+**Current phase: 19 of 69 complete.** Next: Phase 20 — Observatory Validation.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -79,6 +79,12 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   generic container image that makes every generated scenario actually deployable — proven by
   really deploying one (`star-4`) with `docker compose up`, confirming live reachability, and
   capturing its ground truth — `simulator/scenarios/`, `docs/architecture/scenario_generation.md`.
+- **Traffic replay engine** (Phase 19): deterministically re-derives the request sequence and
+  relative timing recorded in a Phase 14/15 JSON-Lines workload log (from each record's `sent_at`
+  timestamps) and genuinely re-executes it, reusing Phase 14/15's own request senders — proven by
+  capturing a real burst-pattern recording against the live lab and replaying it twice, producing
+  identical replay logs (excluding wall-clock-only fields) with real observed jitter of roughly
+  2-18ms — `simulator/traffic/replay.py`, `docs/architecture/traffic_replay.md`.
 
 ### What doesn't exist yet
 
@@ -101,13 +107,13 @@ experiments/
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
   docker/         Phase 11-15 multi-tier network laboratory
-  traffic/        Phase 14-15 traffic + protocol workload generators
+  traffic/        Phase 14-15 traffic + protocol workload generators, Phase 19 replay engine
   ground_truth/   Phase 16 authoritative ground-truth generator
   scenarios/      Phase 18 controlled network architecture generator
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-18 design docs
+  architecture/   Phase 04-05, 09-19 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, and (Phase 17) ground-truth import-boundary scripts
@@ -117,7 +123,7 @@ scripts/      setup, validation, and (Phase 17) ground-truth import-boundary scr
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (84 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (120 tests)
 docker compose up --build      # backend (placeholder API) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 ```
