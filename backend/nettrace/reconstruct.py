@@ -60,6 +60,16 @@ retransmission detection (which would need TCP sequence numbers) is
 honestly out of scope: `Packet` carries no sequence/ack field. UDP flows
 never call the helper; `tcp_state` stays `None`, also structurally
 enforced by `Flow`'s own `_tcp_state_only_for_tcp` validator.
+
+`Flow.tls_version` (spec Phase 27, FR-1.7) is now real: a real negotiated
+TLS version, parsed from a `ServerHello` handshake message that
+`backend.nettrace.tls_metadata.extract_tls_versions` finds by an
+independent scan of `raw.pcap` (a `ServerHello` is never encrypted, so this
+is metadata extraction, not decryption). Looked up by the flow's own
+canonical endpoints; gracefully `{}` (empty, never an error) when
+`raw.pcap` isn't present for this `capture_id` -- an optional enrichment on
+top of the core flow-reconstruction contract, not a hard requirement. See
+`docs/architecture/encrypted_traffic_metadata.md`.
 """
 
 from __future__ import annotations
@@ -72,8 +82,9 @@ from typing import Dict, List, Optional, Tuple
 from backend.app.models.flow import Flow, FlowFeatures, TCPState
 from backend.app.models.packet import Packet, PacketDirection, TransportProtocol
 from backend.nettrace.fingerprint import fingerprint_protocol
+from backend.nettrace.tls_metadata import extract_tls_versions
 from experiments.artifacts.io import read_jsonl, write_jsonl
-from experiments.artifacts.paths import flows_path, packets_path
+from experiments.artifacts.paths import flows_path, packets_path, pcap_path
 
 _FLOW_PROTOCOLS = {TransportProtocol.TCP, TransportProtocol.UDP}
 
@@ -207,6 +218,10 @@ def reconstruct_flows(
     """
     packets = read_jsonl(packets_path(root, capture_id), Packet)
 
+    tls_versions = (
+        extract_tls_versions(root, capture_id) if pcap_path(root, capture_id).is_file() else {}
+    )
+
     groups: Dict[_FlowKey, List[Packet]] = defaultdict(list)
     passthrough: List[Packet] = []
     for pkt in packets:
@@ -258,6 +273,9 @@ def reconstruct_flows(
         fingerprinted_protocol = fingerprint_protocol(
             canonical.protocol, canonical.src_port, canonical.dst_port
         )
+        tls_version = tls_versions.get(
+            (str(canonical.src_ip), canonical.src_port)
+        ) or tls_versions.get((str(canonical.dst_ip), canonical.dst_port))
 
         flows.append(
             Flow(
@@ -272,6 +290,7 @@ def reconstruct_flows(
                 last_seen=group[-1].timestamp,
                 tcp_state=tcp_state,
                 fingerprinted_protocol=fingerprinted_protocol,
+                tls_version=tls_version,
                 features=_compute_features(group, forward_bytes),
             )
         )

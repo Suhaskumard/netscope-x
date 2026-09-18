@@ -116,6 +116,8 @@ correctly resolved relative to real reconstructed flows rather than left `unknow
 now also real, as of Phase 24 (`docs/architecture/tcp_state_tracking.md`); UDP five-tuples are now
 also split into real timing-window sessions, as of Phase 25
 (`docs/architecture/udp_session_modeling.md`); `fingerprinted_protocol` is now also real, as of
-Phase 26 (`docs/architecture/protocol_fingerprinting.md`). The cross-flow-aggregation-dependent
+Phase 26 (`docs/architecture/protocol_fingerprinting.md`). `Flow` also gained a new `tls_version`
+field as of Phase 27, populated for real from a parsed `ServerHello` when one is observed
+(`docs/architecture/encrypted_traffic_metadata.md`). The cross-flow-aggregation-dependent
 parts of `FlowFeatures` (`is_persistent`, and the true cross-flow meaning of
 `destination_diversity`/`port_diversity`) remain honestly unset/placeholder pending Phase 28.

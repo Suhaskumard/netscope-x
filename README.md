@@ -17,9 +17,9 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 26 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
+**Current phase: 27 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
 remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`). Next: Phase 27 — Encrypted Traffic Metadata.
+`docs/architecture/packet_capture.md`). Next: Phase 28 — Flow Feature Completion.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -144,15 +144,24 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   real end-to-end run (HTTP-shaped, DNS-shaped, and unrecognized-port exchanges ingested then
   queried, yielding `"http"`/`"dns"`/`None` exactly as expected) — `backend/nettrace/fingerprint.py`,
   `docs/architecture/protocol_fingerprinting.md`.
+- **Encrypted traffic metadata** (Phase 27): four of FR-1.7's five named items (duration, sizes,
+  timing, endpoint relationships) were already real via Phases 23/25's `Flow`/`FlowFeatures` fields;
+  this phase adds the fifth — real TLS version. `Flow.tls_version` is now populated by parsing a
+  `ServerHello` handshake message's cleartext header and (for TLS 1.3) `supported_versions`
+  extension — never encrypted, in any TLS version, so this is genuine metadata extraction, not
+  decryption. Cross-checked against the lab's own real negotiated version (`TLSv1.3`, Phase 15).
+  Proven by a real end-to-end run (a crafted TLS 1.3 handshake ingested then queried, yielding
+  `fingerprinted_protocol == "tls"` and `tls_version == "TLS 1.3"` exactly as expected) —
+  `backend/nettrace/tls_metadata.py`, `docs/architecture/encrypted_traffic_metadata.md`.
 
 ### What doesn't exist yet
 
-Encrypted traffic metadata extraction, topology inference, behavioral modeling, anomaly detection,
-digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
-Phase 27 and continue through the 69-phase plan. The API surface and data contracts are real and
-tested; most of the research intelligence they will eventually serve is not built yet. Nothing in
-this repository currently fabricates results — every phase's completion report documents exactly what
-was and wasn't verified by actual execution.
+Flow feature completion (real connection persistence and cross-flow diversity), topology inference,
+behavioral modeling, anomaly detection, digital twin, simulation, and counterfactual engines have not
+been implemented yet — those begin at Phase 28 and continue through the 69-phase plan. The API
+surface and data contracts are real and tested; most of the research intelligence they will
+eventually serve is not built yet. Nothing in this repository currently fabricates results — every
+phase's completion report documents exactly what was and wasn't verified by actual execution.
 
 ## Repository layout
 

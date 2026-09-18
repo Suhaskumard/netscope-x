@@ -5,12 +5,12 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 26 (Protocol Fingerprinting) complete, real-verified end-to-end, including live wiring through
-`GET /flows` (no route changes needed — it already recomputes flows fresh on every request). Phase 21
-(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
-and unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see `docs/architecture/packet_capture.md` "Known limitations"). Phase 27
-(Encrypted Traffic Metadata) not started.
+Phase 27 (Encrypted Traffic Metadata) complete, real-verified end-to-end, including live wiring
+through `GET /flows` (no route changes needed — it already recomputes flows fresh on every request).
+Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is
+implemented and unit-verified but not yet verified against a real Docker lab (this session's
+environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+limitations"). Phase 28 (Flow Feature Completion) not started.
 
 ## Process note
 
@@ -266,6 +266,43 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/protocol_fingerprinting.md` has full detail, including an explicit "known
   limitations" section (non-standard-port services unrecognized; a different service squatting on a
   well-known port would be misidentified — both honest, documented heuristic limitations, not gaps).
+
+- Phase 27 — Encrypted Traffic Metadata (`backend/nettrace/tls_metadata.py`; `extract_tls_versions`,
+  FR-1.7). Four of FR-1.7's five named items (duration, sizes, timing, endpoint relationships) were
+  already real via Phase 23/25's `Flow`/`FlowFeatures` fields; this phase supplies the fifth: real
+  TLS version. Like Phase 26, `docs/architecture/algorithm_selection.md` (Phase 05) did not cover
+  this area — another honest, noted planning gap, decided and documented in the new
+  `docs/architecture/encrypted_traffic_metadata.md` instead. A TLS `ServerHello` handshake message is
+  never encrypted in any TLS version, so parsing its cleartext header and (for TLS 1.3)
+  `supported_versions` extension is genuine metadata extraction, not decryption — the legacy version
+  field alone stays pinned to `0x0303` ("TLS 1.2") for compatibility even when 1.3 is actually
+  negotiated, so the extension is checked first. `extract_tls_versions` independently re-reads
+  `raw.pcap` directly via `PcapReader` (the same convention `normalize.py` already established),
+  keeping the already-shipped, payload-free `Packet` schema (Phase 22) untouched; returns a
+  `{(server_ip, server_port): version}` lookup that `reconstruct_flows` checks against both of a
+  flow's canonical endpoints. `Flow` gained one new field, `tls_version: Optional[str]`, validated
+  the same way `tcp_state` already is (`_tls_version_only_for_tcp`, mirroring
+  `_tcp_state_only_for_tcp`); gracefully empty (not an error) when `raw.pcap` isn't present for a
+  given `capture_id`, keeping every pre-existing test passing unchanged. Cross-checked against real
+  lab ground truth: `simulator/traffic/protocols.py`'s `tls_handshake` (Phase 15) performs a genuine
+  handshake whose real negotiated outcome (`docs/architecture/protocol_generation.md`) is
+  `TLSv1.3`/`TLS_AES_256_GCM_SHA384` — this phase's manual verification constructs the exact TLS 1.3
+  wire bytes to confirm the parser resolves that same real version via the extension path, not a
+  simpler TLS ≤1.2 case. Honest, documented limitations: a `ServerHello` split across TCP segments
+  isn't reassembled (stays `None`); only `ServerHello` is parsed, never `ClientHello` (which offers
+  versions, not the negotiated one); TLS only, not other encrypted protocols. Verified: new
+  `backend/tests/test_nettrace_tls_metadata.py` (9/9: TLS 1.0/1.1/1.2 via the legacy field, TLS 1.3
+  via the `supported_versions` extension, non-Handshake/ClientHello/truncated/too-short →
+  `None`, real pcap extraction); `backend/tests/test_nettrace_reconstruct.py` grew by 2 (a real
+  crafted TLS 1.3 `ServerHello` alongside a seeded `raw.pcap` sets `tls_version == "TLS 1.3"`; no
+  `raw.pcap` present keeps `tls_version` `None` with no exception); combined suite 209/209 (up from
+  198/198), no other regressions; `scripts.validate_data_contracts` and
+  `check_ground_truth_boundary.py` both re-verified clean; a real, manual end-to-end run (no Docker
+  needed): a real pcap with a TCP/443 handshake, a real-shaped `ClientHello`, and a crafted
+  `ServerHello` negotiating TLS 1.3 via its extension, ingested through the live FastAPI app's real
+  `POST /capture`, then queried through the real `GET /flows` — confirmed both
+  `fingerprinted_protocol == "tls"` (already real since Phase 26) and `tls_version == "TLS 1.3"`.
+  `docs/architecture/encrypted_traffic_metadata.md` has full detail.
 
 ## Blocked phases
 
@@ -541,7 +578,7 @@ None yet — no code written.
   allowlist).
 - `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
   5/5 checks passed (see Phase 20 note above for detail).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 198/198 passed, no
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 209/209 passed, no
   regression (up from 136/136 after Phase 20: +9 `backend/tests/test_nettrace_capture.py`,
   +2 `simulator/tests/test_capture.py`, +7 net new/changed `backend/tests/test_api.py` capture
   cases minus the 1 removed generic-501 case, Phase 21; +6 `backend/tests/test_nettrace_normalize.py`,
@@ -553,13 +590,15 @@ None yet — no code written.
   `backend/tests/test_nettrace_reconstruct.py` UDP session-splitting cases and +2
   `backend/tests/test_config.py` idle-timeout config cases, Phase 25; +13 new
   `backend/tests/test_nettrace_fingerprint.py`, Phase 26, with one Phase 23
-  `fingerprinted_protocol` assertion corrected from `None` to the real `"http"`).
+  `fingerprinted_protocol` assertion corrected from `None` to the real `"http"`; +9 new
+  `backend/tests/test_nettrace_tls_metadata.py` and +2 new
+  `backend/tests/test_nettrace_reconstruct.py` TLS-version integration cases, Phase 27).
 - `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21, re-verified
-  Phase 22-26).
+  Phase 22-27).
 - `python scripts/check_ground_truth_boundary.py` — clean, zero violations; `backend/nettrace/`
-  (including `normalize.py`, `reconstruct.py`, and the new `fingerprint.py`) and
+  (including `normalize.py`, `reconstruct.py`, `fingerprint.py`, and the new `tls_metadata.py`) and
   `simulator/capture/` packages correctly do not import `simulator.ground_truth` (Phase 21,
-  re-verified Phase 22-26).
+  re-verified Phase 22-27).
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -590,6 +629,11 @@ None yet — no experiments have been run.
   `postgresql`, `redis`, `dns`); a service on a non-standard port, or a different service reusing a
   well-known port, is out of scope by design — documented in
   `docs/architecture/protocol_fingerprinting.md`, not a gap.
-- Next: Phase 27 — Encrypted Traffic Metadata (spec FR-1.7: extract permitted metadata from
-  encrypted traffic — TLS version, duration, sizes, timing, endpoint relationships — without
-  attempting decryption). Not started; awaiting explicit request.
+- Encrypted traffic metadata's TLS version extraction is honestly limited: a `ServerHello` split
+  across TCP segments isn't reassembled (stays `None`), and only `ServerHello` is parsed, never
+  `ClientHello` (which offers versions, not the negotiated one) — documented in
+  `docs/architecture/encrypted_traffic_metadata.md`, not a gap.
+- Next: Phase 28 — Flow Feature Completion (spec FR-1.8: compute the remaining per-flow features —
+  real `is_persistent` connection-persistence, and the true cross-flow meaning of
+  `destination_diversity`/`port_diversity` — that Phase 23 left honestly deferred). Not started;
+  awaiting explicit request.

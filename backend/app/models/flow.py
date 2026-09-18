@@ -69,6 +69,14 @@ class Flow(BaseModel):
             "None means 'not confidently fingerprinted' -- never a guess dressed as certainty."
         ),
     )
+    tls_version: Optional[str] = Field(
+        default=None,
+        description=(
+            "Real negotiated TLS version from a parsed ServerHello (spec Phase 27, FR-1.7). "
+            "Only set when protocol == TCP. None means no ServerHello was observed/parseable "
+            "-- never a guess."
+        ),
+    )
 
     features: FlowFeatures
 
@@ -82,4 +90,10 @@ class Flow(BaseModel):
     def _tcp_state_only_for_tcp(self) -> "Flow":
         if self.tcp_state is not None and self.protocol != TransportProtocol.TCP:
             raise ValueError("tcp_state may only be set when protocol == TCP")
+        return self
+
+    @model_validator(mode="after")
+    def _tls_version_only_for_tcp(self) -> "Flow":
+        if self.tls_version is not None and self.protocol != TransportProtocol.TCP:
+            raise ValueError("tls_version may only be set when protocol == TCP")
         return self

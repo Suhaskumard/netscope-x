@@ -5,13 +5,38 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from scapy.all import IP, TCP, Raw, wrpcap
+
 from backend.app.models.flow import Flow, TCPState
 from backend.app.models.packet import Packet, PacketDirection, TransportProtocol
 from backend.nettrace.reconstruct import reconstruct_flows
 from experiments.artifacts.io import read_jsonl, write_jsonl
-from experiments.artifacts.paths import flows_path, packets_path
+from experiments.artifacts.paths import flows_path, packets_path, pcap_path
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def _server_hello_record(legacy_version=(3, 3), supported_version=None) -> bytes:
+    random_bytes = bytes(32)
+    cipher_suite = bytes([0x13, 0x01])
+    compression_method = bytes([0x00])
+
+    extensions = b""
+    if supported_version is not None:
+        ext_body = bytes(supported_version)
+        extensions += bytes([0x00, 0x2B]) + len(ext_body).to_bytes(2, "big") + ext_body
+
+    hello_body = (
+        bytes(legacy_version)
+        + random_bytes
+        + bytes([0])
+        + cipher_suite
+        + compression_method
+        + len(extensions).to_bytes(2, "big")
+        + extensions
+    )
+    handshake = bytes([0x02]) + len(hello_body).to_bytes(3, "big") + hello_body
+    return bytes([0x16, 0x03, 0x03]) + len(handshake).to_bytes(2, "big") + handshake
 
 
 def _pkt(pid, t, src_ip, src_port, dst_ip, dst_port, protocol, size=100, flags=None) -> Packet:
@@ -443,3 +468,35 @@ def test_reconstruct_flows_mixed_tcp_and_split_udp_sessions_ordered_deterministi
     assert flows[0].first_seen == BASE
     assert flows[1].first_seen == BASE + timedelta(seconds=5)
     assert flows[2].first_seen == BASE + timedelta(seconds=30)
+
+
+def test_reconstruct_flows_real_tls_1_3_server_hello_sets_tls_version(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 51000, "10.0.0.2", 443, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 443, "10.0.0.1", 51000, TransportProtocol.TCP, flags="SYN,ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    record = _server_hello_record(legacy_version=(3, 3), supported_version=(3, 4))
+    scapy_pkt = IP(src="10.0.0.2", dst="10.0.0.1") / TCP(sport=443, dport=51000) / Raw(load=record)
+    path = pcap_path(root, "cap-1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wrpcap(str(path), [scapy_pkt])
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tls_version == "TLS 1.3"
+
+
+def test_reconstruct_flows_no_pcap_present_tls_version_stays_none(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 51000, "10.0.0.2", 443, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 443, "10.0.0.1", 51000, TransportProtocol.TCP, flags="SYN,ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tls_version is None
