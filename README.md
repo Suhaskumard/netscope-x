@@ -17,9 +17,9 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 27 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
+**Current phase: 28 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
 remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`). Next: Phase 28 — Flow Feature Completion.
+`docs/architecture/packet_capture.md`). Next: Phase 29.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -153,15 +153,24 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   Proven by a real end-to-end run (a crafted TLS 1.3 handshake ingested then queried, yielding
   `fingerprinted_protocol == "tls"` and `tls_version == "TLS 1.3"` exactly as expected) —
   `backend/nettrace/tls_metadata.py`, `docs/architecture/encrypted_traffic_metadata.md`.
+- **Flow feature completion** (Phase 28): every `FlowFeatures` field is now real — no more hardcoded
+  placeholders. `destination_diversity`/`port_diversity` are real cross-flow aggregates (distinct
+  destination IPs/ports seen, within a capture, across every flow sharing a source IP), and
+  `is_persistent` is real five-tuple recurrence detection within a capture — which, given how flows are
+  structurally built, only ever fires for UDP (Phase 25's idle-timeout session splitting is the only
+  mechanism producing multiple flows from one five-tuple). Proven by a real end-to-end run (two flows
+  from one source to two destinations correctly reporting diversity `2`/`2`; a UDP five-tuple
+  idle-gap-split into two sessions correctly reporting `is_persistent=True` for both) —
+  `backend/nettrace/reconstruct.py`, `docs/architecture/flow_feature_completion.md`.
 
 ### What doesn't exist yet
 
-Flow feature completion (real connection persistence and cross-flow diversity), topology inference,
-behavioral modeling, anomaly detection, digital twin, simulation, and counterfactual engines have not
-been implemented yet — those begin at Phase 28 and continue through the 69-phase plan. The API
-surface and data contracts are real and tested; most of the research intelligence they will
-eventually serve is not built yet. Nothing in this repository currently fabricates results — every
-phase's completion report documents exactly what was and wasn't verified by actual execution.
+Topology inference, behavioral modeling, anomaly detection, digital twin, simulation, and
+counterfactual engines have not been implemented yet — those begin at Phase 29 and continue through
+the 69-phase plan. The API surface and data contracts are real and tested; most of the research
+intelligence they will eventually serve is not built yet. Nothing in this repository currently
+fabricates results — every phase's completion report documents exactly what was and wasn't verified by
+actual execution.
 
 ## Repository layout
 

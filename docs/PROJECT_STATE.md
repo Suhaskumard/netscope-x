@@ -5,12 +5,14 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 27 (Encrypted Traffic Metadata) complete, real-verified end-to-end, including live wiring
-through `GET /flows` (no route changes needed — it already recomputes flows fresh on every request).
-Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is
-implemented and unit-verified but not yet verified against a real Docker lab (this session's
-environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
-limitations"). Phase 28 (Flow Feature Completion) not started.
+Phase 28 (Flow Feature Completion) complete, real-verified end-to-end, including live wiring through
+`GET /flows` (no route changes needed — it already recomputes flows fresh on every request). Every
+`FlowFeatures` field is now real: `destination_diversity`/`port_diversity` are cross-flow aggregates
+per canonical source IP, and `is_persistent` reflects real five-tuple recurrence within a capture (see
+`docs/architecture/flow_feature_completion.md`). Phase 21 (High-Fidelity Packet Capture)'s one open
+item still stands: controlled live capture is implemented and unit-verified but not yet verified
+against a real Docker lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -303,6 +305,32 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `POST /capture`, then queried through the real `GET /flows` — confirmed both
   `fingerprinted_protocol == "tls"` (already real since Phase 26) and `tls_version == "TLS 1.3"`.
   `docs/architecture/encrypted_traffic_metadata.md` has full detail.
+
+- Phase 28 — Flow Feature Completion (`backend/nettrace/reconstruct.py`; FR-1.8). Phase 23 left
+  `destination_diversity`, `port_diversity`, and `is_persistent` as honest placeholders (`1`, `1`,
+  `False`) because their real meaning needs information from other flows in the same capture, not just
+  a single flow's own packets. `reconstruct_flows` is now a two-pass function: pass 1 resolves
+  direction/TCP-state/fingerprint/TLS as before but defers `Flow` construction, accumulating three
+  capture-wide aggregates (a `Counter` of how many units share each five-tuple key; per-canonical-`src_ip`
+  sets of distinct destination IPs and ports seen); pass 2 builds every `Flow` using those now-complete
+  aggregates. `destination_diversity`/`port_diversity` are the real distinct destination IP/port counts
+  seen, within this capture, across every flow sharing a flow's own canonical `src_ip` (a source with no
+  other flows still gets `1`/`1`, unchanged from before). `is_persistent` is `True` when a flow's own
+  five-tuple recurs as more than one `Flow` within the capture — which, given how flows are
+  structurally constructed, only ever fires for UDP (Phase 25's idle-timeout session splitting is the
+  only mechanism that produces multiple `Flow`s from one five-tuple; TCP five-tuples never split). No
+  new `Settings` field — this is a deterministic aggregation, not a tunable heuristic (NFR-4 doesn't
+  apply). True cross-*capture* persistence (the same five-tuple recurring across separately-ingested
+  captures) remains honestly out of scope: nothing correlates flows across different `capture_id`s.
+  Verified: `backend/tests/test_nettrace_reconstruct.py` grew by 3 (real diversity counts across
+  same-source/different-destination flows, same-destination/different-port flows, and unrelated
+  sources not sharing aggregates), plus `is_persistent` assertions added to the existing UDP
+  idle-gap-split test (`True` for both sessions) and single-session UDP test (`False`); combined suite
+  212/212 (up from 209/209), no regressions; `scripts.validate_data_contracts` re-verified clean (no
+  schema fields changed); a real, manual end-to-end run building a synthetic capture (two TCP flows
+  from one source to two destinations, one UDP five-tuple idle-gap-split into two sessions) confirmed
+  every aggregate matched hand-computed expected values exactly. `docs/architecture/flow_feature_completion.md`
+  has full detail. This closes the last placeholder item from Phase 23's flow-reconstruction scope.
 
 ## Blocked phases
 
@@ -633,7 +661,9 @@ None yet — no experiments have been run.
   across TCP segments isn't reassembled (stays `None`), and only `ServerHello` is parsed, never
   `ClientHello` (which offers versions, not the negotiated one) — documented in
   `docs/architecture/encrypted_traffic_metadata.md`, not a gap.
-- Next: Phase 28 — Flow Feature Completion (spec FR-1.8: compute the remaining per-flow features —
-  real `is_persistent` connection-persistence, and the true cross-flow meaning of
-  `destination_diversity`/`port_diversity` — that Phase 23 left honestly deferred). Not started;
-  awaiting explicit request.
+- Flow feature completion's `is_persistent` only ever fires for UDP, and true cross-*capture*
+  persistence (the same five-tuple recurring across separately-ingested captures) remains out of
+  scope — documented in `docs/architecture/flow_feature_completion.md`, not a gap.
+- Next: Phase 29. Not yet scoped in this repo's docs (the master spec PDF names it, but no
+  `docs/requirements`/`docs/architecture` text describes its content the way earlier "Next" phases
+  were previewed). Not started; awaiting explicit request.

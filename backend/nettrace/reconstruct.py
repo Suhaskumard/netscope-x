@@ -27,17 +27,29 @@ packet defines its own forward direction, consistent with Phase 23's
 "first packet observed defines canonical orientation" rule applied at
 session granularity. See `docs/architecture/udp_session_modeling.md`.
 
-`Flow.features` is a required field, but several of its sub-fields are
-explicitly later phases' jobs (FR-1.8, Phase 28): `destination_diversity`/
-`port_diversity` are honestly `1` (a five-tuple flow has exactly one
-destination/port pair by definition -- their real "diversity across many
-flows" meaning is Phase 28's cross-flow aggregation), and `is_persistent`
-has no real signal available from a single capture's flow packets, so it is
-a documented, conservative `False` rather than a fabricated guess. Every
-other `FlowFeatures` field (packet/byte counts, duration, mean
-inter-arrival, forward_byte_ratio, and burstiness as a real
-coefficient-of-variation computation) is computed for real from the
-packets already grouped here.
+`Flow.features` is a required field. `destination_diversity`/`port_diversity`
+(spec Phase 28, FR-1.8) are now real cross-flow aggregates: the count of
+distinct destination IPs/ports seen, within this capture, across every flow
+sharing this flow's own canonical `src_ip` -- computed in a second pass
+over the whole capture's flows (`reconstruct_flows` builds them all before
+returning, so the data is already present; a single flow in isolation still
+gets `1`/`1`, same as before). `is_persistent` is real too: `True` when this
+flow's own five-tuple (the same symmetric `_flow_key` used for grouping)
+recurs as more than one `Flow` within this capture. In practice this only
+ever fires for UDP -- Phase 25's idle-timeout session splitting is the only
+mechanism that can produce multiple `Flow`s from one five-tuple, and a
+five-tuple recurring as separate timing-window sessions is genuine
+persistence evidence. TCP five-tuples structurally never split (Phase 23
+merges every packet sharing a five-tuple into one `Flow` regardless of how
+many SYN/FIN cycles occur inside it), so `is_persistent` is always `False`
+for TCP under the current pipeline -- a real, documented limitation, not a
+gap. True cross-*capture* persistence (the same five-tuple recurring across
+separately-ingested captures) remains out of scope: nothing correlates
+flows across different `capture_id`s. See
+`docs/architecture/flow_feature_completion.md`. Every other `FlowFeatures`
+field (packet/byte counts, duration, mean inter-arrival, forward_byte_ratio,
+and burstiness as a real coefficient-of-variation computation) is computed
+for real from the packets already grouped here, unchanged since Phase 23.
 
 `Flow.fingerprinted_protocol` (spec Phase 26, FR-1.6) is now real: a
 small, explicit (transport, well-known port) -> protocol-name lookup
@@ -75,9 +87,9 @@ top of the core flow-reconstruction contract, not a hard requirement. See
 from __future__ import annotations
 
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from backend.app.models.flow import Flow, FlowFeatures, TCPState
 from backend.app.models.packet import Packet, PacketDirection, TransportProtocol
@@ -102,7 +114,13 @@ def _flow_key(pkt: Packet) -> _FlowKey:
     return (endpoints[0], endpoints[1], pkt.protocol)
 
 
-def _compute_features(group: List[Packet], forward_bytes: int) -> FlowFeatures:
+def _compute_features(
+    group: List[Packet],
+    forward_bytes: int,
+    destination_diversity: int,
+    port_diversity: int,
+    is_persistent: bool,
+) -> FlowFeatures:
     packet_count = len(group)
     byte_count = sum(p.size_bytes for p in group)
     first_seen = group[0].timestamp
@@ -127,13 +145,9 @@ def _compute_features(group: List[Packet], forward_bytes: int) -> FlowFeatures:
         burstiness=burstiness,
         mean_inter_arrival_seconds=mean_inter_arrival,
         forward_byte_ratio=(forward_bytes / byte_count) if byte_count else 0.0,
-        # A five-tuple flow has exactly one destination and one port pair by
-        # definition -- real cross-flow diversity is Phase 28's job.
-        destination_diversity=1,
-        port_diversity=1,
-        # No cross-window recurrence signal exists within one capture's flow
-        # packets; Phase 28 owns the real computation.
-        is_persistent=False,
+        destination_diversity=destination_diversity,
+        port_diversity=port_diversity,
+        is_persistent=is_persistent,
     )
 
 
@@ -246,6 +260,16 @@ def reconstruct_flows(
     # timestamp across the whole capture, not dict/group iteration order.
     ordered_groups = sorted(units, key=lambda g: min(p.timestamp for p in g))
 
+    # Pass 1: resolve direction/state/protocol per unit and accumulate the
+    # cross-flow aggregates Phase 28's `destination_diversity`/
+    # `port_diversity`/`is_persistent` need -- these can't be known until
+    # every unit in the capture has been examined, so `Flow` construction is
+    # deferred to pass 2.
+    pending: List[dict] = []
+    key_counts: "Counter[_FlowKey]" = Counter()
+    dest_by_src: Dict[str, Set[str]] = defaultdict(set)
+    port_by_src: Dict[str, Set[Optional[int]]] = defaultdict(set)
+
     for index, group in enumerate(ordered_groups):
         group = sorted(group, key=lambda p: p.timestamp)
         canonical = group[0]
@@ -277,9 +301,34 @@ def reconstruct_flows(
             (str(canonical.src_ip), canonical.src_port)
         ) or tls_versions.get((str(canonical.dst_ip), canonical.dst_port))
 
+        key = _flow_key(canonical)
+        key_counts[key] += 1
+        src_ip_str = str(canonical.src_ip)
+        dest_by_src[src_ip_str].add(str(canonical.dst_ip))
+        port_by_src[src_ip_str].add(canonical.dst_port)
+
+        pending.append(
+            {
+                "index": index,
+                "canonical": canonical,
+                "group": group,
+                "forward_bytes": forward_bytes,
+                "tcp_state": tcp_state,
+                "fingerprinted_protocol": fingerprinted_protocol,
+                "tls_version": tls_version,
+                "key": key,
+                "src_ip_str": src_ip_str,
+            }
+        )
+
+    # Pass 2: the aggregates above are now complete for the whole capture --
+    # build every `Flow`.
+    for unit in pending:
+        canonical = unit["canonical"]
+        group = unit["group"]
         flows.append(
             Flow(
-                flow_id=f"{capture_id}:flow:{index}",
+                flow_id=f"{capture_id}:flow:{unit['index']}",
                 capture_id=capture_id,
                 src_ip=canonical.src_ip,
                 dst_ip=canonical.dst_ip,
@@ -288,10 +337,16 @@ def reconstruct_flows(
                 protocol=canonical.protocol,
                 first_seen=group[0].timestamp,
                 last_seen=group[-1].timestamp,
-                tcp_state=tcp_state,
-                fingerprinted_protocol=fingerprinted_protocol,
-                tls_version=tls_version,
-                features=_compute_features(group, forward_bytes),
+                tcp_state=unit["tcp_state"],
+                fingerprinted_protocol=unit["fingerprinted_protocol"],
+                tls_version=unit["tls_version"],
+                features=_compute_features(
+                    group,
+                    unit["forward_bytes"],
+                    destination_diversity=len(dest_by_src[unit["src_ip_str"]]),
+                    port_diversity=len(port_by_src[unit["src_ip_str"]]),
+                    is_persistent=key_counts[unit["key"]] > 1,
+                ),
             )
         )
 

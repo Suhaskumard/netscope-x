@@ -143,6 +143,54 @@ def test_reconstruct_flows_computes_real_feature_arithmetic(tmp_path: Path) -> N
     assert features.port_diversity == 1
 
 
+def test_reconstruct_flows_diversity_counts_distinct_destinations_and_ports(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt("p1", BASE + timedelta(seconds=1), "10.0.0.1", 1001, "10.0.0.3", 443, TransportProtocol.TCP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert len(flows) == 2
+    for flow in flows:
+        assert flow.features.destination_diversity == 2
+        assert flow.features.port_diversity == 2
+
+
+def test_reconstruct_flows_diversity_same_destination_different_ports(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt("p1", BASE + timedelta(seconds=1), "10.0.0.1", 1001, "10.0.0.2", 443, TransportProtocol.TCP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert len(flows) == 2
+    for flow in flows:
+        assert flow.features.destination_diversity == 1
+        assert flow.features.port_diversity == 2
+
+
+def test_reconstruct_flows_diversity_not_shared_across_different_sources(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt("p1", BASE + timedelta(seconds=1), "10.0.0.9", 2000, "10.0.0.3", 53, TransportProtocol.UDP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert len(flows) == 2
+    for flow in flows:
+        assert flow.features.destination_diversity == 1
+        assert flow.features.port_diversity == 1
+
+
 def test_reconstruct_flows_separates_distinct_five_tuples(tmp_path: Path) -> None:
     root = tmp_path / "artifacts"
     packets = [
@@ -375,6 +423,9 @@ def test_reconstruct_flows_udp_packets_close_together_stay_one_session(tmp_path:
 
     assert len(flows) == 1
     assert flows[0].features.packet_count == 2
+    # A five-tuple that never split into more than one session is not
+    # persistent -- one Flow, not a recurrence.
+    assert flows[0].features.is_persistent is False
 
 
 def test_reconstruct_flows_udp_idle_gap_splits_into_separate_sessions(tmp_path: Path) -> None:
@@ -397,6 +448,9 @@ def test_reconstruct_flows_udp_idle_gap_splits_into_separate_sessions(tmp_path: 
     for flow in flows:
         assert str(flow.src_ip) == "10.0.0.1"
         assert flow.src_port == 2000
+        # The five-tuple recurred as two sessions within this capture --
+        # real UDP connection persistence (spec Phase 28, FR-1.8).
+        assert flow.features.is_persistent is True
 
 
 def test_reconstruct_flows_udp_gap_exactly_at_timeout_does_not_split(tmp_path: Path) -> None:

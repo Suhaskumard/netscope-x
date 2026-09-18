@@ -38,9 +38,16 @@ class FlowFeatures(BaseModel):
     destination_diversity: int = Field(
         ..., ge=0, description="Distinct destination endpoints seen from the flow's source, in window."
     )
-    port_diversity: int = Field(..., ge=0)
+    port_diversity: int = Field(
+        ..., ge=0, description="Distinct destination ports seen from the flow's source, in window."
+    )
     is_persistent: bool = Field(
-        ..., description="Whether this flow recurs across observation windows (connection persistence)."
+        ...,
+        description=(
+            "Whether this flow's five-tuple recurs as more than one Flow within this capture "
+            "(spec Phase 28) -- e.g. a UDP five-tuple split into multiple idle-timeout sessions. "
+            "True cross-capture persistence isn't tracked."
+        ),
     )
 
 
