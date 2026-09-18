@@ -17,7 +17,9 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 20 of 69 complete.** Next: Phase 21 — High-Fidelity Packet Capture.
+**Current phase: 21 of 69 (PCAP ingestion complete and real-verified; controlled live capture
+implemented and unit-verified, live-Docker-lab verification pending — see
+`docs/architecture/packet_capture.md`).** Next: Phase 22 — Packet Normalization.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -41,15 +43,15 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
 - **Configuration & secrets** (Phase 08): environment-driven settings, secret handling with a
   production safety guard — `backend/app/core/config.py`, `.env.example`, `.env.test`.
 - **API architecture** (Phase 09): all 12 required endpoint groups routed and validated under
-  `/api/v1`, with consistent error handling — `backend/app/api/`. Every endpoint currently returns a
-  structured 501 (not yet implemented), since the pipeline stages that would serve real data start at
-  Phase 21 — see "What doesn't exist yet" below.
+  `/api/v1`, with consistent error handling — `backend/app/api/`. `POST /capture` is real as of
+  Phase 21; the other 11 still return a structured 501 (not yet implemented) — see "What doesn't
+  exist yet" below.
 - **Research artifact architecture** (Phase 10): reproducible on-disk formats (JSON / JSON Lines) for
   flows, graphs, snapshots, experiments, metrics, and hash-verified ground truth —
   `experiments/artifacts/`.
 - **Multi-tier network laboratory** (Phase 11): a 10-service controlled Docker lab (client, gateway,
   load balancer, 2x API, redis, database, worker, DNS, external-service simulator) that NETSCOPE-X
-  will observe starting Phase 21 — `simulator/docker/`.
+  observes starting Phase 21 — `simulator/docker/`.
 - **Network namespace isolation** (Phase 12): the lab is segmented into 4 controlled network
   boundaries (edge/app/data/external); intended request paths still work, and unintended cross-tier
   access is verifiably blocked at DNS resolution — `docs/architecture/network_laboratory.md`.
@@ -91,13 +93,22 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   real run against the live lab (all 5 checks passing) plus a deliberately induced `load-balancer-2`
   outage confirming the gate can actually detect a real problem, not just always pass —
   `scripts/validate_observatory.py`, `docs/architecture/observatory_validation.md`.
+- **High-fidelity packet capture** (Phase 21, the first NETTRACE phase): `POST /capture` is real
+  for `source=pcap_upload` — a staged file is validated as a genuine, non-empty pcap via Scapy and
+  ingested into the canonical `captures/<capture_id>/raw.pcap` artifact layout, proven by a real
+  end-to-end run through the live FastAPI app. `source=live_interface` validates the requested
+  interface against an authorized allowlist and documents the real, two-step lab-side capture
+  workflow (`simulator/capture/live.py`, run inside the lab's `client` container); that lab-side
+  half is implemented and unit-verified but not yet run against a real Docker lab in this session
+  (no Docker available in this environment) — `backend/nettrace/capture/`,
+  `simulator/capture/live.py`, `docs/architecture/packet_capture.md`.
 
 ### What doesn't exist yet
 
-No packet capture, flow reconstruction, topology inference, behavioral modeling, anomaly detection,
-digital twin, simulation, or counterfactual engine has been implemented yet — those begin at Phase 21
-and continue through the 69-phase plan. The API surface and data contracts are real and tested; the
-research intelligence they will eventually serve is not built yet. Nothing in this repository
+Flow reconstruction, topology inference, behavioral modeling, anomaly detection, digital twin,
+simulation, and counterfactual engines have not been implemented yet — those begin at Phase 22 and
+continue through the 69-phase plan. The API surface and data contracts are real and tested; most of
+the research intelligence they will eventually serve is not built yet. Nothing in this repository
 currently fabricates results — every phase's completion report documents exactly what was and wasn't
 verified by actual execution.
 
@@ -108,6 +119,8 @@ backend/app/
   models/     Phase 04 data contracts (Pydantic)
   core/       Phase 07-08 observability + configuration
   api/        Phase 09 API routes (versioned /api/v1)
+backend/nettrace/
+  capture/    Phase 21 PCAP ingestion (pure logic; no Docker/live-socket dependency)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
@@ -116,10 +129,11 @@ simulator/
   traffic/        Phase 14-15 traffic + protocol workload generators, Phase 19 replay engine
   ground_truth/   Phase 16 authoritative ground-truth generator
   scenarios/      Phase 18 controlled network architecture generator
+  capture/        Phase 21 lab-side controlled live capture (Scapy sniff/wrpcap)
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-20 design docs
+  architecture/   Phase 04-05, 09-21 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -130,8 +144,8 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (136 tests)
-docker compose up --build      # backend (placeholder API) + frontend dev containers
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (153 tests)
+docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
 ```

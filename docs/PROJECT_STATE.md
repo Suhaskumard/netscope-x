@@ -5,7 +5,11 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 20 (Observatory Validation) complete. Phase 21 (High-Fidelity Packet Capture) not started.
+Phase 21 (High-Fidelity Packet Capture) complete for PCAP ingestion, real-verified end-to-end;
+controlled live capture is implemented and unit-verified but not yet verified against a real Docker
+lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations"). Phase 22 (Packet Normalization) not
+started.
 
 ## Process note
 
@@ -78,6 +82,35 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   deliberately induced failure (`load-balancer-2` stopped) proving the gate can actually detect a
   real problem; `simulator/tests/test_observatory_validation.py`;
   `docs/architecture/observatory_validation.md`; `README.md` updated)
+
+- Phase 21 — High-Fidelity Packet Capture (`backend/nettrace/capture/{ingest,models,errors,
+  authorized_interfaces}.py`, `simulator/capture/live.py`; the first NETTRACE phase — first real
+  pipeline/inference code, as opposed to Phases 0-10's scaffolding and 11-20's lab-building).
+  `POST /capture` (`backend/app/api/routes/capture.py`) is real for `source=pcap_upload`: validates
+  a staged file as a genuine, non-empty pcap via Scapy's `PcapReader`, then ingests it into
+  `experiments/artifacts`' canonical `captures/<capture_id>/raw.pcap` (Phase 10) plus a
+  `CaptureManifest` (plain `write_json`, not ground truth). `source=live_interface` validates the
+  requested interface against an allowlist (`backend/nettrace/capture/authorized_interfaces.py`,
+  default `eth0`) and returns 202 documenting a real two-step lab-side workflow rather than
+  pretending the backend itself opens a socket into a lab network namespace it has no access to
+  (the backend and the lab run as two separate, unconnected Docker Compose projects — see
+  `docs/architecture/packet_capture.md` for the full architecture decision). `simulator/capture/
+  live.py` is the real Scapy `sniff()`/`wrpcap()` mechanics, meant to run inside the lab's `client`
+  container (granted `cap_add: [NET_RAW, NET_ADMIN]` in `simulator/docker/docker-compose.yml`,
+  plus a new `../../backend:/opt/netscope/backend:ro` mount so it can import
+  `backend.nettrace.capture.{authorized_interfaces,errors}` -- both deliberately stdlib-only, no
+  Pydantic, so `client`'s bare-Python image doesn't need the backend's full dependency stack).
+  `scapy==2.6.1` added to `requirements.txt` (spec §6's first real use of its designated
+  network-analysis library). Verified: `backend/tests/test_nettrace_capture.py` +
+  `simulator/tests/test_capture.py` + updated `backend/tests/test_api.py` (153/153 combined, up
+  from 136/136), plus a real, manual end-to-end run (no Docker needed for this half): a real
+  Scapy-built pcap ingested through the live FastAPI app via `TestClient`, with the resulting
+  `raw.pcap`/`manifest.json` confirmed on disk, alongside real 422/403 rejections for a missing
+  file, an invalid pcap, and an unauthorized interface. **Not verified this phase**: an actual live
+  capture against the real Docker lab -- this session's environment has no Docker installation at
+  all (confirmed: `docker` not on PATH, no Docker Desktop install found), unlike the environment
+  Phases 11-20 were verified in. Honestly reported as an open item rather than fabricated (spec
+  Rule 2/3); see `docs/architecture/packet_capture.md` "Known limitations" and "Status".
 
 ## Blocked phases
 
@@ -353,8 +386,14 @@ None yet — no code written.
   allowlist).
 - `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
   5/5 checks passed (see Phase 20 note above for detail).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 136/136 passed, no
-  regression.
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 153/153 passed, no
+  regression (up from 136/136 after Phase 20: +9 `backend/tests/test_nettrace_capture.py`,
+  +2 `simulator/tests/test_capture.py`, +7 net new/changed `backend/tests/test_api.py` capture
+  cases minus the 1 removed generic-501 case, Phase 21).
+- `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21).
+- `python scripts/check_ground_truth_boundary.py` — clean, zero violations; new
+  `backend/nettrace/` and `simulator/capture/` packages correctly do not import
+  `simulator.ground_truth` (Phase 21).
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -369,6 +408,13 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 21 — High-Fidelity Packet Capture (PCAP ingestion + controlled live capture --
-the first NETTRACE phase; only in authorized/controlled environments). Not started; awaiting
-explicit request.
+- Verify `simulator/capture/live.py`'s controlled live capture against a real Docker lab (bring up
+  `simulator/docker/docker-compose.yml`, confirm `client`'s real interface name, run a real capture
+  while Phase 14's traffic generator runs, verify the pcap's packets against real container IPs)
+  once Docker is available in the working environment — see `docs/architecture/packet_capture.md`
+  "Known limitations". Not blocking Phase 22, since Phase 22 (Normalization) consumes any real
+  `captures/<capture_id>/raw.pcap`, regardless of whether it arrived via `pcap_upload` or a
+  completed live-capture-then-upload workflow.
+- Next: Phase 22 — Packet Normalization (spec: normalize timestamps, IPs, ports, protocol, size,
+  direction, transport info into the existing `Packet` model, `backend/app/models/packet.py`). Not
+  started; awaiting explicit request.

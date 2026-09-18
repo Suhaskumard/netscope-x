@@ -10,6 +10,7 @@ Layout:
     <root>/
       captures/<capture_id>/
         raw.pcap
+        manifest.json                 (ingestion metadata, spec Phase 21)
         flows.jsonl
         topology/<graph_id>.json
         snapshots/<snapshot_id>.json
@@ -41,6 +42,10 @@ def capture_dir(root: Path, capture_id: str) -> Path:
 
 def pcap_path(root: Path, capture_id: str) -> Path:
     return capture_dir(root, capture_id) / "raw.pcap"
+
+
+def capture_manifest_path(root: Path, capture_id: str) -> Path:
+    return capture_dir(root, capture_id) / "manifest.json"
 
 
 def flows_path(root: Path, capture_id: str) -> Path:

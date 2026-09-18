@@ -46,6 +46,21 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, ge=1, le=65535)
     secret_key: SecretStr = SecretStr(_INSECURE_DEFAULT_SECRET)
 
+    # Phase 21 -- packet capture (spec §5 Safety Boundary; FR-1.1).
+    artifact_root: Path = Field(
+        default=REPO_ROOT / "experiments_data",
+        description="Root for experiments/artifacts.paths-shaped output (captures/, ground_truth/, ...).",
+    )
+    upload_staging_dir: Path = Field(
+        default=REPO_ROOT / "experiments_data" / "inbox",
+        description="Where an already-uploaded pcap_filename (POST /capture, source=pcap_upload) is read from.",
+    )
+    # Note: the authorized live-capture interface allowlist is NOT a Settings
+    # field -- it lives in backend.nettrace.capture.authorized_interfaces
+    # (stdlib-only, reads NETSCOPE_AUTHORIZED_CAPTURE_INTERFACES directly),
+    # so simulator/capture/live.py can share the exact same check without
+    # needing Pydantic installed inside its lab container.
+
     @field_validator("log_level")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:

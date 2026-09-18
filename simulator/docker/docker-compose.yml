@@ -20,12 +20,24 @@ services:
     # python3 added in Phase 14 so `client` can also run the reproducible
     # traffic generator (simulator/traffic/) against the lab -- it already
     # had curl/bind-tools from Phase 11 for connectivity verification.
-    command: sh -c "apk add --no-cache curl bind-tools python3 >/dev/null && sleep infinity"
+    # py3-pip/libpcap + cap_add added in Phase 21 so `client` can also run
+    # simulator/capture/live.py's real Scapy sniff() against its own
+    # edge-network interface -- raw-socket capture needs CAP_NET_RAW, and
+    # Scapy's libpcap-backed sniffer needs CAP_NET_ADMIN to set promiscuous
+    # mode; no other container is granted this (spec §5 Safety Boundary --
+    # capture stays scoped to one authorized, documented vantage point).
+    command: sh -c "apk add --no-cache curl bind-tools python3 py3-pip libpcap-dev >/dev/null && pip install --no-cache-dir --break-system-packages scapy==2.6.1 >/dev/null && sleep infinity"
     volumes:
       - ..:/opt/netscope/simulator:ro
+      # backend/nettrace/capture/{authorized_interfaces,errors}.py are
+      # stdlib-only (no Pydantic/FastAPI) specifically so simulator/capture/
+      # live.py can import them here without installing the backend's full
+      # dependency stack in this lab container -- just this one directory.
+      - ../../backend:/opt/netscope/backend:ro
     working_dir: /opt/netscope
     environment:
       PYTHONPATH: /opt/netscope
+    cap_add: [NET_RAW, NET_ADMIN]
     networks: [edge]
 
   gateway:

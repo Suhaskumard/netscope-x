@@ -1,9 +1,11 @@
-"""Phase 09 API architecture tests.
+"""Phase 09 API architecture tests, updated for Phase 21.
 
-Verifies all 12 required endpoint groups (spec Phase 09) exist, return a
-consistent 501 ErrorResponse envelope (since their backing pipeline
-stages don't exist yet), that validation errors use the same envelope
-shape, and that the OpenAPI schema documents every required path.
+Verifies the 11 still-unimplemented endpoint groups (spec Phase 09) return
+a consistent 501 ErrorResponse envelope, that validation errors use the
+same envelope shape, and that the OpenAPI schema documents every required
+path. `POST /capture` is no longer in the 501 list -- it is real as of
+Phase 21 (High-Fidelity Packet Capture); its behavior is covered by the
+dedicated tests at the bottom of this file.
 """
 
 from __future__ import annotations
@@ -12,10 +14,27 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from scapy.all import IP, TCP, wrpcap
 
+from backend.app.core.config import get_settings
 from backend.app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _capture_dirs(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("NETSCOPE_UPLOAD_STAGING_DIR", str(tmp_path / "inbox"))
+    monkeypatch.setenv("NETSCOPE_ARTIFACT_ROOT", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _write_real_pcap(path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packets = [IP(src="10.0.0.1", dst="10.0.0.2") / TCP(sport=1234, dport=80) for _ in range(3)]
+    wrpcap(str(path), packets)
 
 
 def _assert_error_envelope(response, expected_status: int) -> None:
@@ -29,7 +48,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
 @pytest.mark.parametrize(
     "method,path,kwargs",
     [
-        ("post", "/api/v1/capture", dict(json={"source": "pcap_upload", "pcap_filename": "x.pcap"})),
         ("get", "/api/v1/flows", dict(params={"capture_id": "cap1"})),
         ("get", "/api/v1/topology", dict(params={"capture_id": "cap1"})),
         ("get", "/api/v1/behaviors/node-1", dict()),
@@ -90,10 +108,12 @@ def test_endpoint_returns_structured_501(method: str, path: str, kwargs: dict) -
     assert response.json()["error"] == "not_implemented"
 
 
-def test_all_12_endpoint_groups_covered() -> None:
-    # Sanity check on the parametrized test above: if a group is ever
-    # renamed/removed from router.py without updating this test file, this
-    # count catches the drift instead of silently under-testing.
+def test_all_12_endpoint_groups_exist() -> None:
+    # Sanity check: if a group is ever renamed/removed from router.py
+    # without updating this test file, this count catches the drift
+    # instead of silently under-testing. Only 11 of these 12 are covered
+    # by the generic 501 parametrization above -- /capture is real
+    # (spec Phase 21) and tested separately below.
     paths = {
         "/api/v1/capture",
         "/api/v1/flows",
@@ -141,6 +161,85 @@ def test_openapi_schema_documents_all_required_paths() -> None:
         "/api/v1/metrics",
     }
     assert required.issubset(schema["paths"].keys())
+
+
+# --- Phase 21: POST /capture real behavior ---
+
+
+def test_capture_pcap_upload_ingests_real_pcap(tmp_path) -> None:
+    settings = get_settings()
+    _write_real_pcap(settings.upload_staging_dir / "real.pcap")
+
+    response = client.post(
+        "/api/v1/capture",
+        json={"source": "pcap_upload", "pcap_filename": "real.pcap"},
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "accepted"
+    assert body["packet_count"] == 3
+    assert body["capture_id"]
+
+    ingested = settings.artifact_root / "captures" / body["capture_id"] / "raw.pcap"
+    assert ingested.is_file()
+
+
+def test_capture_pcap_upload_missing_file_returns_422() -> None:
+    response = client.post(
+        "/api/v1/capture",
+        json={"source": "pcap_upload", "pcap_filename": "does_not_exist.pcap"},
+    )
+    _assert_error_envelope(response, 422)
+    assert response.json()["error"] == "invalid_pcap"
+
+
+def test_capture_pcap_upload_invalid_pcap_content_returns_422() -> None:
+    settings = get_settings()
+    bad = settings.upload_staging_dir / "bad.pcap"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_bytes(b"not a real pcap file")
+
+    response = client.post(
+        "/api/v1/capture",
+        json={"source": "pcap_upload", "pcap_filename": "bad.pcap"},
+    )
+    _assert_error_envelope(response, 422)
+    assert response.json()["error"] == "invalid_pcap"
+
+
+def test_capture_pcap_upload_without_filename_returns_422() -> None:
+    response = client.post("/api/v1/capture", json={"source": "pcap_upload"})
+    _assert_error_envelope(response, 422)
+    assert response.json()["error"] == "validation_error"
+
+
+def test_capture_pcap_upload_rejects_path_traversal_filename() -> None:
+    response = client.post(
+        "/api/v1/capture",
+        json={"source": "pcap_upload", "pcap_filename": "../../etc/passwd"},
+    )
+    _assert_error_envelope(response, 422)
+    assert response.json()["error"] == "validation_error"
+
+
+def test_capture_live_interface_authorized_returns_202_with_workflow_note() -> None:
+    response = client.post(
+        "/api/v1/capture",
+        json={"source": "live_interface", "interface": "eth0"},
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "accepted"
+    assert "simulator.capture.live" in body["note"]
+
+
+def test_capture_live_interface_unauthorized_returns_403() -> None:
+    response = client.post(
+        "/api/v1/capture",
+        json={"source": "live_interface", "interface": "eth99"},
+    )
+    _assert_error_envelope(response, 403)
+    assert response.json()["error"] == "unauthorized_interface"
 
 
 def test_health_endpoint_still_unversioned_and_unaffected() -> None:
