@@ -14,6 +14,7 @@ Layout:
         packets.jsonl                 (normalized packets, spec Phase 22)
         flows.jsonl
         topology/<graph_id>.json
+        fingerprints.jsonl            (assembled BehavioralFingerprints, spec Phase 35)
         snapshots/<snapshot_id>.json
       ground_truth/<capture_id>/
         topology.json
@@ -59,6 +60,13 @@ def flows_path(root: Path, capture_id: str) -> Path:
 
 def topology_path(root: Path, capture_id: str, graph_id: str) -> Path:
     return capture_dir(root, capture_id) / "topology" / f"{graph_id}.json"
+
+
+def fingerprints_path(root: Path, capture_id: str) -> Path:
+    """One capture's assembled BehavioralFingerprints (spec Phase 35), one per
+    node per observation window, as JSON Lines -- a collection, unlike
+    topology_path's single-object TopologyGraph."""
+    return capture_dir(root, capture_id) / "fingerprints.jsonl"
 
 
 def snapshot_path(root: Path, capture_id: str, snapshot_id: str) -> Path:

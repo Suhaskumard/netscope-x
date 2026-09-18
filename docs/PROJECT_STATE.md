@@ -5,30 +5,26 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 34 (Multi-Window Behavior Modeling) complete, unit-verified.
-`compute_node_features_all_windows`/`compute_node_features_for_window`
-(`backend/flowmind/features/windows.py`) decide how Phase 33's window-agnostic
-`compute_node_behavioral_features` gets invoked per `ObservationWindow`: a TRAILING window anchored
-on the node's own latest observed activity (not the whole capture's latest activity, and not calendar
-time) -- for window size `S`, keep only the node's touching flows within `S` seconds of that node's
-own latest `last_seen`. Anchoring per-node (not per-capture) means a quiet node's window isn't dragged
-forward by unrelated nodes' later traffic, and it makes the three windows naturally NESTED
-(`long ⊇ medium ⊇ short`) rather than mutually exclusive partitions, matching RQ2's own "does *more*
-observation improve accuracy" framing. Default durations -- `behavior_window_short_seconds=10.0`,
-`_medium_seconds=60.0`, `_long_seconds=300.0` (new `Settings` fields, `backend/app/core/config.py`,
-guarded by a `model_validator` requiring strict ordering) -- are evidence-graded, not uniformly
-guessed: short/medium match this repo's own real capture/test timescales (`simulator/capture/live.py`'s
-default duration; the scale `simulator/tests/test_patterns.py` needs for multi-cycle patterns); long
-(5 minutes) has no direct repo evidence and is documented explicitly as a provisional extrapolation.
-`flows_touching_node` was extracted from Phase 33's `node_features.py` (behavior-preserving refactor,
-re-verified against Phase 33's own test suite) so window-filtering code reuses the exact same
-node-membership test rather than duplicating it. Still produces `Dict[ObservationWindow,
-NodeBehavioralFeatures]`, not a real `BehavioralFingerprint` with persistence -- explicitly Phase 35's
-job. See `docs/architecture/multi_window_behavior_modeling.md` for the full design and verification
-record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture
-is implemented and unit-verified but not yet verified against a real Docker lab (this session's
-environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
-limitations").
+Phase 35 (Node Behavioral Fingerprints) complete, unit-verified.
+`assemble_node_fingerprint`/`assemble_all_node_fingerprints`
+(`backend/flowmind/fingerprints/node_fingerprint.py`) wrap Phase 33-34's per-window
+`NodeBehavioralFeatures` into real `BehavioralFingerprint` instances by a plain field copy
+(`node_id`/`window`/`computed_at` identity added, the six feature fields unchanged -- no new
+computation), verified byte-for-byte against `compute_node_features_for_window`'s own output. One
+fingerprint is produced per node **per window** (all three `ObservationWindow` values, not a single
+default), since Phase 34's own deliverable was explicitly per-window results and nothing forecloses
+keeping all three; every fingerprint from one batch call shares a single `computed_at`. Persisted as
+JSON Lines via a new `experiments/artifacts/paths.py::fingerprints_path` and the existing generic
+`write_jsonl`/`read_jsonl` -- no new I/O code. `GET /behaviors/{node_id}` (`backend/app/api/routes/
+behaviors.py`) stays a 501 stub: its response schema, fixed back in Phase 09, is `NodeBehavior {
+fingerprint: BehavioralFingerprint, role: RoleClassification }`, and `role` is explicitly Phase
+36-37's job -- wiring the route now would mean fabricating a role, which this project's "no fake
+metrics" discipline forbids. This is a structural fact about the route's fixed contract, not a scope
+choice this phase made. See `docs/architecture/node_behavioral_fingerprints.md` for the full design
+and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands:
+controlled live capture is implemented and unit-verified but not yet verified against a real Docker
+lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -510,6 +506,31 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   multi_window_behavior_modeling.md` has full detail, including the nesting-vs-partitioning design
   argument.
 
+- Phase 35 — Node Behavioral Fingerprints (`backend/flowmind/fingerprints/node_fingerprint.py`, new
+  `backend/flowmind/fingerprints/` package; `experiments/artifacts/paths.py` gains
+  `fingerprints_path`; FR-1.13). `assemble_node_fingerprint(flows, node, window, window_seconds=None,
+  computed_at=None) -> BehavioralFingerprint` calls Phase 34's `compute_node_features_for_window` and
+  wraps its output verbatim into a real `BehavioralFingerprint` (`node_id`/`window`/`computed_at`
+  added, six feature fields copied unchanged via `**asdict(features)`). `assemble_all_node_
+  fingerprints(flows, nodes, ...)` produces one fingerprint per node per window (all three, not a
+  single default -- Phase 34's own output was explicitly per-window), sharing one `computed_at` per
+  batch call. Persisted via a new `fingerprints_path` (`captures/<capture_id>/fingerprints.jsonl`)
+  and the existing generic `write_jsonl`/`read_jsonl` -- no new I/O primitives. `GET
+  /behaviors/{node_id}` stays a 501 stub: its `NodeBehavior { fingerprint, role }` response, fixed at
+  Phase 09, also requires a `RoleClassification` that doesn't exist until Phase 36-37 -- a structural
+  blocker on the route's own contract, not a scope decision this phase made; wiring it now would mean
+  fabricating a role. Verified: new `backend/tests/test_flowmind_fingerprints.py` (7/7: assembled
+  fingerprint fields exactly match `compute_node_features_for_window`'s own output; identity fields
+  set correctly with `computed_at` bounded by real before/after timestamps; a 2-node batch produces
+  exactly 6 fingerprints covering all three windows per node; one shared `computed_at` per batch; zero
+  nodes returns `[]`; fingerprints round-trip through `write_jsonl`/`read_jsonl` byte-for-byte equal;
+  a real end-to-end run through `reconstruct_flows`/`discover_nodes` producing `len(nodes)*3` valid
+  fingerprints); combined suite 272/272 (up from 265/265), no regressions; `scripts.
+  validate_data_contracts` re-verified clean (38/38, `BehavioralFingerprint` schema unchanged);
+  `scripts.check_ground_truth_boundary` re-verified clean. `docs/architecture/
+  node_behavioral_fingerprints.md` has full detail, including the structural argument for why the API
+  route stays unwired.
+
 ## Blocked phases
 
 None.
@@ -864,7 +885,12 @@ None yet — no experiments have been run.
   in this repo's own captures/tests (all of which run under a minute) — a documented, explicit
   extrapolation pending real multi-minute lab data, not a gap; see
   `docs/architecture/multi_window_behavior_modeling.md`.
-- Next: Phase 35 (Node Behavioral Fingerprints). Expected to assemble Phase 34's per-window
-  `NodeBehavioralFeatures` results into real, persisted `BehavioralFingerprint` instances
-  (`node_id`/`window`/`computed_at` identity plus the feature fields) for every node in a topology —
-  not yet scoped beyond FR-1.13's one-line mention. Not started; awaiting explicit request.
+- `GET /behaviors/{node_id}` remains a 501 stub after Phase 35: its Phase-09-fixed `NodeBehavior`
+  response requires a `RoleClassification` that doesn't exist until Phase 36-37 — a structural
+  blocker on the route's own contract, not a gap in Phase 35's own scope; documented in
+  `docs/architecture/node_behavioral_fingerprints.md`.
+- Next: Phase 36 (Service Role Inference). Expected to implement the Naive-Bayes-style probabilistic
+  classifier `docs/architecture/algorithm_selection.md` §2 already selected, consuming Phase 35's
+  `BehavioralFingerprint`s to produce real `RoleClassification` instances — likely also what finally
+  lets `GET /behaviors/{node_id}` go real (jointly with Phase 37's calibration work) — not yet scoped
+  beyond FR-1.14/RQ2. Not started; awaiting explicit request.
