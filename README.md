@@ -17,9 +17,9 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 23 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
+**Current phase: 24 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
 remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`). Next: Phase 24 — TCP State Tracking.
+`docs/architecture/packet_capture.md`). Next: Phase 25 — UDP Session Modeling.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -44,8 +44,8 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   production safety guard — `backend/app/core/config.py`, `.env.example`, `.env.test`.
 - **API architecture** (Phase 09): all 12 required endpoint groups routed and validated under
   `/api/v1`, with consistent error handling — `backend/app/api/`. `POST /capture` (Phase 21) and
-  `GET /flows` (Phase 23) are real; the other 10 still return a structured 501 (not yet
-  implemented) — see "What doesn't exist yet" below.
+  `GET /flows` (Phase 23, now including real TCP state as of Phase 24) are real; the other 10 still
+  return a structured 501 (not yet implemented) — see "What doesn't exist yet" below.
 - **Research artifact architecture** (Phase 10): reproducible on-disk formats (JSON / JSON Lines) for
   flows, graphs, snapshots, experiments, metrics, and hash-verified ground truth —
   `experiments/artifacts/`.
@@ -114,20 +114,29 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   flows and finally resolving each packet's `direction` (the initiator's orientation becomes
   `forward`, the reply becomes `reverse`). `FlowFeatures` is populated with everything honestly
   computable now (packet/byte counts, duration, mean inter-arrival, forward-byte-ratio, burstiness);
-  `tcp_state`/`fingerprinted_protocol` stay `None` and `is_persistent` stays `False`, all explicitly
-  deferred to Phases 24/26/28 — proven by a real end-to-end run (a real TCP exchange and a separate
-  UDP exchange, ingested then queried, with byte-exact features and correctly resolved directions
-  confirmed both in the API response and on disk) — `backend/nettrace/reconstruct.py`,
+  `fingerprinted_protocol` stays `None` and `is_persistent` stays `False`, explicitly deferred to
+  Phases 26/28 — proven by a real end-to-end run (a real TCP exchange and a separate UDP exchange,
+  ingested then queried, with byte-exact features and correctly resolved directions confirmed both
+  in the API response and on disk) — `backend/nettrace/reconstruct.py`,
   `docs/architecture/flow_reconstruction.md`.
+- **TCP state tracking** (Phase 24): `Flow.tcp_state` is now real for every TCP flow — a
+  retransmission-safe finite state machine walks each flow's packets in order (flags + already-
+  resolved direction), landing on `established`/`closing`/`closed`/`reset`/`partial` (a duplicate
+  SYN/FIN never corrupts the result). UDP flows keep `tcp_state = None`. Mid-stream TCP *data*
+  retransmission detection (by sequence number) remains an honest, documented limitation — `Packet`
+  carries no TCP sequence/ack field — proven by a real end-to-end run (three distinct real TCP
+  exchanges — full handshake+teardown, handshake+RST, bare mid-stream ACK-only with no SYN —
+  ingested then queried, yielding `closed`/`reset`/`partial` exactly as expected) —
+  `backend/nettrace/reconstruct.py`, `docs/architecture/tcp_state_tracking.md`.
 
 ### What doesn't exist yet
 
-TCP state tracking, topology inference, behavioral modeling, anomaly detection, digital twin,
-simulation, and counterfactual engines have not been implemented yet — those begin at Phase 24 and
-continue through the 69-phase plan. The API surface and data contracts are real and tested; most of
-the research intelligence they will eventually serve is not built yet. Nothing in this repository
-currently fabricates results — every phase's completion report documents exactly what was and wasn't
-verified by actual execution.
+UDP session modeling, protocol fingerprinting, topology inference, behavioral modeling, anomaly
+detection, digital twin, simulation, and counterfactual engines have not been implemented yet — those
+begin at Phase 25 and continue through the 69-phase plan. The API surface and data contracts are real
+and tested; most of the research intelligence they will eventually serve is not built yet. Nothing in
+this repository currently fabricates results — every phase's completion report documents exactly what
+was and wasn't verified by actual execution.
 
 ## Repository layout
 

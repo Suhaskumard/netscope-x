@@ -18,12 +18,27 @@ destination/port pair by definition -- their real "diversity across many
 flows" meaning is Phase 28's cross-flow aggregation), and `is_persistent`
 has no real signal available from a single capture's flow packets, so it is
 a documented, conservative `False` rather than a fabricated guess.
-`tcp_state`/`fingerprinted_protocol` stay `None`, matching the model's own
-"`None` means not yet determined" design (see `Flow`'s own docstring) --
-those are Phase 24/26's jobs. Every other `FlowFeatures` field
-(packet/byte counts, duration, mean inter-arrival, forward_byte_ratio, and
-burstiness as a real coefficient-of-variation computation) is computed for
-real from the packets already grouped here.
+`fingerprinted_protocol` stays `None`, matching the model's own "`None`
+means not yet determined" design (see `Flow`'s own docstring) -- that is
+Phase 26's job. Every other `FlowFeatures` field (packet/byte counts,
+duration, mean inter-arrival, forward_byte_ratio, and burstiness as a real
+coefficient-of-variation computation) is computed for real from the
+packets already grouped here.
+
+`Flow.tcp_state` (spec Phase 24, FR-1.4) is now real for TCP flows: a
+finite state machine (`_compute_tcp_state`) walks each flow's packets in
+timestamp order using their already-resolved `PacketDirection` and their
+`tcp_flags`, tracking whether a SYN was ever seen, whether the three-way
+handshake completed, and which direction(s) sent a FIN, to land on one of
+`TCPState`'s six values. It is retransmission-safe by construction: state
+is tracked with booleans, not counters, so a retransmitted SYN/FIN/RST in
+a direction already observed is a structural no-op rather than a
+corrupting double-transition -- see `docs/architecture/tcp_state_tracking.md`
+for the full transition table and for why real mid-stream *data*
+retransmission detection (which would need TCP sequence numbers) is
+honestly out of scope: `Packet` carries no sequence/ack field. UDP flows
+never call the helper; `tcp_state` stays `None`, also structurally
+enforced by `Flow`'s own `_tcp_state_only_for_tcp` validator.
 """
 
 from __future__ import annotations
@@ -31,9 +46,9 @@ from __future__ import annotations
 import statistics
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from backend.app.models.flow import Flow, FlowFeatures
+from backend.app.models.flow import Flow, FlowFeatures, TCPState
 from backend.app.models.packet import Packet, PacketDirection, TransportProtocol
 from experiments.artifacts.io import read_jsonl, write_jsonl
 from experiments.artifacts.paths import flows_path, packets_path
@@ -89,6 +104,55 @@ def _compute_features(group: List[Packet], forward_bytes: int) -> FlowFeatures:
     )
 
 
+def _compute_tcp_state(directed_group: List[Tuple[Packet, PacketDirection]]) -> Optional[TCPState]:
+    """Finite state machine over a TCP flow's packets, in timestamp order,
+    using each packet's already-resolved `PacketDirection` (never
+    re-derived here). Retransmission-safe by construction: every signal is
+    tracked with a boolean, not a counter, so a retransmitted SYN/FIN in a
+    direction already observed is a structural no-op, not a corrupting
+    double-transition. See `docs/architecture/tcp_state_tracking.md` for
+    the full transition table and rationale.
+    """
+    if not directed_group:
+        return None
+
+    saw_syn = False
+    established = False
+    fwd_fin = False
+    rev_fin = False
+
+    for pkt, direction in directed_group:
+        flags = set((pkt.tcp_flags or "").split(",")) - {""}
+
+        if "RST" in flags:
+            return TCPState.RESET
+
+        if "SYN" in flags:
+            saw_syn = True
+            continue
+
+        if "FIN" in flags:
+            if direction == PacketDirection.FORWARD:
+                fwd_fin = True
+            else:
+                rev_fin = True
+            continue
+
+        if "ACK" in flags and saw_syn and not established and not fwd_fin and not rev_fin:
+            established = True  # the third handshake leg
+            continue
+
+    if not saw_syn or not established:
+        # No handshake ever observed, or it never completed within the
+        # capture window -- a partial session, not a fabricated guess.
+        return TCPState.PARTIAL
+    if fwd_fin and rev_fin:
+        return TCPState.CLOSED
+    if fwd_fin or rev_fin:
+        return TCPState.CLOSING
+    return TCPState.ESTABLISHED
+
+
 def reconstruct_flows(root: Path, capture_id: str) -> List[Flow]:
     """Reads `packets_path(root, capture_id)`, groups TCP/UDP packets into
     bidirectional five-tuple flows, resolves each grouped packet's
@@ -119,6 +183,7 @@ def reconstruct_flows(root: Path, capture_id: str) -> List[Flow]:
         canonical_dst = (str(canonical.dst_ip), canonical.dst_port)
 
         forward_bytes = 0
+        directed_group: List[Tuple[Packet, PacketDirection]] = []
         for pkt in group:
             orientation = (str(pkt.src_ip), pkt.src_port) == canonical_src and (
                 str(pkt.dst_ip),
@@ -127,7 +192,14 @@ def reconstruct_flows(root: Path, capture_id: str) -> List[Flow]:
             direction = PacketDirection.FORWARD if orientation else PacketDirection.REVERSE
             if direction == PacketDirection.FORWARD:
                 forward_bytes += pkt.size_bytes
+            directed_group.append((pkt, direction))
             resolved_by_id[pkt.packet_id] = pkt.model_copy(update={"direction": direction})
+
+        tcp_state = (
+            _compute_tcp_state(directed_group)
+            if canonical.protocol == TransportProtocol.TCP
+            else None
+        )
 
         flows.append(
             Flow(
@@ -140,7 +212,7 @@ def reconstruct_flows(root: Path, capture_id: str) -> List[Flow]:
                 protocol=canonical.protocol,
                 first_seen=group[0].timestamp,
                 last_seen=group[-1].timestamp,
-                tcp_state=None,
+                tcp_state=tcp_state,
                 fingerprinted_protocol=None,
                 features=_compute_features(group, forward_bytes),
             )

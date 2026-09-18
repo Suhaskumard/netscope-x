@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from backend.app.models.flow import Flow
+from backend.app.models.flow import Flow, TCPState
 from backend.app.models.packet import Packet, PacketDirection, TransportProtocol
 from backend.nettrace.reconstruct import reconstruct_flows
 from experiments.artifacts.io import read_jsonl, write_jsonl
@@ -72,7 +72,7 @@ def test_reconstruct_flows_merges_both_directions_into_one_flow(tmp_path: Path) 
     assert str(flow.dst_ip) == "10.0.0.2"
     assert flow.dst_port == 80
     assert flow.protocol == TransportProtocol.TCP
-    assert flow.tcp_state is None
+    assert flow.tcp_state == TCPState.ESTABLISHED
     assert flow.fingerprinted_protocol is None
     assert flow.features.packet_count == 3
     assert flow.features.byte_count == 160
@@ -176,3 +176,163 @@ def test_reconstruct_flows_preserves_original_packet_order(tmp_path: Path) -> No
 
     resolved = read_jsonl(packets_path(root, "cap-1"), Packet)
     assert [p.packet_id for p in resolved] == ["p0", "p1", "p2"]
+
+
+def test_reconstruct_flows_full_handshake_yields_established(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt(
+            "p1",
+            BASE + timedelta(milliseconds=10),
+            "10.0.0.2",
+            80,
+            "10.0.0.1",
+            1000,
+            TransportProtocol.TCP,
+            flags="SYN,ACK",
+        ),
+        _pkt("p2", BASE + timedelta(milliseconds=20), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tcp_state == TCPState.ESTABLISHED
+
+
+def test_reconstruct_flows_handshake_plus_one_sided_fin_yields_closing(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        _pkt("p2", BASE + timedelta(milliseconds=20), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+        _pkt("p3", BASE + timedelta(milliseconds=30), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="FIN,ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tcp_state == TCPState.CLOSING
+
+
+def test_reconstruct_flows_handshake_plus_both_fins_yields_closed(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        _pkt("p2", BASE + timedelta(milliseconds=20), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+        _pkt("p3", BASE + timedelta(milliseconds=30), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="FIN,ACK"),
+        _pkt("p4", BASE + timedelta(milliseconds=40), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="FIN,ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tcp_state == TCPState.CLOSED
+
+
+def test_reconstruct_flows_rst_yields_reset_at_any_point(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+
+    # RST right after the initial SYN -- handshake never completes.
+    early = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="RST"),
+    ]
+    _seed_packets(root, "cap-early", early)
+    assert reconstruct_flows(root, "cap-early")[0].tcp_state == TCPState.RESET
+
+    # RST after a fully-established session.
+    established = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        _pkt("p2", BASE + timedelta(milliseconds=20), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+        _pkt("p3", BASE + timedelta(milliseconds=30), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="RST"),
+    ]
+    _seed_packets(root, "cap-established", established)
+    assert reconstruct_flows(root, "cap-established")[0].tcp_state == TCPState.RESET
+
+    # RST after teardown has already started (one-sided FIN, i.e. CLOSING).
+    closing = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        _pkt("p2", BASE + timedelta(milliseconds=20), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+        _pkt("p3", BASE + timedelta(milliseconds=30), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="FIN,ACK"),
+        _pkt("p4", BASE + timedelta(milliseconds=40), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="RST"),
+    ]
+    _seed_packets(root, "cap-closing", closing)
+    assert reconstruct_flows(root, "cap-closing")[0].tcp_state == TCPState.RESET
+
+
+def test_reconstruct_flows_no_syn_yields_partial(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tcp_state == TCPState.PARTIAL
+
+
+def test_reconstruct_flows_incomplete_handshake_yields_partial(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tcp_state == TCPState.PARTIAL
+
+
+def test_reconstruct_flows_duplicate_syn_does_not_corrupt_established(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        # Retransmitted SYN, same direction, before the SYN-ACK reply arrives.
+        _pkt("p1", BASE + timedelta(milliseconds=5), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p2", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        _pkt("p3", BASE + timedelta(milliseconds=20), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tcp_state == TCPState.ESTABLISHED
+
+
+def test_reconstruct_flows_duplicate_fin_does_not_corrupt_closing(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="SYN"),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP, flags="SYN,ACK"),
+        _pkt("p2", BASE + timedelta(milliseconds=20), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="ACK"),
+        _pkt("p3", BASE + timedelta(milliseconds=30), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="FIN,ACK"),
+        # Retransmitted FIN, same direction, before its own ACK arrives.
+        _pkt("p4", BASE + timedelta(milliseconds=35), "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP, flags="FIN,ACK"),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].tcp_state == TCPState.CLOSING
+
+
+def test_reconstruct_flows_udp_flow_tcp_state_always_none(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 2000, "10.0.0.3", 53, TransportProtocol.UDP),
+        _pkt("p1", BASE + timedelta(milliseconds=10), "10.0.0.3", 53, "10.0.0.1", 2000, TransportProtocol.UDP),
+    ]
+    _seed_packets(root, "cap-1", packets)
+
+    flows = reconstruct_flows(root, "cap-1")
+
+    assert flows[0].protocol == TransportProtocol.UDP
+    assert flows[0].tcp_state is None

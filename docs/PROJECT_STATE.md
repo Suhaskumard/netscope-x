@@ -5,11 +5,12 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 23 (Five-Tuple Flow Reconstruction) complete, real-verified end-to-end, including live wiring
-into `GET /flows`. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
-live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
-session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
-limitations"). Phase 24 (TCP State Tracking) not started.
+Phase 24 (TCP State Tracking) complete, real-verified end-to-end, including live wiring through
+`GET /flows` (no route changes needed — it already recomputes flows fresh on every request). Phase 21
+(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
+and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see `docs/architecture/packet_capture.md` "Known limitations"). Phase 25 (UDP
+Session Modeling) not started.
 
 ## Process note
 
@@ -168,6 +169,40 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `packets.jsonl` on disk confirmed rewritten from Phase 22's `unknown` to correct `forward`/
   `reverse` directions in original order. `docs/architecture/flow_reconstruction.md` has full
   detail.
+
+- Phase 24 — TCP State Tracking (`backend/nettrace/reconstruct.py`; `_compute_tcp_state`, per
+  `docs/architecture/algorithm_selection.md` §1's selected TCP-finite-state-machine algorithm,
+  FR-1.4). Called from `reconstruct_flows` for every TCP flow group (never for UDP, which stays
+  structurally `None`, both by not calling the helper and via `Flow`'s existing
+  `_tcp_state_only_for_tcp` validator), consuming the `PacketDirection` `reconstruct_flows` already
+  resolves rather than re-deriving orientation. A single forward pass over each flow's
+  timestamp-sorted packets tracks four booleans (`saw_syn`, `established`, `fwd_fin`, `rev_fin`) and
+  derives one of `TCPState`'s 6 pre-declared values (Phase 04): any `RST` anywhere short-circuits to
+  `RESET` immediately; a plain `ACK` after a `SYN`/`SYN,ACK` pair and before any `FIN` completes the
+  handshake (`ESTABLISHED`); `FIN` from one direction only is `CLOSING`, from both is `CLOSED`; no
+  `SYN` ever seen, or a `SYN` whose handshake never completes within the capture window, is honestly
+  `PARTIAL` rather than a fabricated guess. Retransmission-safe by construction: every signal is a
+  boolean, not a counter, so a retransmitted SYN/FIN in a direction already observed is a structural
+  no-op, satisfying FR-1.4's "retransmissions" clause without needing a new schema field (none was
+  reserved for one at Phase 04). Honest, explicitly documented limitation: real mid-stream TCP
+  *data* retransmission detection (matching a resent sequence number) is not possible with the
+  current schema, since `Packet` (Phase 22) carries no TCP sequence/ack field — only handshake/
+  teardown-level retransmission safety (duplicate SYN/FIN) is real here, consistent with the
+  project's metadata-only, non-payload-reassembly observability model. Verified:
+  `backend/tests/test_nettrace_reconstruct.py` grew from 7/7 to 16/16 (the existing full-handshake
+  test's `tcp_state` assertion corrected from Phase 23's honest `None` placeholder to the real
+  `ESTABLISHED`; 9 new tests: `ESTABLISHED`/`CLOSING`/`CLOSED` from a real handshake+teardown
+  sequence, `RESET` at three different points, `PARTIAL` for both "no SYN" and "incomplete
+  handshake," duplicate-SYN and duplicate-FIN idempotency, UDP flows unaffected); one existing
+  `backend/tests/test_api.py` assertion similarly corrected (its 3-packet real handshake now
+  correctly asserts `tcp_state == "established"`); combined suite 177/177 (up from 168/168), no
+  other regressions; `scripts.validate_data_contracts` and `check_ground_truth_boundary.py` both
+  re-verified clean; a real, manual end-to-end run (no Docker needed): a real Scapy pcap with three
+  distinct TCP exchanges (full handshake+data+FIN-both-sides, handshake+RST, bare mid-stream
+  ACK-only with no SYN) ingested through the live FastAPI app's real `POST /capture`, then queried
+  through the real `GET /flows` — all three real `tcp_state` outcomes confirmed exactly as expected
+  (`"closed"`, `"reset"`, `"partial"`), and Phase 23's `packets.jsonl` direction resolution confirmed
+  unaffected. `docs/architecture/tcp_state_tracking.md` has full detail.
 
 ## Blocked phases
 
@@ -443,17 +478,20 @@ None yet — no code written.
   allowlist).
 - `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
   5/5 checks passed (see Phase 20 note above for detail).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 168/168 passed, no
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 177/177 passed, no
   regression (up from 136/136 after Phase 20: +9 `backend/tests/test_nettrace_capture.py`,
   +2 `simulator/tests/test_capture.py`, +7 net new/changed `backend/tests/test_api.py` capture
   cases minus the 1 removed generic-501 case, Phase 21; +6 `backend/tests/test_nettrace_normalize.py`,
   Phase 22; +7 `backend/tests/test_nettrace_reconstruct.py`, +2 net new `/flows` cases in
-  `backend/tests/test_api.py` minus the 1 removed generic-501 case, Phase 23).
+  `backend/tests/test_api.py` minus the 1 removed generic-501 case, Phase 23; +9
+  `backend/tests/test_nettrace_reconstruct.py` TCP state cases, Phase 24, with one Phase 23 test's
+  `tcp_state` assertion in that file and one in `backend/tests/test_api.py` corrected from Phase
+  23's honest `None` placeholder to the real computed value).
 - `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21, re-verified
-  Phase 22-23).
+  Phase 22-24).
 - `python scripts/check_ground_truth_boundary.py` — clean, zero violations; `backend/nettrace/`
-  (including `normalize.py` and the new `reconstruct.py`) and `simulator/capture/` packages
-  correctly do not import `simulator.ground_truth` (Phase 21, re-verified Phase 22-23).
+  (including `normalize.py` and `reconstruct.py`) and `simulator/capture/` packages correctly do
+  not import `simulator.ground_truth` (Phase 21, re-verified Phase 22-24).
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -475,6 +513,9 @@ None yet — no experiments have been run.
   "Known limitations". Not blocking Phase 22, since Phase 22 (Normalization) consumes any real
   `captures/<capture_id>/raw.pcap`, regardless of whether it arrived via `pcap_upload` or a
   completed live-capture-then-upload workflow.
-- Next: Phase 24 — TCP State Tracking (spec FR-1.4: track TCP state -- SYN/SYN-ACK/ACK/FIN/RST,
-  retransmissions, partial sessions -- populating `Flow.tcp_state`, currently always `None` per
-  Phase 23's honest scoping). Not started; awaiting explicit request.
+- Real mid-stream TCP data-retransmission detection (by duplicate sequence number) remains out of
+  scope: `Packet` carries no TCP sequence/ack field. Documented as an honest limitation in
+  `docs/architecture/tcp_state_tracking.md`, not a gap; would require extending `Packet`'s schema
+  and `normalize.py` if a later phase's requirements actually need it.
+- Next: Phase 25 — UDP Session Modeling (spec FR-1.5: model UDP sessions using endpoint, port, and
+  timing-window heuristics). Not started; awaiting explicit request.

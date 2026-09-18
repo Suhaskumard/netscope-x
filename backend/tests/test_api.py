@@ -273,7 +273,7 @@ def test_flows_returns_real_reconstructed_flows_for_ingested_capture() -> None:
     assert flow["src_ip"] == "10.0.0.1"
     assert flow["dst_ip"] == "10.0.0.2"
     assert flow["protocol"] == "TCP"
-    assert flow["tcp_state"] is None
+    assert flow["tcp_state"] == "established"
     assert flow["features"]["packet_count"] == 3
 
 

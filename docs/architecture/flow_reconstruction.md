@@ -52,7 +52,7 @@ work it doesn't own yet:
 | `forward_byte_ratio` | Real: forward bytes / total bytes | Same arithmetic category. |
 | `destination_diversity`, `port_diversity` | `1`, always | A five-tuple flow has exactly *one* destination and *one* port pair by definition — this is not a placeholder, it's the correct value for what these fields mean at flow-record granularity. Their real "diversity across many flows" meaning is Phase 28's cross-flow aggregation job. |
 | `is_persistent` | `False`, always | No cross-window recurrence signal exists within a single capture's flow packets — there's nothing here to compute honestly. Documented as Phase 28's real job (FR-1.8: "connection persistence"), not a guess. |
-| `tcp_state` | `None`, always | Explicitly Phase 24 (FR-1.4: TCP state machine). `Flow`'s own model already treats `None` as the correct "not yet determined" value here — no escape-hatch needed beyond what the schema already provides. |
+| `tcp_state` | Real: retransmission-safe TCP finite state machine over flags/direction/timestamp order | Phase 24 (FR-1.4). See `docs/architecture/tcp_state_tracking.md` for the full transition table. |
 | `fingerprinted_protocol` | `None`, always | Explicitly Phase 26 (FR-1.6). Same reasoning. |
 
 ## `GET /flows` goes live
@@ -106,7 +106,8 @@ earmarked it for this phase. Given a `capture_id`, the route:
 
 Five-tuple flow reconstruction (spec Phase 23) is fully implemented and verified end-to-end for
 real, for both TCP and UDP, including live wiring into `GET /flows`. `Packet.direction` is now
-correctly resolved relative to real reconstructed flows rather than left `unknown`. `tcp_state`,
-`fingerprinted_protocol`, and the cross-flow-aggregation-dependent parts of `FlowFeatures`
-(`is_persistent`, and the true cross-flow meaning of `destination_diversity`/`port_diversity`)
-remain honestly unset/placeholder pending Phases 24, 26, and 28 respectively.
+correctly resolved relative to real reconstructed flows rather than left `unknown`. `tcp_state` is
+now also real, as of Phase 24 (`docs/architecture/tcp_state_tracking.md`). `fingerprinted_protocol`
+and the cross-flow-aggregation-dependent parts of `FlowFeatures` (`is_persistent`, and the true
+cross-flow meaning of `destination_diversity`/`port_diversity`) remain honestly
+unset/placeholder pending Phases 26 and 28 respectively.
