@@ -230,7 +230,9 @@ response.
 - Ground-truth integrity (versioning/hashing) — already has its I/O mechanism from Phase 10
   (`experiments/artifacts/io.py`'s `write_ground_truth`/`read_ground_truth`); applying it to this
   lab's actual topology happens in Phase 16-17.
-- Additional topology archetypes (star, redundant, multi-path, dynamic) — Phase 18.
+- Additional topology archetypes (star, redundant, multi-path, dynamic) — built in Phase 18, but as
+  a separate, independently generated set (`simulator/scenarios/`, see
+  `docs/architecture/scenario_generation.md`), not as modifications to this fixed lab.
 - Actual packet capture of this lab's traffic — Phase 21 (this is the first phase where NETSCOPE-X's
   own inference pipeline will observe this exact lab and its output will be compared against this
   document as ground truth).

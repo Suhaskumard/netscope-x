@@ -21,6 +21,10 @@ Layout:
         v<N>/
           <artifact>.json
           <artifact>.json.sha256
+      scenarios/<scenario_id>/
+        declaration.json              (roles + edges, spec Phase 18)
+        docker-compose.yml            (generated, deployable)
+        topology.json                 (only if actually deployed)
       experiments/<experiment_id>/
         experiment.json
         metrics.jsonl
@@ -65,6 +69,24 @@ def ground_truth_manifest_path(root: Path, capture_id: str) -> Path:
 
 def ground_truth_generation_dir(root: Path, capture_id: str, version: int) -> Path:
     return ground_truth_dir(root, capture_id) / f"v{version}"
+
+
+def scenario_dir(root: Path, scenario_id: str) -> Path:
+    return root / "scenarios" / scenario_id
+
+
+def scenario_declaration_path(root: Path, scenario_id: str) -> Path:
+    return scenario_dir(root, scenario_id) / "declaration.json"
+
+
+def scenario_compose_path(root: Path, scenario_id: str) -> Path:
+    return scenario_dir(root, scenario_id) / "docker-compose.yml"
+
+
+def scenario_topology_path(root: Path, scenario_id: str) -> Path:
+    """Only written once a scenario is actually deployed -- see simulator/scenarios/generate.py's
+    build_topology_graph, which requires a real docker IP lookup."""
+    return scenario_dir(root, scenario_id) / "topology.json"
 
 
 def experiment_dir(root: Path, experiment_id: str) -> Path:

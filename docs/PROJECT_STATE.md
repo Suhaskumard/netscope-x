@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 17 (Ground-Truth Integrity) complete. Phase 18 (Scenario Generator) not started.
+Phase 18 (Scenario Generator) complete. Phase 19 (Traffic Replay Engine) not started.
 
 ## Process note
 
@@ -58,6 +58,14 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   numbered generations instead of overwriting; real run against the live lab produced two
   independent, hash-verified generations for one capture_id; `simulator/tests/test_ground_truth_integrity.py`;
   `docs/architecture/ground_truth.md` updated; `README.md` updated)
+- Phase 18 — Scenario Generator (`simulator/scenarios/{topologies,models,generate,compose,cli}.py`,
+  `simulator/scenarios/generic_node/app.py`; all 6 required archetypes (simple chain, star,
+  multi-tier, redundant, multi-path, dynamic service network) generated programmatically with a
+  real NetworkX-verified structural property each; one new reusable generic container image;
+  real `docker compose up` of a generated star-4 scenario with live reachability confirmed and
+  ground truth captured; `simulator/tests/test_scenarios.py`;
+  `docs/architecture/scenario_generation.md`; `docs/architecture/network_laboratory.md` updated;
+  `README.md` updated)
 
 ## Blocked phases
 
@@ -211,6 +219,27 @@ None yet — no code written.
   assumption. Verified: 11/11 new unit tests; real run against the live lab generating v1 then v2
   for the same capture_id (v1 confirmed byte-for-byte unchanged after v2 was written); tamper
   detection re-confirmed on the real versioned artifact; lab torn down after.
+- Scenario generator (`simulator/scenarios/`, Phase 18): 6 pure, parameterized generators
+  (`simulator/scenarios/topologies.py`) produce `(roles, edges)` for simple_chain/star/multi_tier/
+  redundant/multi_path/dynamic_service_network, generalizing `simulator/ground_truth/topology.py`'s
+  hand-declared-constants pattern into callable-with-parameters. Persisted as `ScenarioDeclaration`
+  (roles+edges, Pydantic/JSON) rather than a `TopologyGraph` -- a not-yet-deployed scenario has no
+  real observed IP to put in `Node.ip_addresses`, and inventing one would be fake data disguised as
+  real output (spec Rule 3); `build_topology_graph` (real `TopologyGraph`) is only called once a
+  scenario is actually deployed, reusing `simulator.ground_truth.cli.docker_ip_lookup` unchanged.
+  One new reusable building block, `simulator/scenarios/generic_node/app.py` (data-driven
+  `NODE_ROLE`/`UPSTREAM_HOSTS` env vars, live JSON reachability report), fills the gap that no
+  service in the fixed Phase 11 lab is generic/reusable -- every one hardcodes its specific peers.
+  `simulator/scenarios/compose.py` generates a real, deployable `docker-compose.yml` per scenario
+  from this image, following the fixed lab's own convention (off-the-shelf image + mounted script,
+  no bespoke Dockerfile); absolute host paths in the generated compose file, same assumption every
+  other `experiments_data/` artifact already makes (only portable on the generating machine).
+  Verified: 15/15 unit tests (real NetworkX structural property per archetype -- star hub degree,
+  multi_path node-connectivity, redundant bridge-freeness, multi_tier tier-crossing, simple_chain
+  path simplicity, dynamic_service_network determinism); real `generate-all` run producing all 6
+  scenarios; real `docker compose up` of the generated star-4 scenario (5 containers), live
+  reachability confirmed from inside the hub container (`reachability: {leaf-1..4: true}`), ground
+  truth captured with 5 distinct real container IPs, torn down after.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -247,18 +276,23 @@ None yet — no code written.
   preview returns HTTP 200), then torn down.
 - `scripts/setup.sh` run standalone from a clean state (`.venv` and `frontend/node_modules` deleted
   first) and completed successfully — the "fresh installation must work" acceptance bar for Phase 06.
-- `pytest simulator/tests` — 47/47 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
+- `pytest simulator/tests` — 62/62 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
   wire-format tests (Phase 15) + 9 ground-truth tests (Phase 16) + 11 ground-truth integrity tests
   (Phase 17: versioning round-trips, manifest/artifact hash cross-check, boundary-checker real-repo
-  scan + synthetic-violation detection), all pure/no-Docker. Plus real Docker-based runs: 3 traffic
-  patterns (Phase 14), all 6 protocols (Phase 15), a full ground-truth generation (Phase 16, with
-  hash-verified read-back and tamper-detection re-confirmed), and two successive ground-truth
-  generations for one capture_id (Phase 17, v1 confirmed unchanged after v2 was written, tamper
-  detection re-confirmed on the versioned layout) — not part of the pytest suite, manual integration
-  verification like Phases 11-13.
+  scan + synthetic-violation detection) + 15 scenario generator tests (Phase 18: real NetworkX
+  structural property per archetype, declaration/role builders, topology-graph construction), all
+  pure/no-Docker. Plus real Docker-based runs: 3 traffic patterns (Phase 14), all 6 protocols
+  (Phase 15), a full ground-truth generation (Phase 16, with hash-verified read-back and
+  tamper-detection re-confirmed), two successive ground-truth generations for one capture_id
+  (Phase 17, v1 confirmed unchanged after v2 was written, tamper detection re-confirmed on the
+  versioned layout), and a full `generate-all` + real deploy of the generated star-4 scenario
+  (Phase 18, live reachability confirmed, ground truth captured with 5 real container IPs, torn
+  down) — not part of the pytest suite, manual integration verification like Phases 11-13.
 - `python scripts/check_ground_truth_boundary.py` (Phase 17) — run standalone, zero violations found
-  in the real repository.
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 95/95 passed, no regression.
+  in the real repository (including the new `simulator/scenarios/` package, correctly inside the
+  allowlist).
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 110/110 passed, no
+  regression.
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -273,6 +307,5 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 18 — Scenario Generator (generate multiple controlled network architectures: simple
-chain, star, multi-tier, redundant, multi-path, dynamic service network). Not started; awaiting
-explicit request.
+Next: Phase 19 — Traffic Replay Engine (support deterministic replay of recorded workloads). Not
+started; awaiting explicit request.

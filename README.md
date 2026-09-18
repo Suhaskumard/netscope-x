@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 17 of 69 complete.** Next: Phase 18 — Scenario Generator.
+**Current phase: 18 of 69 complete.** Next: Phase 19 — Traffic Replay Engine.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -73,6 +73,12 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   checker (`scripts/check_ground_truth_boundary.py`) fails the build the moment any code outside
   ground-truth generation/evaluation/test code imports `simulator.ground_truth` —
   `experiments/artifacts/{ground_truth_manifest,io}.py`, `docs/architecture/ground_truth.md`.
+- **Scenario generator** (Phase 18): 6 required network architectures (simple chain, star,
+  multi-tier, redundant, multi-path, dynamic service network) generated programmatically and
+  parametrically, each with a real NetworkX-verified structural property, plus one new reusable
+  generic container image that makes every generated scenario actually deployable — proven by
+  really deploying one (`star-4`) with `docker compose up`, confirming live reachability, and
+  capturing its ground truth — `simulator/scenarios/`, `docs/architecture/scenario_generation.md`.
 
 ### What doesn't exist yet
 
@@ -97,10 +103,11 @@ simulator/
   docker/         Phase 11-15 multi-tier network laboratory
   traffic/        Phase 14-15 traffic + protocol workload generators
   ground_truth/   Phase 16 authoritative ground-truth generator
+  scenarios/      Phase 18 controlled network architecture generator
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-17 design docs
+  architecture/   Phase 04-05, 09-18 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, and (Phase 17) ground-truth import-boundary scripts
