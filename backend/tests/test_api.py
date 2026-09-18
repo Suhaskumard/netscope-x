@@ -1,11 +1,11 @@
-"""Phase 09 API architecture tests, updated for Phase 21.
+"""Phase 09 API architecture tests, updated for Phases 21 and 23.
 
-Verifies the 11 still-unimplemented endpoint groups (spec Phase 09) return
+Verifies the 10 still-unimplemented endpoint groups (spec Phase 09) return
 a consistent 501 ErrorResponse envelope, that validation errors use the
 same envelope shape, and that the OpenAPI schema documents every required
-path. `POST /capture` is no longer in the 501 list -- it is real as of
-Phase 21 (High-Fidelity Packet Capture); its behavior is covered by the
-dedicated tests at the bottom of this file.
+path. `POST /capture` (Phase 21) and `GET /flows` (Phase 23) are no longer
+in the 501 list -- their real behavior is covered by the dedicated tests
+at the bottom of this file.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from scapy.all import IP, TCP, wrpcap
+from scapy.all import IP, TCP, UDP, wrpcap
 
 from backend.app.core.config import get_settings
 from backend.app.main import app
@@ -48,7 +48,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
 @pytest.mark.parametrize(
     "method,path,kwargs",
     [
-        ("get", "/api/v1/flows", dict(params={"capture_id": "cap1"})),
         ("get", "/api/v1/topology", dict(params={"capture_id": "cap1"})),
         ("get", "/api/v1/behaviors/node-1", dict()),
         ("get", "/api/v1/anomalies", dict()),
@@ -111,9 +110,9 @@ def test_endpoint_returns_structured_501(method: str, path: str, kwargs: dict) -
 def test_all_12_endpoint_groups_exist() -> None:
     # Sanity check: if a group is ever renamed/removed from router.py
     # without updating this test file, this count catches the drift
-    # instead of silently under-testing. Only 11 of these 12 are covered
-    # by the generic 501 parametrization above -- /capture is real
-    # (spec Phase 21) and tested separately below.
+    # instead of silently under-testing. Only 10 of these 12 are covered
+    # by the generic 501 parametrization above -- /capture (Phase 21) and
+    # /flows (Phase 23) are real and tested separately below.
     paths = {
         "/api/v1/capture",
         "/api/v1/flows",
@@ -240,6 +239,63 @@ def test_capture_live_interface_unauthorized_returns_403() -> None:
     )
     _assert_error_envelope(response, 403)
     assert response.json()["error"] == "unauthorized_interface"
+
+
+# --- Phase 23: GET /flows real behavior ---
+
+
+def test_flows_unknown_capture_returns_404() -> None:
+    response = client.get("/api/v1/flows", params={"capture_id": "does-not-exist"})
+    _assert_error_envelope(response, 404)
+    assert response.json()["error"] == "capture_not_found"
+
+
+def test_flows_returns_real_reconstructed_flows_for_ingested_capture() -> None:
+    settings = get_settings()
+    path = settings.upload_staging_dir / "exchange.pcap"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packets = [
+        IP(src="10.0.0.1", dst="10.0.0.2") / TCP(sport=1000, dport=80, flags="S"),
+        IP(src="10.0.0.2", dst="10.0.0.1") / TCP(sport=80, dport=1000, flags="SA"),
+        IP(src="10.0.0.1", dst="10.0.0.2") / TCP(sport=1000, dport=80, flags="A"),
+    ]
+    wrpcap(str(path), packets)
+
+    ingest = client.post("/api/v1/capture", json={"source": "pcap_upload", "pcap_filename": "exchange.pcap"})
+    capture_id = ingest.json()["capture_id"]
+
+    response = client.get("/api/v1/flows", params={"capture_id": capture_id})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
+    flow = body["items"][0]
+    assert flow["src_ip"] == "10.0.0.1"
+    assert flow["dst_ip"] == "10.0.0.2"
+    assert flow["protocol"] == "TCP"
+    assert flow["tcp_state"] is None
+    assert flow["features"]["packet_count"] == 3
+
+
+def test_flows_respects_pagination_params() -> None:
+    settings = get_settings()
+    path = settings.upload_staging_dir / "two_flows.pcap"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packets = [
+        IP(src="10.0.0.1", dst="10.0.0.2") / TCP(sport=1000, dport=80),
+        IP(src="10.0.0.3", dst="10.0.0.4") / UDP(sport=2000, dport=53),
+    ]
+    wrpcap(str(path), packets)
+
+    ingest = client.post("/api/v1/capture", json={"source": "pcap_upload", "pcap_filename": "two_flows.pcap"})
+    capture_id = ingest.json()["capture_id"]
+
+    response = client.get("/api/v1/flows", params={"capture_id": capture_id, "limit": 1, "offset": 0})
+    body = response.json()
+    assert body["total"] == 2
+    assert len(body["items"]) == 1
+    assert body["limit"] == 1
+    assert body["offset"] == 0
 
 
 def test_health_endpoint_still_unversioned_and_unaffected() -> None:

@@ -21,3 +21,9 @@ class UnauthorizedInterfaceError(Exception):
     """Raised when a live-capture request targets an interface outside the
     authorized allowlist (spec §5 Safety Boundary) -- refused before any
     socket is opened, by both `POST /capture` and `simulator/capture/live.py`."""
+
+
+class CaptureNotFoundError(Exception):
+    """Raised when a capture_id has no ingested raw.pcap yet -- e.g. GET
+    /flows (spec Phase 23) for a capture_id nothing was ever POSTed to
+    /capture for."""

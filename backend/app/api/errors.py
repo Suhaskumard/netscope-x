@@ -1,7 +1,7 @@
 """Consistent error handling (spec Phase 09; API DESIGN PRINCIPLES:
 "avoid leaking internal exceptions", "return consistent errors").
 
-Five cases, all rendered through the same ErrorResponse envelope:
+Six cases, all rendered through the same ErrorResponse envelope:
 1. NotYetImplemented -- a real, validated endpoint whose backing pipeline
    stage doesn't exist yet (spec Phase 21+). Maps to 501.
 2. RequestValidationError -- FastAPI/Pydantic input validation failure.
@@ -13,7 +13,9 @@ Five cases, all rendered through the same ErrorResponse envelope:
 4. UnauthorizedInterfaceError (spec Phase 21) -- a live_interface capture
    request targeting an interface outside the authorized allowlist (spec
    §5 Safety Boundary). Maps to 403.
-5. Any other unhandled Exception -- logged with full detail via the
+5. CaptureNotFoundError (spec Phase 23) -- GET /flows for a capture_id with
+   no ingested raw.pcap. Maps to 404.
+6. Any other unhandled Exception -- logged with full detail via the
    observability framework (Phase 07), but the client only ever sees a
    generic message plus request_id, never the raw exception text.
 """
@@ -27,7 +29,7 @@ from fastapi.responses import JSONResponse
 from backend.app.api.schemas import ErrorResponse
 from backend.app.core.context import get_request_id
 from backend.app.core.logging import get_logger, log_exception
-from backend.nettrace.capture.errors import InvalidPcapError, UnauthorizedInterfaceError
+from backend.nettrace.capture.errors import CaptureNotFoundError, InvalidPcapError, UnauthorizedInterfaceError
 
 logger = get_logger(__name__)
 
@@ -70,6 +72,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             content=ErrorResponse(
                 error="unauthorized_interface",
+                detail=str(exc),
+                request_id=get_request_id(),
+            ).model_dump(),
+        )
+
+    @app.exception_handler(CaptureNotFoundError)
+    async def _capture_not_found_handler(request: Request, exc: CaptureNotFoundError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=ErrorResponse(
+                error="capture_not_found",
                 detail=str(exc),
                 request_id=get_request_id(),
             ).model_dump(),

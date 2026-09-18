@@ -5,11 +5,11 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 22 (Packet Normalization) complete, real-verified end-to-end. Phase 21 (High-Fidelity Packet
-Capture)'s one open item still stands: controlled live capture is implemented and unit-verified
-but not yet verified against a real Docker lab (this session's environment has no Docker
-installation — see `docs/architecture/packet_capture.md` "Known limitations"). Phase 23 (Five-Tuple
-Flow Reconstruction) not started.
+Phase 23 (Five-Tuple Flow Reconstruction) complete, real-verified end-to-end, including live wiring
+into `GET /flows`. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
+live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
+session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+limitations"). Phase 24 (TCP State Tracking) not started.
 
 ## Process note
 
@@ -133,6 +133,41 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   normalized -- every field confirmed exactly matching the synthetic input, both in memory and by
   reading back the real `packets.jsonl` written to disk. `docs/architecture/packet_normalization.md`
   has full detail.
+- Phase 23 — Five-Tuple Flow Reconstruction (`backend/nettrace/reconstruct.py`;
+  `reconstruct_flows(root, capture_id)`, per `docs/architecture/algorithm_selection.md` §1's
+  selected five-tuple-hash-table algorithm). Groups TCP/UDP packets from Phase 22's `packets.jsonl`
+  by a symmetric five-tuple key (so A->B and B->A packets land in the same bucket) and resolves
+  each packet's `direction`: the first packet observed (earliest timestamp) in a group defines the
+  canonical orientation (its tuple becomes `Flow.src_ip`/`src_port`/`dst_ip`/`dst_port`, matching
+  every packet in that orientation gets `FORWARD`, the opposite gets `REVERSE`). Since `Packet` is
+  frozen, direction resolution produces new instances via `model_copy`, rewritten to
+  `packets_path()` in the original capture order (only `direction` changes). ICMP/OTHER packets are
+  excluded from flow grouping (FR-1.3's literal TCP/UDP-only scope) and stay `UNKNOWN`. `Flow`
+  objects get real-computed `FlowFeatures` for everything honestly computable now (packet/byte
+  counts, duration, mean inter-arrival, forward_byte_ratio, and burstiness as a real
+  coefficient-of-variation) while `destination_diversity`/`port_diversity` are correctly `1` (a
+  flow has exactly one destination/port pair by definition) and `is_persistent` is a documented
+  `False` (no cross-window recurrence signal exists within one capture -- real computation is
+  Phase 28's job); `tcp_state`/`fingerprinted_protocol` stay `None`, explicitly Phase 24/26's jobs,
+  matching the model's own "`None` means not yet determined" design. `GET /flows`
+  (`backend/app/api/routes/flows.py`) is now real: 404 `capture_not_found`
+  (`backend/nettrace/capture/errors.py`'s new `CaptureNotFoundError`) for an uningested capture_id,
+  else runs `normalize_pcap` + `reconstruct_flows` fresh on every request (a documented
+  recompute-on-read simplification, no job queue/cache) and paginates via the existing Phase 09
+  `PageParams`/`PaginatedResponse`. Verified: `backend/tests/test_nettrace_reconstruct.py` (7/7:
+  bidirectional merge, direction assignment, real feature arithmetic against hand-computed
+  expected values, distinct-five-tuple separation, ICMP exclusion, `write_jsonl`/`read_jsonl`
+  round-trip, original packet-order preservation); updated `backend/tests/test_api.py` (10
+  still-501 groups unchanged, new real `/flows` tests: 404, a real 1-flow 3-packet result,
+  pagination); combined suite 168/168 (up from 159/159), no regression; a real, manual end-to-end
+  run (no Docker needed): a real 7-packet Scapy pcap (a 5-packet TCP exchange plus a 2-packet UDP
+  exchange) ingested through the live FastAPI app's real `POST /capture`, then queried through the
+  real `GET /flows` -- 2 real flows returned with byte-exact `FlowFeatures` (TCP:
+  packet_count=5/byte_count=211/forward_byte_ratio=0.592...; UDP: packet_count=2/byte_count=56/
+  burstiness=0.0), correct real initiator identified as canonical src/dst, and the real
+  `packets.jsonl` on disk confirmed rewritten from Phase 22's `unknown` to correct `forward`/
+  `reverse` directions in original order. `docs/architecture/flow_reconstruction.md` has full
+  detail.
 
 ## Blocked phases
 
@@ -408,16 +443,17 @@ None yet — no code written.
   allowlist).
 - `python -m scripts.validate_observatory` (Phase 20) — run standalone against the live lab,
   5/5 checks passed (see Phase 20 note above for detail).
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 159/159 passed, no
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 168/168 passed, no
   regression (up from 136/136 after Phase 20: +9 `backend/tests/test_nettrace_capture.py`,
   +2 `simulator/tests/test_capture.py`, +7 net new/changed `backend/tests/test_api.py` capture
   cases minus the 1 removed generic-501 case, Phase 21; +6 `backend/tests/test_nettrace_normalize.py`,
-  Phase 22).
+  Phase 22; +7 `backend/tests/test_nettrace_reconstruct.py`, +2 net new `/flows` cases in
+  `backend/tests/test_api.py` minus the 1 removed generic-501 case, Phase 23).
 - `python -m scripts.validate_data_contracts` — 38/38 passed, no regression (Phase 21, re-verified
-  Phase 22).
+  Phase 22-23).
 - `python scripts/check_ground_truth_boundary.py` — clean, zero violations; `backend/nettrace/`
-  (including the new `normalize.py`) and `simulator/capture/` packages correctly do not import
-  `simulator.ground_truth` (Phase 21, re-verified Phase 22).
+  (including `normalize.py` and the new `reconstruct.py`) and `simulator/capture/` packages
+  correctly do not import `simulator.ground_truth` (Phase 21, re-verified Phase 22-23).
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -439,7 +475,6 @@ None yet — no experiments have been run.
   "Known limitations". Not blocking Phase 22, since Phase 22 (Normalization) consumes any real
   `captures/<capture_id>/raw.pcap`, regardless of whether it arrived via `pcap_upload` or a
   completed live-capture-then-upload workflow.
-- Next: Phase 23 — Five-Tuple Flow Reconstruction (spec: reconstruct bidirectional five-tuple flows
-  for TCP and UDP from Phase 22's normalized `packets.jsonl` into the existing `Flow` model,
-  `backend/app/models/flow.py`; this is also where `Packet.direction` (forward/reverse) finally
-  gets resolved, once a flow's two sides are known). Not started; awaiting explicit request.
+- Next: Phase 24 — TCP State Tracking (spec FR-1.4: track TCP state -- SYN/SYN-ACK/ACK/FIN/RST,
+  retransmissions, partial sessions -- populating `Flow.tcp_state`, currently always `None` per
+  Phase 23's honest scoping). Not started; awaiting explicit request.
