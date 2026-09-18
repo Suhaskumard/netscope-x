@@ -17,7 +17,7 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 16 of 69 complete.** Next: Phase 17 — Ground-Truth Integrity.
+**Current phase: 17 of 69 complete.** Next: Phase 18 — Scenario Generator.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -67,6 +67,12 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   and expected paths from the lab's real running state (real container IPs, hash-verified,
   deliberately kept outside `backend/` so future inference code has no import path to it) —
   `simulator/ground_truth/`, `docs/architecture/ground_truth.md`.
+- **Ground-truth integrity** (Phase 17): each ground-truth generation is now versioned — re-running
+  the generator for the same capture_id writes a new numbered generation (`v1/`, `v2/`, ...) rather
+  than overwriting the previous one, tracked in a hash-protected manifest — and a static `ast`-based
+  checker (`scripts/check_ground_truth_boundary.py`) fails the build the moment any code outside
+  ground-truth generation/evaluation/test code imports `simulator.ground_truth` —
+  `experiments/artifacts/{ground_truth_manifest,io}.py`, `docs/architecture/ground_truth.md`.
 
 ### What doesn't exist yet
 
@@ -85,7 +91,7 @@ backend/app/
   core/       Phase 07-08 observability + configuration
   api/        Phase 09 API routes (versioned /api/v1)
 experiments/
-  artifacts/  Phase 10 reproducible artifact I/O
+  artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
   docker/         Phase 11-15 multi-tier network laboratory
@@ -94,10 +100,10 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-16 design docs
+  architecture/   Phase 04-05, 09-17 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
-scripts/      setup and validation scripts
+scripts/      setup, validation, and (Phase 17) ground-truth import-boundary scripts
 ```
 
 ## Getting started

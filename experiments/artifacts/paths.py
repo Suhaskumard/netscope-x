@@ -15,7 +15,12 @@ Layout:
         snapshots/<snapshot_id>.json
       ground_truth/<capture_id>/
         topology.json
-        topology.json.sha256          (content-hash sidecar, spec Phase 17)
+        topology.json.sha256          (content-hash sidecar, spec Phase 10)
+        manifest.json                 (generation history, spec Phase 17)
+        manifest.json.sha256
+        v<N>/
+          <artifact>.json
+          <artifact>.json.sha256
       experiments/<experiment_id>/
         experiment.json
         metrics.jsonl
@@ -52,6 +57,14 @@ def ground_truth_dir(root: Path, capture_id: str) -> Path:
 
 def ground_truth_topology_path(root: Path, capture_id: str) -> Path:
     return ground_truth_dir(root, capture_id) / "topology.json"
+
+
+def ground_truth_manifest_path(root: Path, capture_id: str) -> Path:
+    return ground_truth_dir(root, capture_id) / "manifest.json"
+
+
+def ground_truth_generation_dir(root: Path, capture_id: str, version: int) -> Path:
+    return ground_truth_dir(root, capture_id) / f"v{version}"
 
 
 def experiment_dir(root: Path, experiment_id: str) -> Path:

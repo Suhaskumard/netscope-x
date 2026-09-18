@@ -5,7 +5,7 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 16 (Ground-Truth Generator) complete. Phase 17 (Ground-Truth Integrity) not started.
+Phase 17 (Ground-Truth Integrity) complete. Phase 18 (Scenario Generator) not started.
 
 ## Process note
 
@@ -52,6 +52,12 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   reuses Phase 04 schemas + Phase 10 hashed I/O; real run against the live lab with real container
   IPs, hash-verified read-back, tamper detection re-confirmed; `simulator/tests/test_ground_truth.py`;
   `docs/architecture/ground_truth.md`; `README.md` updated)
+- Phase 17 — Ground-Truth Integrity (`experiments/artifacts/ground_truth_manifest.py`,
+  `write_ground_truth_generation`/`read_ground_truth_generation` in
+  `experiments/artifacts/io.py`, `scripts/check_ground_truth_boundary.py`; `cli.py` writes
+  numbered generations instead of overwriting; real run against the live lab produced two
+  independent, hash-verified generations for one capture_id; `simulator/tests/test_ground_truth_integrity.py`;
+  `docs/architecture/ground_truth.md` updated; `README.md` updated)
 
 ## Blocked phases
 
@@ -189,6 +195,22 @@ None yet — no code written.
   container lab (real distinct IPs matching Phase 12's subnets, e.g. redis/database on
   172.22.0.0/16; hash-verified read-back of all 3 files; tamper detection re-confirmed on a real
   generated artifact, then restored). `experiments_data/` (generated output) added to `.gitignore`.
+- Ground-truth integrity (`experiments/artifacts/{ground_truth_manifest,io,paths}.py`,
+  `scripts/check_ground_truth_boundary.py`, Phase 17): closes the two gaps Phase 16 left open.
+  (1) Versioning: `write_ground_truth_generation`/`read_ground_truth_generation` add a
+  hash-protected `manifest.json` recording every generation for a `capture_id`, each written to
+  its own `ground_truth/<capture_id>/v<N>/` directory that earlier generations never overwrite;
+  reading cross-checks the manifest's recorded hash against each artifact's own sidecar hash (a
+  manifest edited out of sync with its artifact is now also detected, not just a single tampered
+  file). `simulator/ground_truth/cli.py` now writes one generation per run instead of overwriting
+  three flat files. (2) Structural safeguard: `scripts/check_ground_truth_boundary.py` statically
+  walks every `.py` file via `ast` and fails if anything outside the spec-sanctioned allowlist
+  (`simulator/`, `experiments/`, `scripts/`, any `tests/` dir) imports `simulator.ground_truth` —
+  inference code doesn't exist yet (Phase 21+), so this currently passes trivially, but is a real,
+  exercised guardrail (proven against both the real repo and a synthetic violation) rather than an
+  assumption. Verified: 11/11 new unit tests; real run against the live lab generating v1 then v2
+  for the same capture_id (v1 confirmed byte-for-byte unchanged after v2 was written); tamper
+  detection re-confirmed on the real versioned artifact; lab torn down after.
 - Algorithm selections (`docs/architecture/algorithm_selection.md`, Phase 05): five-tuple hash table +
   TCP FSM for flow reconstruction; Naive-Bayes-style probabilistic classifier for role inference;
   per-dimension robust statistical baseline + set-difference novelty detection for anomaly detection;
@@ -225,12 +247,18 @@ None yet — no code written.
   preview returns HTTP 200), then torn down.
 - `scripts/setup.sh` run standalone from a clean state (`.venv` and `frontend/node_modules` deleted
   first) and completed successfully — the "fresh installation must work" acceptance bar for Phase 06.
-- `pytest simulator/tests` — 36/36 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
-  wire-format tests (Phase 15) + 9 ground-truth tests (Phase 16), all pure/no-Docker. Plus real
-  Docker-based runs: 3 traffic patterns (Phase 14), all 6 protocols (Phase 15), and a full ground-truth
-  generation (Phase 16, with hash-verified read-back and tamper-detection re-confirmed) against the
-  live lab — not part of the pytest suite, manual integration verification like Phases 11-13.
-- `pytest backend/tests experiments/tests simulator/tests` (combined) — 84/84 passed, no regression.
+- `pytest simulator/tests` — 47/47 passed: 19 traffic-pattern tests (Phase 14) + 8 protocol
+  wire-format tests (Phase 15) + 9 ground-truth tests (Phase 16) + 11 ground-truth integrity tests
+  (Phase 17: versioning round-trips, manifest/artifact hash cross-check, boundary-checker real-repo
+  scan + synthetic-violation detection), all pure/no-Docker. Plus real Docker-based runs: 3 traffic
+  patterns (Phase 14), all 6 protocols (Phase 15), a full ground-truth generation (Phase 16, with
+  hash-verified read-back and tamper-detection re-confirmed), and two successive ground-truth
+  generations for one capture_id (Phase 17, v1 confirmed unchanged after v2 was written, tamper
+  detection re-confirmed on the versioned layout) — not part of the pytest suite, manual integration
+  verification like Phases 11-13.
+- `python scripts/check_ground_truth_boundary.py` (Phase 17) — run standalone, zero violations found
+  in the real repository.
+- `pytest backend/tests experiments/tests simulator/tests` (combined) — 95/95 passed, no regression.
 - Multi-tier lab (`simulator/docker/`): verified through Phase 13 (11 containers, 4 segmented
   networks, load-balancer failover) and exercised again in Phase 14 with real generated traffic; torn
   down after each verification run — nothing left running between sessions.
@@ -245,9 +273,6 @@ None yet — no experiments have been run.
 
 ## Pending work
 
-Next: Phase 17 — Ground-Truth Integrity (version and hash ground-truth artifacts; prevent accidental
-contamination of inference). Note: per-generation content-hashing already exists via Phase 10/16's
-reuse of `write_ground_truth`/`read_ground_truth`; Phase 17 should focus on what's still missing
-(versioning across multiple generations, structural safeguards against accidental import from future
-inference code) rather than duplicating the hashing already in place. Not started; awaiting explicit
-request.
+Next: Phase 18 — Scenario Generator (generate multiple controlled network architectures: simple
+chain, star, multi-tier, redundant, multi-path, dynamic service network). Not started; awaiting
+explicit request.

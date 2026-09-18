@@ -92,19 +92,69 @@ sidecar, integrity-verified on every read) under `experiments_data/ground_truth/
 - Lab torn down (`docker compose ... down`) after verification. `experiments_data/` (generated,
   reproducible from code) added to `.gitignore`.
 
-## Explicitly deferred (Phase 17)
+## Phase 17 — Ground-Truth Integrity
 
-Phase 17 ("Ground-Truth Integrity") is a separate spec phase focused on the *tooling and process*
-around ground-truth integrity — versioning multiple generations, and structural safeguards that make
-it hard for future inference code to accidentally import or read ground truth. This phase already gets
-per-generation content-hashing "for free" by reusing Phase 10's `write_ground_truth`; building
-additional integrity tooling now, before Phase 17 defines what's actually needed, would be
-speculative. Not built here, deliberately.
+Phase 16 already got per-generation content-hashing "for free" by reusing Phase 10's
+`write_ground_truth`/`read_ground_truth`, but left two gaps open: re-running the generator for the
+same `capture_id` silently overwrote the previous generation, and nothing would stop a future
+inference module from importing `simulator.ground_truth` directly. Phase 17 closes both.
+
+### Versioned generations
+
+`experiments/artifacts/ground_truth_manifest.py` adds `GroundTruthManifest`/
+`GroundTruthManifestEntry` (version number, timestamp, per-file sha256 map).
+`experiments/artifacts/io.py` adds `write_ground_truth_generation`/`read_ground_truth_generation`,
+built on top of the existing `write_ground_truth`/`read_ground_truth` primitives rather than a new
+storage format: each generation is written to its own `ground_truth/<capture_id>/v<N>/` directory
+(never overwriting `v<N-1>/`), and a hash-protected `manifest.json` records every generation. Reading
+a generation cross-checks the manifest's recorded hash against the artifact's own sidecar hash — an
+extra layer that catches a manifest edited out of sync with its artifact, not just a single tampered
+file. `simulator/ground_truth/cli.py` now calls `write_ground_truth_generation` once instead of
+`write_ground_truth` three times, and prints the resulting version number.
+
+### Structural safeguard against inference-pipeline contamination
+
+`scripts/check_ground_truth_boundary.py` statically walks every `.py` file in the repository (via
+`ast`) and flags any import of `simulator.ground_truth` whose importing file is outside the
+spec-sanctioned allowlist (`simulator/`, `experiments/`, `scripts/`, any `tests/` directory —
+"generating experiments, validating results, calculating metrics, checking reconstruction accuracy",
+spec §4). Inference code (`nettrace/`, `flowmind/`, ...) doesn't exist yet — it starts spec Phase
+21+ — so the check currently passes trivially; its purpose is to fail immediately the day such an
+import is ever added, rather than relying on the current absence of `backend/`→`simulator/` imports
+being a coincidence forever.
+
+### Verification actually performed this phase
+
+- `pytest simulator/tests/test_ground_truth_integrity.py` — 11/11 passed: version 1/2 written for the
+  same capture_id without either overwriting the other; manifest lists both generations with correct
+  hashes; `version="latest"` resolves to the newest generation, `version=1` still reads the original;
+  per-file tamper detection still fires inside a generation; a manifest/artifact hash mismatch
+  (artifact re-signed to a tampered value, manifest left pointing at the original hash) is detected;
+  reading an unrecorded version raises; the boundary checker finds zero violations scanning the real
+  repository; a synthetic temp repo with one disallowed import (`nettrace/topology.py` importing
+  `simulator.ground_truth`) is correctly flagged, and simulator/experiments/test-directory imports of
+  the same module are correctly allowed.
+- Full combined suite (`backend/tests experiments/tests simulator/tests`) — 95/95 passed, no
+  regression.
+- `python scripts/check_ground_truth_boundary.py` run standalone — clean exit, zero violations.
+- **Real integration run** against the live 11-container lab: ran
+  `python -m simulator.ground_truth.cli --capture-id phase17-run --root experiments_data` twice.
+  First run wrote `v1/` (sha256 `64360442...` for `topology.json`); second run wrote `v2/`
+  (sha256 `1ad84937...`) alongside it, `v1/` byte-for-byte unchanged, both listed in
+  `manifest.json`. Read both generations back through `read_ground_truth_generation` and confirmed
+  `version="latest"` resolved to v2 while `version=1` still returned v1's content. Deliberately
+  tampered `v1/topology.json` on disk and confirmed `read_ground_truth_generation` raised
+  `GroundTruthIntegrityError` naming the expected vs. actual hash — the same tamper-detection
+  guarantee Phase 16 confirmed, now re-verified against the versioned layout. Lab torn down
+  (`docker compose ... down`) after verification.
 
 ## Status
 
-This document, together with `simulator/ground_truth/{topology,models,generate,cli}.py` and
-`simulator/tests/test_ground_truth.py`, satisfies Phase 16: authoritative nodes, edges, roles,
-services, and expected paths are generated automatically from the lab's declared architecture plus its
-real running state, verified by both pure unit tests and a real run against the live lab with hash
-integrity confirmed.
+This document, together with `simulator/ground_truth/{topology,models,generate,cli}.py`,
+`experiments/artifacts/{ground_truth_manifest,io,paths}.py`, `scripts/check_ground_truth_boundary.py`,
+`simulator/tests/test_ground_truth.py`, and `simulator/tests/test_ground_truth_integrity.py`,
+satisfies Phases 16 and 17: authoritative nodes, edges, roles, services, and expected paths are
+generated automatically from the lab's declared architecture plus its real running state; every
+generation is independently versioned, hashed, and tamper-verified; and a real, currently-passing
+structural check guards against ground truth ever leaking into the (not-yet-built) inference
+pipeline.

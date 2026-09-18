@@ -12,8 +12,8 @@ from pathlib import Path
 
 import yaml
 
-from experiments.artifacts.io import write_ground_truth
-from experiments.artifacts.paths import ground_truth_dir, ground_truth_topology_path
+from experiments.artifacts.io import write_ground_truth_generation
+from experiments.artifacts.paths import ground_truth_generation_dir
 from simulator.ground_truth.generate import (
     build_expected_paths,
     build_roles,
@@ -74,16 +74,17 @@ def main() -> None:
     roles = build_roles()
     paths = build_expected_paths(graph)
 
-    gt_dir = ground_truth_dir(args.root, args.capture_id)
-    topology_digest = write_ground_truth(ground_truth_topology_path(args.root, args.capture_id), graph)
-    roles_digest = write_ground_truth(gt_dir / "roles.json", roles)
-    paths_digest = write_ground_truth(gt_dir / "paths.json", paths)
+    entry = write_ground_truth_generation(
+        args.root,
+        args.capture_id,
+        {"topology.json": graph, "roles.json": roles, "paths.json": paths},
+    )
+    gen_dir = ground_truth_generation_dir(args.root, args.capture_id, entry.version)
 
-    print(f"Ground truth written to {gt_dir}")
+    print(f"Ground truth generation v{entry.version} written to {gen_dir}")
     print(f"  nodes: {len(graph.nodes)}  edges: {len(graph.edges)}")
-    print(f"  topology.json sha256: {topology_digest}")
-    print(f"  roles.json    sha256: {roles_digest}")
-    print(f"  paths.json    sha256: {paths_digest}")
+    for filename, digest in entry.files.items():
+        print(f"  {filename:<14} sha256: {digest}")
     for key, path in paths.paths.items():
         print(f"  expected path {key}: {' -> '.join(path) if path else '(no path found)'}")
 
