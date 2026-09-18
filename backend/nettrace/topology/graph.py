@@ -1,0 +1,54 @@
+"""Probabilistic topology graph assembly (spec Phase 32, FR-1.11).
+
+Combines Phase 29's `discover_nodes` and Phase 30-31's `discover_edges`
+into one complete `TopologyGraph` -- the first phase to actually populate
+that Phase 04 data contract with real inferred data. Never imports
+`simulator.ground_truth` (`scripts/check_ground_truth_boundary.py`
+statically forbids it, spec §4's ground-truth rule); comparing this graph
+against ground truth is a separate, evaluation-only concern living in
+`experiments/metrics/topology_comparison.py`, never called from here or
+from any `backend/` code path. See `docs/architecture/topology_reconstruction.md`.
+
+`graph_id` is a caller-supplied parameter, not derived internally -- kept
+pure and testable, same reasoning as `discover_edges` taking `nodes` as a
+parameter rather than re-deriving it. `GET /topology`
+(`backend/app/api/routes/topology.py`) is the caller that decides the
+actual scheme (a constant `capture_id`, not a timestamp or content hash --
+see that route's own docstring for the determinism justification).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from backend.app.models.topology import TopologyGraph
+from backend.nettrace.topology.discovery import discover_nodes
+from backend.nettrace.topology.edges import (
+    _DEFAULT_PACKET_SCALE,
+    _DEFAULT_SIGNAL_STRENGTH,
+    discover_edges,
+)
+
+
+def build_topology_graph(
+    root: Path,
+    capture_id: str,
+    graph_id: str,
+    edge_confidence_packet_scale: float = _DEFAULT_PACKET_SCALE,
+    edge_confidence_signal_strength: float = _DEFAULT_SIGNAL_STRENGTH,
+) -> TopologyGraph:
+    """Assembles the complete inferred `TopologyGraph` for a capture: every
+    node `discover_nodes` finds, every edge `discover_edges` finds between
+    them. Returns a graph with empty `nodes`/`edges` (never an error) if
+    the capture has no normalized packets/flows yet."""
+    nodes = discover_nodes(root, capture_id)
+    edges = discover_edges(
+        root, capture_id, nodes, edge_confidence_packet_scale, edge_confidence_signal_strength
+    )
+    return TopologyGraph(
+        graph_id=graph_id,
+        generated_at=datetime.now(timezone.utc),
+        nodes=nodes,
+        edges=edges,
+    )

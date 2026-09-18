@@ -17,12 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 31 of 69 complete** (Phase 21's controlled live capture remains
-implemented-and-unit-verified-but-not-yet-Docker-verified — see
-`docs/architecture/packet_capture.md`; Phase 29-31's node/edge discovery and probabilistic edge
-confidence are implemented and unit-verified but not yet wired into any API route, pending Phase 32's
-combined topology graph — see `docs/architecture/node_discovery.md` and
-`docs/architecture/edge_discovery.md`). Next: Phase 32.
+**Current phase: 32 of 69 complete, real-verified end-to-end** (Phase 21's controlled live capture
+remains implemented-and-unit-verified-but-not-yet-Docker-verified — see
+`docs/architecture/packet_capture.md`). `GET /topology` is now real, combining Phase 29-31's node/edge
+discovery into a persisted, probabilistic `TopologyGraph`, with an evaluation-only ground-truth
+comparison capability — see `docs/architecture/topology_reconstruction.md`. Next: Phase 33.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -47,8 +46,9 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   production safety guard — `backend/app/core/config.py`, `.env.example`, `.env.test`.
 - **API architecture** (Phase 09): all 12 required endpoint groups routed and validated under
   `/api/v1`, with consistent error handling — `backend/app/api/`. `POST /capture` (Phase 21) and
-  `GET /flows` (Phase 23, now including real TCP state as of Phase 24) are real; the other 10 still
-  return a structured 501 (not yet implemented) — see "What doesn't exist yet" below.
+  `GET /flows` (Phase 23, now including real TCP state as of Phase 24), and `GET /topology`
+  (Phase 32) are real; the other 9 still return a structured 501 (not yet implemented) — see
+  "What doesn't exist yet" below.
 - **Research artifact architecture** (Phase 10): reproducible on-disk formats (JSON / JSON Lines) for
   flows, graphs, snapshots, experiments, metrics, and hash-verified ground truth —
   `experiments/artifacts/`.
@@ -195,14 +195,27 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   a combined-signal monotonicity test, and confirmation that structurally-inapplicable signals (e.g.
   TCP-only signals on a UDP-only edge) never incur a penalty — `backend/nettrace/topology/edges.py`,
   `backend/app/core/config.py`, `docs/architecture/edge_discovery.md`.
+- **Probabilistic topology reconstruction** (Phase 32): `GET /topology` is real — `build_topology_graph`
+  combines Phase 29's nodes and Phase 30-31's edges into one `TopologyGraph`, recomputed fresh and
+  persisted (`experiments/artifacts` `write_json`/`topology_path`) on every call, `graph_id` a stable
+  per-capture constant (not a timestamp or content hash, for determinism — NFR-3). A new,
+  evaluation-only `compare_topology_to_ground_truth` (`experiments/metrics/topology_comparison.py`)
+  matches inferred and ground-truth nodes/edges by resolved IP address (the two sides' id schemes are
+  independently generated and not otherwise comparable), treats edges as unordered IP-pairs (honoring
+  inference's undirected edges against ground truth's directed declarations), and reports real
+  node/edge precision/recall/F1 plus a self-defined `graph_similarity = (node_f1 + edge_f1) / 2` — never
+  reachable from any API route, strictly evaluation-only per FR-1.11. Proven by 9 real tests (4 API-level,
+  5 comparison-level) — `backend/nettrace/topology/graph.py`, `backend/app/api/routes/topology.py`,
+  `experiments/metrics/topology_comparison.py`, `docs/architecture/topology_reconstruction.md`.
 
 ### What doesn't exist yet
 
-The combined probabilistic topology graph, behavioral modeling, anomaly detection, digital twin,
-simulation, and counterfactual engines have not been implemented yet — those begin at Phase 32 and
-continue through the 69-phase plan. The API surface and data contracts are real and tested; most of the research
-intelligence they will eventually serve is not built yet. Nothing in this repository currently
-fabricates results — every phase's completion report documents exactly what was and wasn't verified by
+Behavioral modeling, anomaly detection, temporal archaeology, dependency/causal reasoning, the digital
+twin, simulation, and counterfactual engines have not been implemented yet — those begin at Phase 33
+and continue through the 69-phase plan. The API surface and data contracts are real and tested; most of
+the research intelligence they will eventually serve is not built yet. Nothing in this repository
+currently fabricates results — every phase's completion report documents exactly what was and wasn't
+verified by
 actual execution.
 
 ## Repository layout
@@ -216,10 +229,12 @@ backend/nettrace/
   capture/    Phase 21 PCAP ingestion (pure logic; no Docker/live-socket dependency)
   normalize.py  Phase 22 packet normalization (raw.pcap -> Packet -> packets.jsonl)
   reconstruct.py  Phase 23 five-tuple flow reconstruction (packets.jsonl -> Flow -> flows.jsonl)
-  topology/discovery.py  Phase 29 node discovery (packets.jsonl -> Node; not yet persisted or API-wired)
-  topology/edges.py  Phase 30 edge discovery (flows.jsonl + Node list -> Edge; not yet persisted or API-wired)
+  topology/discovery.py  Phase 29 node discovery (packets.jsonl -> Node)
+  topology/edges.py  Phase 30-31 edge discovery + probabilistic confidence (flows.jsonl + Node list -> Edge)
+  topology/graph.py  Phase 32 topology assembly (Node + Edge lists -> TopologyGraph), real via GET /topology
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
+  metrics/    Phase 32 evaluation-only ground-truth comparison (never reachable from backend/)
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
   docker/         Phase 11-15 multi-tier network laboratory
@@ -230,7 +245,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-31 design docs
+  architecture/   Phase 04-05, 09-32 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -241,7 +256,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (240 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (248 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

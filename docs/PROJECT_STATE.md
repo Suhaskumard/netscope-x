@@ -5,31 +5,35 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 31 (Probabilistic Edge Confidence) complete, unit-verified. `discover_edges`
-(`backend/nettrace/topology/edges.py`, same function as Phase 30) now computes `Edge.confidence` via
-a multi-signal noisy-OR combination instead of Phase 30's single packet-volume term:
-`confidence = 1 - (1-p_volume) * prod(1 - s*indicator)` over `p_volume` (Phase 30's original term)
-plus five independent `Flow`-derived signals -- TCP handshake completion (`tcp_state == ESTABLISHED`,
-TCP only), confident protocol fingerprint, negotiated TLS (TCP only), five-tuple persistence
-(structurally UDP-only today), and bidirectionality (`2*min(r,1-r)` on `forward_byte_ratio`, peaking
-at balanced traffic). All four boolean signals share one new `Settings` field,
-`edge_confidence_signal_strength` (default `0.3`, `NETSCOPE_EDGE_CONFIDENCE_SIGNAL_STRENGTH`-
-overridable, ties to NFR-4) -- deliberately uniform across signals, since nothing today justifies
-weighting one above another, and asserting otherwise would itself be the "arbitrary" judgment FR-1.10
-forbids. Noisy-OR keeps confidence bounded to `[0,1)` and monotonic by construction (more evidence
-never lowers confidence), and a structurally-inapplicable signal (e.g. TCP-only signals on a UDP-only
-bucket) contributes a neutral identity factor, never a penalty. This is still explicitly provisional
-and uncalibrated: RQ1 (`docs/research/research_questions.md`) defers all ground-truth-based
-accuracy/calibration work to Phase 32/68, and REPRO-4 forbids ground truth as an inference-time
-input, so "probabilistic" here means "combining independent real evidence honestly," not "validated
-against known-correct labels." `evidence` now also carries a bucket-level summary line explaining
-which signals fired. Nothing is persisted to disk yet, and nothing calls `discover_edges` yet --
-`GET /topology` still raises `NotYetImplemented`, pending Phase 32's combined `TopologyGraph`
-assembly. See `docs/architecture/edge_discovery.md` for the full algorithm decision, worked numeric
-examples, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still
-stands: controlled live capture is implemented and unit-verified but not yet verified against a real
-Docker lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 32 (Probabilistic Topology Reconstruction) complete, real-verified end-to-end. `GET /topology`
+now returns a genuine `TopologyGraph`: `build_topology_graph` (`backend/nettrace/topology/graph.py`)
+combines Phase 29's `discover_nodes` and Phase 30-31's `discover_edges` (nothing new inferred, pure
+assembly), the route mirrors `GET /flows`'s "recompute fresh, no cache" contract exactly (404
+`capture_not_found` via `CaptureNotFoundError` on a missing capture; `normalize_pcap` +
+`reconstruct_flows` run inline since a freshly-ingested capture has no `packets.jsonl`/`flows.jsonl`
+yet), and persists the result via `write_json(topology_path(...), graph)` on every call -- a
+write-through research artifact, not a cache (the route never reads it back). `graph_id` is the
+`capture_id` itself: a stable, non-timestamped, non-content-hashed identity label, so re-running the
+route against an unchanged capture always reports the same `graph_id` regardless of wall-clock time
+or `Settings` tuning (NFR-3). A new, evaluation-only `compare_topology_to_ground_truth`
+(`experiments/metrics/topology_comparison.py`, first real population of that spec-named directory)
+matches inferred and ground-truth nodes/edges by resolved `ip_addresses` (the two sides' `node_id`/
+`edge_id` schemes are independently generated -- lab service names vs. `f"{capture_id}:node:{index}"`
+-- and not otherwise comparable), matches edges as *unordered* IP-pairs (ground truth is directed by
+declaration; inference is deliberately undirected per Phase 30 -- comparing directionally would
+penalize inference for correctly declining a claim it has no basis for), and reports real node/edge
+precision/recall/F1 plus a self-defined `graph_similarity = (node_f1 + edge_f1) / 2` (equal weighting,
+the same "no principled basis to weight one signal over another" reasoning already used for Phase 31's
+noisy-OR signals). Returns a plain `TopologyComparisonResult`, not a `MetricResult` --
+`MetricResult.experiment_id` is required and no experiment registry exists yet anywhere in this repo,
+so fabricating one would violate spec §21 "No Fake Metrics." This comparison capability is never
+reachable from any API route or anything under `backend/` -- confirmed by
+`scripts/check_ground_truth_boundary.py` and traced explicitly in the architecture doc. See
+`docs/architecture/topology_reconstruction.md` for the full design, worked examples, and verification
+record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture
+is implemented and unit-verified but not yet verified against a real Docker lab (this session's
+environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+limitations").
 
 ## Process note
 
@@ -421,6 +425,43 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   clean. `docs/architecture/edge_discovery.md` (updated in place, not a new doc) has full detail,
   including three worked numeric examples.
 
+- Phase 32 — Probabilistic Topology Reconstruction (`backend/nettrace/topology/graph.py`;
+  `backend/app/api/routes/topology.py`, now real; `experiments/metrics/topology_comparison.py`;
+  FR-1.11). `build_topology_graph` combines Phase 29's `discover_nodes` and Phase 30-31's
+  `discover_edges` into one `TopologyGraph` -- pure assembly, no new inference logic. `GET /topology`
+  mirrors `GET /flows` exactly (404 `capture_not_found`; `normalize_pcap` + `reconstruct_flows` run
+  inline; recomputed fresh every call) and persists the result via `write_json(topology_path(...),
+  graph)` -- a write-through research artifact, not a cache; the route never reads it back.
+  `graph_id = capture_id`: a stable, non-timestamped, non-content-hashed identity label (rejected a
+  timestamp for breaking NFR-3 determinism, and a content hash for making identity unstable across
+  mere `Settings` tuning), mirroring ground truth's own constant `graph_id="lab-ground-truth"`.
+  Separately, `compare_topology_to_ground_truth` (new `experiments/metrics/` package -- the first real
+  population of that spec-named-but-previously-empty directory) compares an inferred `TopologyGraph`
+  against a ground-truth one: since the two sides' `node_id`/`edge_id` schemes are independently
+  generated and not comparable (lab service names vs. positional inference ids), matching goes through
+  resolved `Node.ip_addresses` -- exact set equality for nodes, unordered IP-pair for edges
+  (deliberately ignoring declared direction, since ground truth is directed-by-declaration while
+  inference is undirected-by-design per Phase 30). Reports real node/edge precision/recall/F1 plus
+  `graph_similarity = (node_f1 + edge_f1) / 2` (equal weighting, no basis yet to prefer one over the
+  other -- the same reasoning already used for Phase 31's noisy-OR signals), returned as a plain
+  `TopologyComparisonResult` dataclass rather than a `MetricResult` (whose required `experiment_id`
+  has no real experiment registry to anchor to yet -- fabricating one would violate spec §21 "No Fake
+  Metrics"). Never imported by anything under `backend/` -- verified by
+  `scripts.check_ground_truth_boundary`. Verified: `backend/tests/test_api.py`'s new
+  `# --- Phase 32: GET /topology real behavior ---` section (4/4: 404 on unknown capture; a real
+  `POST /capture` -> `GET /topology` producing a real graph with every edge's confidence/evidence/
+  protocols populated; deterministic `graph_id`/nodes/edges across repeated calls; persistence
+  round-tripping via `read_json`); new `experiments/tests/test_topology_comparison.py` (5/5: perfect
+  match gives all metrics 1.0; ground-truth-only extra node/edge drops recall not precision;
+  inferred-only extra node/edge drops precision not recall; empty-vs-empty/empty-vs-nonempty handled
+  per documented convention; edge matching ignores declared direction); combined suite 248/248 (up
+  from 240/240), no regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no schema
+  changes); `scripts.check_ground_truth_boundary` re-verified clean. `docs/architecture/
+  topology_reconstruction.md` has full detail, including a worked directed-vs-undirected edge-matching
+  example. No Docker in this session's environment, so no end-to-end run against real lab ground truth
+  was performed -- comparison verified against synthetic `TopologyGraph` fixtures only, consistent with
+  every other Docker-dependent phase's own limitation note.
+
 ## Blocked phases
 
 None.
@@ -763,7 +804,11 @@ None yet — no experiments have been run.
   per-signal weights, and `is_persistent`'s contribution is structurally UDP-only (Phase 28's own
   scope) — both documented in `docs/architecture/edge_discovery.md` as explicitly provisional, real
   calibration deferred to Phase 32/68's ground-truth-backed evaluation, not a gap.
-- Next: Phase 32 (Probabilistic Topology Reconstruction). Combines Phase 29's nodes and Phase
-  30-31's edges into one `TopologyGraph`, wires `GET /topology` for real, and compares against
-  ground truth for evaluation purposes only (FR-1.11, RQ1) — not yet scoped beyond that one-line
-  mention. Not started; awaiting explicit request.
+- Topology comparison (Phase 32) measures only structural node/edge presence, not attribute agreement
+  (protocol correctness, confidence accuracy) — a natural Phase 68 extension, not a gap. Its
+  `graph_similarity` equal-weighting formula is a documented, provisional choice pending empirical
+  validation, and no end-to-end run against real Docker-lab ground truth was performed this phase (no
+  Docker in this session's environment) — documented in `docs/architecture/topology_reconstruction.md`.
+- Next: Phase 33. Not yet scoped in this repo's docs beyond the master spec PDF's own phase list
+  (§"PHASE 33" onward covers behavioral feature stores, multi-window behavior modeling, and the start
+  of FLOWMIND). Not started; awaiting explicit request.

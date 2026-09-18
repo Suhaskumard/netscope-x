@@ -1,11 +1,11 @@
-"""Phase 09 API architecture tests, updated for Phases 21 and 23.
+"""Phase 09 API architecture tests, updated for Phases 21, 23, and 32.
 
-Verifies the 10 still-unimplemented endpoint groups (spec Phase 09) return
+Verifies the 9 still-unimplemented endpoint groups (spec Phase 09) return
 a consistent 501 ErrorResponse envelope, that validation errors use the
 same envelope shape, and that the OpenAPI schema documents every required
-path. `POST /capture` (Phase 21) and `GET /flows` (Phase 23) are no longer
-in the 501 list -- their real behavior is covered by the dedicated tests
-at the bottom of this file.
+path. `POST /capture` (Phase 21), `GET /flows` (Phase 23), and
+`GET /topology` (Phase 32) are no longer in the 501 list -- their real
+behavior is covered by the dedicated tests at the bottom of this file.
 """
 
 from __future__ import annotations
@@ -18,6 +18,9 @@ from scapy.all import IP, TCP, UDP, wrpcap
 
 from backend.app.core.config import get_settings
 from backend.app.main import app
+from backend.app.models import TopologyGraph
+from experiments.artifacts.io import read_json
+from experiments.artifacts.paths import topology_path
 
 client = TestClient(app)
 
@@ -48,7 +51,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
 @pytest.mark.parametrize(
     "method,path,kwargs",
     [
-        ("get", "/api/v1/topology", dict(params={"capture_id": "cap1"})),
         ("get", "/api/v1/behaviors/node-1", dict()),
         ("get", "/api/v1/anomalies", dict()),
         (
@@ -110,9 +112,10 @@ def test_endpoint_returns_structured_501(method: str, path: str, kwargs: dict) -
 def test_all_12_endpoint_groups_exist() -> None:
     # Sanity check: if a group is ever renamed/removed from router.py
     # without updating this test file, this count catches the drift
-    # instead of silently under-testing. Only 10 of these 12 are covered
-    # by the generic 501 parametrization above -- /capture (Phase 21) and
-    # /flows (Phase 23) are real and tested separately below.
+    # instead of silently under-testing. Only 9 of these 12 are covered
+    # by the generic 501 parametrization above -- /capture (Phase 21),
+    # /flows (Phase 23), and /topology (Phase 32) are real and tested
+    # separately below.
     paths = {
         "/api/v1/capture",
         "/api/v1/flows",
@@ -296,6 +299,70 @@ def test_flows_respects_pagination_params() -> None:
     assert len(body["items"]) == 1
     assert body["limit"] == 1
     assert body["offset"] == 0
+
+
+# --- Phase 32: GET /topology real behavior ---
+
+
+def _ingest_real_two_flow_capture(filename: str) -> str:
+    settings = get_settings()
+    path = settings.upload_staging_dir / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packets = [
+        IP(src="10.0.0.1", dst="10.0.0.2") / TCP(sport=1000, dport=80, flags="S"),
+        IP(src="10.0.0.2", dst="10.0.0.1") / TCP(sport=80, dport=1000, flags="SA"),
+        IP(src="10.0.0.1", dst="10.0.0.2") / TCP(sport=1000, dport=80, flags="A"),
+        IP(src="10.0.0.3", dst="10.0.0.4") / UDP(sport=2000, dport=53),
+    ]
+    wrpcap(str(path), packets)
+    ingest = client.post("/api/v1/capture", json={"source": "pcap_upload", "pcap_filename": filename})
+    return ingest.json()["capture_id"]
+
+
+def test_topology_unknown_capture_returns_404() -> None:
+    response = client.get("/api/v1/topology", params={"capture_id": "does-not-exist"})
+    _assert_error_envelope(response, 404)
+    assert response.json()["error"] == "capture_not_found"
+
+
+def test_topology_returns_real_reconstructed_graph_for_ingested_capture() -> None:
+    capture_id = _ingest_real_two_flow_capture("topology.pcap")
+
+    response = client.get("/api/v1/topology", params={"capture_id": capture_id})
+    assert response.status_code == 200
+    graph = response.json()
+
+    assert graph["graph_id"] == capture_id
+    assert len(graph["nodes"]) == 4  # 10.0.0.1-4, one flow each direction/pair
+    assert len(graph["edges"]) == 2  # (10.0.0.1,10.0.0.2) and (10.0.0.3,10.0.0.4)
+    for edge in graph["edges"]:
+        assert 0.0 <= edge["confidence"] <= 1.0
+        assert len(edge["evidence"]) > 0
+        assert len(edge["protocols"]) > 0
+
+
+def test_topology_graph_id_is_deterministic_across_calls() -> None:
+    capture_id = _ingest_real_two_flow_capture("topology_deterministic.pcap")
+
+    first = client.get("/api/v1/topology", params={"capture_id": capture_id}).json()
+    second = client.get("/api/v1/topology", params={"capture_id": capture_id}).json()
+
+    assert first["graph_id"] == second["graph_id"] == capture_id
+    assert first["nodes"] == second["nodes"]
+    assert first["edges"] == second["edges"]
+
+
+def test_topology_is_persisted_and_round_trips() -> None:
+    capture_id = _ingest_real_two_flow_capture("topology_persist.pcap")
+
+    response = client.get("/api/v1/topology", params={"capture_id": capture_id})
+    graph = response.json()
+
+    settings = get_settings()
+    on_disk = read_json(topology_path(settings.artifact_root, capture_id, capture_id), TopologyGraph)
+    assert on_disk.graph_id == graph["graph_id"]
+    assert len(on_disk.nodes) == len(graph["nodes"])
+    assert len(on_disk.edges) == len(graph["edges"])
 
 
 def test_health_endpoint_still_unversioned_and_unaffected() -> None:
