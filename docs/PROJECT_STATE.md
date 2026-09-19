@@ -5,27 +5,29 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 37 (Uncertainty-Aware Classification) complete, unit-verified. Splits along the same
-inference-side/evaluation-side line as the Phase 30/31 (fitting) vs. Phase 32 (evaluation-only)
-precedent. **Half A** (`backend/flowmind/classification/role_classifier.py`, extended): `fit_temperature
-(model, labeled, bounds=(0.05,20.0), grid_size=200) -> float` fits a single scalar temperature on
-held-out labeled data by minimizing negative log-likelihood of the true role under
-`softmax(log_posteriors / T)` -- a real, fitted calibration mechanism (not an invented rescaling,
-mirroring Phase 31's "no principled basis to weight things arbitrarily" reasoning), via a
-self-contained two-pass log-spaced grid search (no new `scipy` dependency, NFR-9). `classify_node_role`
-gained an optional `temperature=1.0` parameter (default reproduces Phase 36's exact original behavior
--- re-verified, all 7 original tests unchanged). Internals refactored to expose `_log_posteriors`/
-`_softmax` for this purpose. **Half B** (new `experiments/metrics/role_calibration.py`,
-evaluation-only): `evaluate_role_calibration(classifications, true_roles, num_bins=10) ->
-RoleCalibrationEvaluation` computes real accuracy, standard multiclass Brier score, and standard
-expected calibration error from `RoleClassification` outputs against true-role labels -- a plain
-dataclass, not `MetricResult` (whose `experiment_id` still has no registry to anchor to, and whose
-`calibration_error` field's own docstring already scopes it to "the Phase 68 evaluation matrix," not
-this phase) -- mirroring Phase 32's `TopologyComparisonResult` precedent exactly. Never reachable from
-any API route. Both halves verified this session only against synthetic labeled fixtures -- no
-Docker means no real lab data exists to fit a real temperature or measure real calibration error
-against, the same constraint Phase 36 already carried. `GET /behaviors/{node_id}` remains a 501 stub,
-unchanged. See `docs/architecture/uncertainty_aware_classification.md` for the full design and
+Phase 38 (Behavioral Baseline) complete, unit-verified. `build_node_baseline(fingerprint_history,
+min_observations=5) -> NodeBehavioralBaseline` (`backend/flowmind/baseline/node_baseline.py`, new
+`backend/flowmind/baseline/` package) implements exactly the mechanism `docs/architecture/
+algorithm_selection.md` §3 already selected for anomaly detection: a robust (median/MAD, not
+mean/std) baseline per continuous feature, plus explicit historical-value sets for set-difference
+novelty checks. Maps all 6 `BehavioralFingerprint` feature fields: `distinct_destinations`,
+`mean_flow_duration_seconds`, `outbound_byte_ratio`, and `port_count = len(distinct_ports)` (reusing
+Phase 36's own "port count as entropy proxy" framing) each get a robust median/MAD baseline;
+`distinct_ports`/`distinct_protocols` accumulate as historical union sets (`historical_ports`/
+`historical_protocols`) for §3's "new destination/port not in historical set" novelty mechanism;
+`is_persistent_talker` gets a historical frequency. `mad` is reported honestly un-floored (can be
+`0.0` with identical/few historical values -- a documented fact of the statistic, not a bug; flooring
+it for z-score use is left to whichever future phase actually computes one). Cold-start exposed via
+`observation_count`/`is_sufficient` (`min_observations=5`, a documented provisional default -- §3
+names the cold-start limitation qualitatively but gives no number). A pure function over a
+caller-supplied, already-ordered fingerprint history -- no cross-capture historical-fingerprint store
+exists anywhere in this repo yet (Phase 35's `fingerprints.jsonl` is a single-capture snapshot, not a
+time series), and building one is out of this phase's literal scope. The EWMA-based
+transient-anomaly-vs-concept-drift decision logic §3 also names is explicitly Phase 39's job (FR-1.16),
+not built here -- this phase only maintains the baseline (FR-1.15's literal scope). No persistence
+(mirrors Phase 33/34/36's own "no artifact yet" decisions) and no Phase 04 schema exists for this yet,
+so the output is a plain frozen dataclass, same precedent as `NodeBehavioralFeatures`/
+`TopologyComparisonResult`. See `docs/architecture/behavioral_baseline.md` for the full design and
 verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
 live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
 session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
@@ -594,6 +596,25 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   check_ground_truth_boundary` re-verified clean. `docs/architecture/
   uncertainty_aware_classification.md` has full detail.
 
+- Phase 38 — Behavioral Baseline (`backend/flowmind/baseline/node_baseline.py`, new
+  `backend/flowmind/baseline/` package; FR-1.15). `build_node_baseline(fingerprint_history,
+  min_observations=5) -> NodeBehavioralBaseline` implements `algorithm_selection.md` §3's
+  already-selected robust median/MAD baseline + historical-set novelty tracking, covering all 6
+  `BehavioralFingerprint` fields (4 continuous via median/MAD including `port_count` as Phase 36's
+  entropy proxy reused; 2 set-valued via historical union for novelty checks; 1 boolean via historical
+  frequency). Raises `ValueError` on empty input or a history mixing more than one `node_id`/`window`.
+  `mad` reported honestly un-floored; cold-start exposed via `observation_count`/`is_sufficient`. Pure
+  function over caller-supplied history -- no cross-capture fingerprint store exists yet, building one
+  is out of scope. EWMA-based drift-vs-transient logic explicitly deferred to Phase 39. No persistence,
+  plain dataclass output (no Phase 04 schema reserved for this). Verified: new `backend/tests/
+  test_flowmind_baseline.py` (8/8: empty/mixed-node/mixed-window `ValueError`s; median/MAD exactly
+  matching a hand-computed value; historical ports/protocols union correctly accumulated; persistent-
+  talker frequency exact; cold-start `is_sufficient` threshold behavior; a real end-to-end-shaped test
+  via `assemble_node_fingerprint`); combined suite 297/297 (up from 289/289), no regressions;
+  `scripts.validate_data_contracts` re-verified clean (38/38, no schema changes); `scripts.
+  check_ground_truth_boundary` re-verified clean. `docs/architecture/behavioral_baseline.md` has full
+  detail, including the Phase 38 vs. 39 scope-boundary argument.
+
 ## Blocked phases
 
 None.
@@ -962,6 +983,12 @@ None yet — no experiments have been run.
   consequence, unchanged from Phase 36; documented in
   `docs/architecture/uncertainty_aware_classification.md`. Real validation is left to a future phase
   with real Docker/lab access.
-- Next: Phase 38 (Behavioral Baseline). Expected to build a normal-behavior baseline from historical
-  observations, per FR-1.15 — not yet scoped beyond that one-line mention. Not started; awaiting
-  explicit request.
+- The behavioral baseline (Phase 38) has no cross-capture historical-fingerprint store — it's a pure
+  function over a caller-supplied history, and `min_observations=5` (the cold-start threshold) is a
+  documented, evidence-light provisional default; `mad` is reported honestly un-floored, left for a
+  future consumer to floor if/when it computes a z-score; documented in
+  `docs/architecture/behavioral_baseline.md`.
+- Next: Phase 39 (Concept Drift Detection). Expected to consume Phase 38's baseline and implement the
+  EWMA-based mechanism `algorithm_selection.md` §3 already named for distinguishing a transient
+  anomaly from persistent behavioral evolution (FR-1.16; RQ3/RQ4) — not yet scoped beyond that. Not
+  started; awaiting explicit request.

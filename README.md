@@ -17,13 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 37 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 38 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Real, fitted temperature scaling and a real calibration-error measurement capability (Brier
-score/ECE) are now built on Phase 36's Bayes classifier — not yet validated against real Docker-lab
-ground truth (no Docker this session) — see
-`docs/architecture/uncertainty_aware_classification.md`. `GET /behaviors/{node_id}` stays a 501 stub.
-Next: Phase 38.
+A real median/MAD behavioral baseline (`build_node_baseline`) now implements exactly the robust
+statistical mechanism `docs/architecture/algorithm_selection.md` §3 already selected for anomaly
+detection — see `docs/architecture/behavioral_baseline.md`. Next: Phase 39.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -261,11 +259,22 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   only with synthetic labeled fixtures. Proven by 17 real tests total (12 classifier, 5 calibration),
   including a hand-computed Brier score — `backend/flowmind/classification/role_classifier.py`,
   `experiments/metrics/role_calibration.py`, `docs/architecture/uncertainty_aware_classification.md`.
+- **Behavioral baseline** (Phase 38): `build_node_baseline` implements exactly the robust
+  median/MAD statistical baseline `algorithm_selection.md` §3 already selected for anomaly detection
+  — covering all 6 `BehavioralFingerprint` feature fields via robust median/MAD (destination count,
+  flow duration, byte ratio, port count as an entropy proxy), historical value sets (ports, protocols
+  — for explicit novelty/set-difference checks), and a historical frequency (persistence). Reports MAD
+  honestly un-floored and exposes an explicit cold-start `is_sufficient` flag (`min_observations=5`,
+  a documented provisional default). A pure function over a caller-supplied fingerprint history — no
+  cross-capture historical store exists yet, and building one is left to a later phase. The
+  EWMA-based transient-anomaly-vs-concept-drift decision §3 also names is explicitly Phase 39's job,
+  not built here. Proven by 8 real tests, including a hand-computed median/MAD — `backend/flowmind/
+  baseline/node_baseline.py`, `docs/architecture/behavioral_baseline.md`.
 
 ### What doesn't exist yet
 
 Anomaly detection, temporal archaeology, dependency/causal reasoning, the digital twin, simulation,
-and counterfactual engines have not been implemented yet — those begin at Phase 38 and continue
+and counterfactual engines have not been implemented yet — those begin at Phase 39 and continue
 through the 69-phase plan. The API surface and data contracts are real and tested; most of the
 research intelligence they will eventually serve is not built yet. Nothing in this
 repository
@@ -292,6 +301,7 @@ backend/flowmind/
   features/windows.py  Phase 34 multi-window modeling (nested short/medium/long trailing windows)
   fingerprints/node_fingerprint.py  Phase 35 fingerprint assembly (features -> real BehavioralFingerprint)
   classification/role_classifier.py  Phase 36-37 Naive Bayes role classifier + temperature scaling
+  baseline/node_baseline.py  Phase 38 robust median/MAD behavioral baseline + historical novelty sets
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37 evaluation-only ground-truth/calibration comparison (never reachable from backend/)
@@ -305,7 +315,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-37 design docs
+  architecture/   Phase 04-05, 09-38 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -316,7 +326,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (289 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (297 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
