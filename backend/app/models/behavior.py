@@ -3,6 +3,8 @@
 Serves FR-1.12-1.16 (spec Phases 33-38). Role classification is deliberately
 represented as a probability distribution, never a single hard label --
 spec Phase 37 requires calibrated uncertainty, not a point guess.
+`BehavioralFingerprint.total_byte_count` additionally serves FR-1.17
+(spec Phase 40's "traffic volume" anomaly dimension).
 """
 
 from __future__ import annotations
@@ -46,6 +48,15 @@ class BehavioralFingerprint(BaseModel):
     mean_flow_duration_seconds: float = Field(..., ge=0)
     outbound_byte_ratio: float = Field(..., ge=0, le=1)
     is_persistent_talker: bool
+    total_byte_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Total bytes across every flow contributing to this fingerprint "
+            "(spec Phase 40's 'traffic volume' dimension). Defaulted so "
+            "fixtures/callers predating Phase 40 don't need updating."
+        ),
+    )
 
 
 class RoleClassification(BaseModel):

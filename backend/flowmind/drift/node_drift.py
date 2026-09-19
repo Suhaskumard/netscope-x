@@ -96,7 +96,7 @@ def track_node_drift(
     drift_threshold_mads: float = 2.0,
     mad_floor: float = 1e-6,
 ) -> Dict[str, DriftTrackingResult]:
-    """Runs `track_feature_drift` across all 4 continuous
+    """Runs `track_feature_drift` across all 5 continuous
     `NodeBehavioralBaseline` features for `new_fingerprints` (a caller-
     supplied, time-ordered sequence of the SAME node's newly observed
     fingerprints). Raises `ValueError` on empty `new_fingerprints`, or if
@@ -122,6 +122,7 @@ def track_node_drift(
         "mean_flow_duration_seconds": [fp.mean_flow_duration_seconds for fp in new_fingerprints],
         "outbound_byte_ratio": [fp.outbound_byte_ratio for fp in new_fingerprints],
         "port_count": [float(len(fp.distinct_ports)) for fp in new_fingerprints],
+        "total_byte_count": [float(fp.total_byte_count) for fp in new_fingerprints],
     }
 
     return {

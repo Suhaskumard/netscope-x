@@ -97,7 +97,7 @@ def test_track_node_drift_raises_on_window_mismatch() -> None:
         track_node_drift(baseline, mismatched)
 
 
-def test_track_node_drift_covers_all_four_continuous_features() -> None:
+def test_track_node_drift_covers_all_five_continuous_features() -> None:
     history = [_fp(destinations=d) for d in (1, 2, 3, 4, 5)]
     baseline = build_node_baseline(history)
     new_fingerprints = [_fp(destinations=3) for _ in range(3)]
@@ -109,6 +109,7 @@ def test_track_node_drift_covers_all_four_continuous_features() -> None:
         "mean_flow_duration_seconds",
         "outbound_byte_ratio",
         "port_count",
+        "total_byte_count",
     }
 
 

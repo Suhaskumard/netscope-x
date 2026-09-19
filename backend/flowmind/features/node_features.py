@@ -46,6 +46,11 @@ class NodeBehavioralFeatures:
     mean_flow_duration_seconds: float
     outbound_byte_ratio: float
     is_persistent_talker: bool
+    # Total bytes across every touching flow (spec Phase 40's "traffic
+    # volume" dimension). Defaulted so existing callers/fixtures that never
+    # cared about volume don't need updating -- computed for real by
+    # compute_node_behavioral_features whenever flows are present.
+    total_byte_count: int = 0
 
 
 def flows_touching_node(flows: List[Flow], node: Node) -> List[Flow]:
@@ -112,4 +117,5 @@ def compute_node_behavioral_features(flows: List[Flow], node: Node) -> NodeBehav
         mean_flow_duration_seconds=mean_duration,
         outbound_byte_ratio=outbound_ratio,
         is_persistent_talker=is_persistent,
+        total_byte_count=int(total_bytes),
     )

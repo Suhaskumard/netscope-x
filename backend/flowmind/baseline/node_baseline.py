@@ -60,6 +60,7 @@ class NodeBehavioralBaseline:
     mean_flow_duration_seconds: RobustFeatureBaseline
     outbound_byte_ratio: RobustFeatureBaseline
     port_count: RobustFeatureBaseline
+    total_byte_count: RobustFeatureBaseline
 
     historical_ports: FrozenSet[int]
     historical_protocols: FrozenSet[str]
@@ -124,6 +125,7 @@ def build_node_baseline(
         ),
         outbound_byte_ratio=_robust_baseline([fp.outbound_byte_ratio for fp in fingerprint_history]),
         port_count=_robust_baseline([float(len(fp.distinct_ports)) for fp in fingerprint_history]),
+        total_byte_count=_robust_baseline([float(fp.total_byte_count) for fp in fingerprint_history]),
         historical_ports=historical_ports,
         historical_protocols=historical_protocols,
         persistent_talker_frequency=persistent_talker_frequency,
