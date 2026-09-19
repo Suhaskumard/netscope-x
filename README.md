@@ -414,11 +414,26 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   tests (empty-not-404, full-window, narrow-window exclusion, pagination) plus the 8 existing
   `build_topology_event_timeline` tests this route relies on unchanged —
   `backend/app/api/routes/history.py`, `docs/architecture/historical_investigation_engine.md`.
+- **Communication vs. dependency distinction** (Phase 50, new `backend/dependency/` package): the
+  type separation FR-1.25 requires (`CommunicationRelationship` vs. `DependencyEdge`) was already
+  built in Phase 04; this phase makes the "communicates" side real for the first time.
+  `derive_communication_relationships` aggregates Phase 29's `discover_nodes` and Phase 30-31's
+  `discover_edges` output, both reused unmodified, into real `CommunicationRelationship` records
+  (`persistence_seconds` from `last_observed - first_observed`; `frequency` as
+  `observation_count / persistence_seconds`, falling back to raw `observation_count` when
+  `persistence_seconds == 0` — a documented, honest edge case, never a `ZeroDivisionError`).
+  Candidate pairs come from already-inferred topology edges, not a fresh O(V²) scan, per
+  `docs/architecture/algorithm_selection.md`'s committed design. No strength/directionality scoring
+  and no API wiring — `GET /dependencies` remains explicitly scoped to Phase 51. Proven by 7 real
+  tests, including one confirming every returned relationship's field set is structurally incapable
+  of carrying a dependency-shaped claim — `backend/dependency/communication.py`,
+  `docs/architecture/communication_vs_dependency.md`.
 
 ### What doesn't exist yet
 
-Dependency/causal reasoning, the digital twin, simulation, and counterfactual engines have not been
-implemented yet — those begin at Phase 50 and continue through the 69-phase plan. The API surface and
+Dependency strength estimation, temporal precedence, failure propagation, criticality metrics,
+causal evidence reports, the digital twin, simulation, and counterfactual engines have not been
+implemented yet — those begin at Phase 51 and continue through the 69-phase plan. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -452,6 +467,8 @@ backend/archaeology/
   behavior_evolution.py  Phase 46 behavioral evolution tracking (one node's BehavioralFingerprint history -> List[BehavioralEvolutionEvent])
   timeline.py  Phase 47 topology event timeline (chains diff_snapshots across a capture's snapshots -> persisted List[GraphChangeEvent])
   attribution.py  Phase 48 change attribution (GraphChangeEvent -> human-readable report with evidence, timestamp, affected flows/nodes, non-causal disclaimer)
+backend/dependency/
+  communication.py  Phase 50 communication relationship derivation (Node + Edge lists -> List[CommunicationRelationship], no dependency scoring)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)

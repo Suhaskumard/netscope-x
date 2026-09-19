@@ -5,20 +5,25 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 49 (Historical Investigation Engine) complete, tested. `GET /history`
-(`backend/app/api/routes/history.py`) is wired for real, replacing its 501 stub: it calls Phase 47's
-`build_topology_event_timeline(root, capture_id)` unmodified, filters the result to `start <=
-occurred_at <= end` (inclusive both ends), and paginates with the existing `PageParams`/
-`PaginatedResponse` machinery `GET /flows` already uses -- no new schema, no new inference logic,
-pure wiring over already-real, already-evidenced data. Deliberately does not 404 on an unrecognized
-`capture_id` (unlike `GET /flows`/`GET /topology`): the archaeology layer's existing "missing means
-empty" convention already makes an unknown capture and a real one with no snapshots yet
-indistinguishable, so both return an empty, still-200 paginated result. See
-`docs/architecture/historical_investigation_engine.md` for the full design, the empty-not-404
-convention rationale, worked example, and verification record. Phase 21 (High-Fidelity Packet
-Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
-not yet verified against a real Docker lab (this session's environment has no Docker installation —
-see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 50 (Dependency and Causal Reasoning: Communication vs. Dependency Distinction) complete, unit-
+verified. New `backend/dependency/` package, `derive_communication_relationships`
+(`backend/dependency/communication.py`) is the first real computation of `CommunicationRelationship`
+(`backend/app/models/dependency.py`, Phase 04) -- pure aggregation over Phase 29's `discover_nodes`
+and Phase 30-31's `discover_edges`, both reused unmodified: `persistence_seconds` is
+`edge.last_observed - edge.first_observed`, `frequency` is `observation_count / persistence_seconds`
+(falling back to raw `observation_count` when `persistence_seconds == 0`, an honest, documented
+zero-duration edge case, never a `ZeroDivisionError`). No new schema -- the "A communicates with B"
+vs. "A depends on B" type separation (`CommunicationRelationship` vs. `DependencyEdge`) was already
+built in Phase 04 and is FR-1.25's own central design point; this phase makes the "communicates"
+side real for the first time. No strength/directionality/temporal-precedence scoring and no API
+wiring -- `GET /dependencies` remains explicitly scoped to Phase 51 ("Dependency Strength"), which
+will be the first consumer of this phase's output, the same build-now-wire-later precedent as Phase
+44's `NetworkSnapshot` (unwired until Phase 47). See
+`docs/architecture/communication_vs_dependency.md` for the full design, the zero-duration fallback
+rationale, worked example, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one
+open item still stands: controlled live capture is implemented and unit-verified but not yet
+verified against a real Docker lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -977,6 +982,34 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/historical_investigation_engine.md` has full detail, including the
   empty-not-404 convention rationale.
 
+- Phase 50 — Dependency and Causal Reasoning: Communication vs. Dependency Distinction (new
+  `backend/dependency/` package, `backend/dependency/communication.py`; FR-1.25, RQ5). The type
+  separation FR-1.25 requires (`CommunicationRelationship` vs. `DependencyEdge`,
+  `backend/app/models/dependency.py`) was already built in Phase 04 -- its own module docstring
+  already calls this "the central design point (spec Phase 50, RQ5)". What was missing was a real
+  computation of the "communicates" side: `derive_communication_relationships` aggregates Phase
+  29's `discover_nodes` and Phase 30-31's `discover_edges` output, both reused unmodified (the same
+  "combine, don't reinvent" pattern Phase 32's `build_topology_graph` uses), mapping each `Edge` to
+  one `CommunicationRelationship` (`persistence_seconds = last_observed - first_observed`;
+  `frequency = observation_count / persistence_seconds`, falling back to raw `observation_count`
+  when `persistence_seconds == 0` -- an honest, documented zero-duration edge case, not a
+  `ZeroDivisionError` or a fabricated rate). Candidate pairs are exactly `discover_edges`'s own
+  already-inferred topology edges, per `docs/architecture/algorithm_selection.md` section 6's
+  committed design ("pruned first by the already-inferred topology edges"), not a fresh O(V^2) scan.
+  No strength/directionality/temporal-precedence scoring (Phase 51/52-53's job) and no API wiring --
+  `GET /dependencies` remains explicitly scoped to Phase 51 ("Dependency Strength"). Verified: new
+  `backend/tests/test_dependency_communication.py` (7/7: empty capture returns `[]`; a single
+  exchange's relationship matches its corresponding `Edge` exactly; two independent episodes produce
+  two relationships matching `discover_edges`'s two-edge output; a zero-duration flow falls back to
+  `frequency == observation_count`; `as_of` bounding excludes later communication; computed
+  `frequency`/`persistence_seconds` are always non-negative; every relationship's field set is
+  exactly `{source_node_id, target_node_id, frequency, persistence_seconds}`, structurally incapable
+  of carrying a dependency-shaped claim); full repo suite 410/410 (up from 403/403), no regressions;
+  `scripts.validate_data_contracts` 38/38 and `scripts.check_ground_truth_boundary` both re-verified
+  clean (no schema changes this phase). `docs/architecture/communication_vs_dependency.md` has full
+  detail, including the zero-duration fallback rationale and the explicit "what this phase does NOT
+  do" scope boundary.
+
 ## Blocked phases
 
 None.
@@ -1414,6 +1447,13 @@ None yet — no experiments have been run.
   `captured_at`-order caveat and Phase 45's "removals practically vacuous" limitation unchanged --
   no new filtering logic was added beyond the `start`/`end` window; documented in
   `docs/architecture/historical_investigation_engine.md`.
-- Next: Phase 50 (Dependency and Causal Reasoning, FR-1.25). Explicitly distinguish "A communicates
-  with B" from "A depends on B" -- communication alone shall never automatically imply dependency.
-  Not started; awaiting explicit request.
+- Communication vs. dependency distinction (Phase 50) computes `CommunicationRelationship.frequency`
+  as raw `observation_count` (not a divide-by-zero or a fabricated rate) when
+  `persistence_seconds == 0` -- a real, if unusual, case (every contributing flow shares one
+  instant), documented, not hidden. No strength/directionality/temporal-precedence scoring exists
+  anywhere in this system yet (Phase 51/52-53's job); documented in
+  `docs/architecture/communication_vs_dependency.md`.
+- Next: Phase 51 (Dependency Strength, FR-1.26). Estimate `DependencyEdge.strength` from frequency,
+  persistence, directionality, and traffic characteristics over Phase 50's
+  `CommunicationRelationship`s, and wire `GET /dependencies` for real. Not started; awaiting explicit
+  request.
