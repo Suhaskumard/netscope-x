@@ -17,11 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 38 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 39 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-A real median/MAD behavioral baseline (`build_node_baseline`) now implements exactly the robust
-statistical mechanism `docs/architecture/algorithm_selection.md` §3 already selected for anomaly
-detection — see `docs/architecture/behavioral_baseline.md`. Next: Phase 39.
+A real EWMA-based concept-drift classifier (`track_feature_drift`/`track_node_drift`) now distinguishes
+transient anomalies from persistent behavioral evolution, built on Phase 38's baseline — see
+`docs/architecture/concept_drift_detection.md`. Next: Phase 40.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -270,11 +270,21 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   EWMA-based transient-anomaly-vs-concept-drift decision §3 also names is explicitly Phase 39's job,
   not built here. Proven by 8 real tests, including a hand-computed median/MAD — `backend/flowmind/
   baseline/node_baseline.py`, `docs/architecture/behavioral_baseline.md`.
+- **Concept drift detection** (Phase 39): `track_feature_drift`/`track_node_drift` implement exactly
+  the EWMA-based mechanism `algorithm_selection.md` §3 already selected — an incremental EWMA seeded
+  at Phase 38's robust baseline median, classifying a given deviating sequence as `CONCEPT_DRIFT`
+  (the slow-moving EWMA has been pulled measurably away — sustained deviation) or `TRANSIENT_ANOMALY`
+  (a blip that reverted before the EWMA could move), populating the real `AnomalyClass` enum
+  (Phase 04) for the first time. Deciding *whether* a sequence deviates enough to classify in the
+  first place remains explicitly Phase 40's job — calling this on ordinary history vacuously returns
+  `TRANSIENT_ANOMALY`, a documented, accepted scope limitation. Proven by 9 real tests, including a
+  hand-computed EWMA trace and a mixed scenario correctly separating a drifting feature from a stable
+  one — `backend/flowmind/drift/node_drift.py`, `docs/architecture/concept_drift_detection.md`.
 
 ### What doesn't exist yet
 
 Anomaly detection, temporal archaeology, dependency/causal reasoning, the digital twin, simulation,
-and counterfactual engines have not been implemented yet — those begin at Phase 39 and continue
+and counterfactual engines have not been implemented yet — those begin at Phase 40 and continue
 through the 69-phase plan. The API surface and data contracts are real and tested; most of the
 research intelligence they will eventually serve is not built yet. Nothing in this
 repository
@@ -302,6 +312,7 @@ backend/flowmind/
   fingerprints/node_fingerprint.py  Phase 35 fingerprint assembly (features -> real BehavioralFingerprint)
   classification/role_classifier.py  Phase 36-37 Naive Bayes role classifier + temperature scaling
   baseline/node_baseline.py  Phase 38 robust median/MAD behavioral baseline + historical novelty sets
+  drift/node_drift.py  Phase 39 EWMA-based transient-anomaly-vs-concept-drift classifier
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37 evaluation-only ground-truth/calibration comparison (never reachable from backend/)
@@ -315,7 +326,7 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-38 design docs
+  architecture/   Phase 04-05, 09-39 design docs
   development/    Phase 06 environment notes
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
@@ -326,7 +337,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (297 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (306 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

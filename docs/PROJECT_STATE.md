@@ -5,32 +5,28 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 38 (Behavioral Baseline) complete, unit-verified. `build_node_baseline(fingerprint_history,
-min_observations=5) -> NodeBehavioralBaseline` (`backend/flowmind/baseline/node_baseline.py`, new
-`backend/flowmind/baseline/` package) implements exactly the mechanism `docs/architecture/
-algorithm_selection.md` §3 already selected for anomaly detection: a robust (median/MAD, not
-mean/std) baseline per continuous feature, plus explicit historical-value sets for set-difference
-novelty checks. Maps all 6 `BehavioralFingerprint` feature fields: `distinct_destinations`,
-`mean_flow_duration_seconds`, `outbound_byte_ratio`, and `port_count = len(distinct_ports)` (reusing
-Phase 36's own "port count as entropy proxy" framing) each get a robust median/MAD baseline;
-`distinct_ports`/`distinct_protocols` accumulate as historical union sets (`historical_ports`/
-`historical_protocols`) for §3's "new destination/port not in historical set" novelty mechanism;
-`is_persistent_talker` gets a historical frequency. `mad` is reported honestly un-floored (can be
-`0.0` with identical/few historical values -- a documented fact of the statistic, not a bug; flooring
-it for z-score use is left to whichever future phase actually computes one). Cold-start exposed via
-`observation_count`/`is_sufficient` (`min_observations=5`, a documented provisional default -- §3
-names the cold-start limitation qualitatively but gives no number). A pure function over a
-caller-supplied, already-ordered fingerprint history -- no cross-capture historical-fingerprint store
-exists anywhere in this repo yet (Phase 35's `fingerprints.jsonl` is a single-capture snapshot, not a
-time series), and building one is out of this phase's literal scope. The EWMA-based
-transient-anomaly-vs-concept-drift decision logic §3 also names is explicitly Phase 39's job (FR-1.16),
-not built here -- this phase only maintains the baseline (FR-1.15's literal scope). No persistence
-(mirrors Phase 33/34/36's own "no artifact yet" decisions) and no Phase 04 schema exists for this yet,
-so the output is a plain frozen dataclass, same precedent as `NodeBehavioralFeatures`/
-`TopologyComparisonResult`. See `docs/architecture/behavioral_baseline.md` for the full design and
-verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
-live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
-session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+Phase 39 (Concept Drift Detection) complete, unit-verified. `track_feature_drift`/`track_node_drift`
+(`backend/flowmind/drift/node_drift.py`, new `backend/flowmind/drift/` package) implement exactly the
+mechanism `docs/architecture/algorithm_selection.md` §3 already selected: "an EWMA-updated baseline
+with a slower update rate than the anomaly-detection window -- a sustained deviation that the EWMA
+baseline eventually absorbs is classified `concept_drift`; a deviation that reverts before the
+baseline shifts is classified `transient_anomaly`." An incremental EWMA (`ewma_t = alpha*x_t +
+(1-alpha)*ewma_{t-1}`), seeded at Phase 38's robust baseline median, is run over a caller-supplied,
+time-ordered sequence of new observations; classification is based on the final EWMA's distance (in
+baseline MADs, `mad_floor=1e-6` guarding division-by-zero -- deliberately not baked into Phase 38's
+`RobustFeatureBaseline`, whose own doc left flooring to "whichever future phase actually computes a
+z-score") from the original median, thresholded by `drift_threshold_mads=2.0` (provisional, like
+`alpha=0.05` -- no spec text gives numbers). This populates the real `AnomalyClass` enum
+(`backend/app/models/anomaly.py`, Phase 04) for the first time. `track_node_drift` runs this across
+all 4 continuous `NodeBehavioralBaseline` features for the same node's new fingerprint sequence,
+guarding against a `node_id`/`window` mismatch. Explicit scope boundary: this phase classifies a
+*given* deviating sequence -- it does not decide *whether* a sequence is anomalous in the first place,
+which is Phase 40's job; calling it on ordinary, non-deviating history vacuously returns
+`TRANSIENT_ANOMALY`, a documented, accepted limitation. See
+`docs/architecture/concept_drift_detection.md` for the full design, worked example, and verification
+record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture
+is implemented and unit-verified but not yet verified against a real Docker lab (this session's
+environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
 limitations").
 
 ## Process note
@@ -615,6 +611,30 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   check_ground_truth_boundary` re-verified clean. `docs/architecture/behavioral_baseline.md` has full
   detail, including the Phase 38 vs. 39 scope-boundary argument.
 
+- Phase 39 — Concept Drift Detection (`backend/flowmind/drift/node_drift.py`, new
+  `backend/flowmind/drift/` package; FR-1.16). `track_feature_drift(baseline, feature_name,
+  observed_values, alpha=0.05, drift_threshold_mads=2.0, mad_floor=1e-6) -> DriftTrackingResult` runs
+  an incremental EWMA seeded at a Phase 38 `RobustFeatureBaseline`'s median over a new observation
+  sequence, classifying `CONCEPT_DRIFT` if the final EWMA ends up `>= drift_threshold_mads` baseline
+  MADs from the original median, else `TRANSIENT_ANOMALY` -- implements `algorithm_selection.md` §3's
+  named EWMA mechanism exactly, using only the EWMA's own slow rate against the static Phase 38
+  baseline (no second "anomaly-detection window" rate needed, since Phase 40 doesn't exist yet to
+  define one). Raises `ValueError` on empty input. `track_node_drift(baseline, new_fingerprints, ...)
+  -> Dict[str, DriftTrackingResult]` batches this across the 4 continuous `NodeBehavioralBaseline`
+  features, guarding against `node_id`/`window` mismatches. Populates the real `AnomalyClass` enum
+  (`backend/app/models/anomaly.py`, Phase 04) for the first time. Explicit, documented precondition:
+  meaningful only on an already-deviating sequence -- deciding whether a sequence deviates at all is
+  Phase 40's job; ordinary non-deviating input vacuously classifies `TRANSIENT_ANOMALY`. No
+  persistence. Verified: new `backend/tests/test_flowmind_drift.py` (9/9: empty-input `ValueError`;
+  a reverting blip classifies transient; a sustained 20-step shift classifies drift; EWMA trace
+  matches a hand-computed value exactly (`[15.0, 17.5, 18.75]`); `track_node_drift`'s empty/
+  node_id-mismatch/window-mismatch `ValueError`s; coverage of all 4 continuous features; a mixed
+  scenario correctly separates a drifting feature from a stable one); combined suite 306/306 (up
+  from 297/297), no regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no
+  schema changes -- `AnomalyClass` populated, not modified); `scripts.check_ground_truth_boundary`
+  re-verified clean. `docs/architecture/concept_drift_detection.md` has full detail, including the
+  worked EWMA example.
+
 ## Blocked phases
 
 None.
@@ -988,7 +1008,13 @@ None yet — no experiments have been run.
   documented, evidence-light provisional default; `mad` is reported honestly un-floored, left for a
   future consumer to floor if/when it computes a z-score; documented in
   `docs/architecture/behavioral_baseline.md`.
-- Next: Phase 39 (Concept Drift Detection). Expected to consume Phase 38's baseline and implement the
-  EWMA-based mechanism `algorithm_selection.md` §3 already named for distinguishing a transient
-  anomaly from persistent behavioral evolution (FR-1.16; RQ3/RQ4) — not yet scoped beyond that. Not
-  started; awaiting explicit request.
+- Concept drift detection (Phase 39) only tracks the 4 continuous `NodeBehavioralBaseline` features —
+  no EWMA-drift analogue is defined for the 2 historical-set features or the persistence frequency,
+  since `algorithm_selection.md` §3 doesn't specify what "drift" means for those. `alpha=0.05`/
+  `drift_threshold_mads=2.0` are documented, evidence-light provisional defaults, not empirically
+  validated (no Docker this session); documented in `docs/architecture/concept_drift_detection.md`.
+- Next: Phase 40 (Multi-Dimensional Anomaly Detection). Expected to decide *whether* a node's observed
+  behavior deviates enough to flag in the first place (across traffic volume, destinations, ports,
+  protocols, timing, topology, behavior — spec Phase 40), then hand a flagged deviation to Phase 39's
+  `track_feature_drift`/`track_node_drift` to classify as transient or drift — not yet scoped beyond
+  FR-1.17 and `algorithm_selection.md` §3. Not started; awaiting explicit request.
