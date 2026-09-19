@@ -17,12 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 41 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 42 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Every anomaly's evidence (`Anomaly.evidence`/`evidence_values`, Phase 40) is now standardized to
-match this project's own Phase 04 contract example (clean integers, not `.3f` everywhere), and a new
-`format_anomaly_report` renders any node's anomalies into the master spec's own literal
-human-readable report shape — see `docs/architecture/explainable_anomalies.md`. Next: Phase 42.
+`evaluate_anomaly_detection` now scores real Phase 40 anomaly-detector output against labeled ground
+truth — real precision/recall/F1/false-negative-rate/detection-latency always, and a real
+false-positive-rate whenever the caller supplies how many detection attempts were actually run,
+honestly `None` otherwise — see `docs/architecture/flowmind_evaluation.md`. Next: Phase 43.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -307,11 +307,24 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   a 501 stub. Proven by 7 new tests plus 4 updated Phase 40 assertions, including a real end-to-end
   run reproducing the master spec's own worked example — `backend/flowmind/anomaly/explain.py`,
   `docs/architecture/explainable_anomalies.md`.
+- **FLOWMIND evaluation** (Phase 42): `evaluate_anomaly_detection` scores real Phase 40 anomaly
+  output against caller-supplied `LabeledAnomalyEvent` ground truth (deliberately minimal — no
+  injected-anomaly dataset generator exists anywhere in this repo yet; RQ3's own `dataset_anomaly`/
+  `dataset_noisy` remain future work). Matching is greedy per `(node_id, dimension)`: each label
+  claims at most one detection no earlier than its labeled onset. Precision/recall/F1/
+  false-negative-rate/detection-latency are always real and computable; false-positive-rate needs a
+  countable negative-instance universe that detections alone can't supply, so it's real only when the
+  caller supplies `total_checks` (how many detection attempts were actually run), honestly `None`
+  otherwise — never fabricated. Mirrors Phase 32/37's "plain dataclass, not `MetricResult`" precedent
+  exactly, since no experiment registry exists anywhere to legitimately populate
+  `MetricResult.experiment_id`. Proven by 10 real tests including a real end-to-end run through
+  `build_node_baseline`/`detect_node_anomalies` — `experiments/metrics/anomaly_evaluation.py`,
+  `docs/architecture/flowmind_evaluation.md`.
 
 ### What doesn't exist yet
 
 Temporal archaeology, dependency/causal reasoning, the digital twin, simulation, and counterfactual
-engines have not been implemented yet — those begin at Phase 42 and continue through the 69-phase
+engines have not been implemented yet — those begin at Phase 43 and continue through the 69-phase
 plan. The API surface and data contracts are real and tested; most of the
 research intelligence they will eventually serve is not built yet. Nothing in this
 repository
@@ -344,7 +357,7 @@ backend/flowmind/
   anomaly/explain.py  Phase 41 human-readable anomaly report rendering (Anomaly list -> spec-shaped report string)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
-  metrics/    Phase 32/37 evaluation-only ground-truth/calibration comparison (never reachable from backend/)
+  metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
   docker/         Phase 11-15 multi-tier network laboratory
@@ -366,7 +379,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (325 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (335 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

@@ -5,25 +5,23 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 41 (Explainable Anomalies) complete, unit-verified. `backend/flowmind/anomaly/node_anomaly.py`'s
-evidence formatting (Phase 40) is now standardized to match Phase 04's own `Anomaly` contract example
-(`scripts/validate_data_contracts.py`'s `"historical_destinations": "4"`, not the drifted `"4.000"`
-Phase 40 actually shipped) — continuous-feature values render as clean integers when whole, `z_score`
-keeps 3-decimal precision, and novelty checks (`PORTS`/`PROTOCOLS`) gained a symmetric
-`current_<label>_count` alongside the existing `historical_<label>_count`. New
-`backend/flowmind/anomaly/explain.py` (`format_anomaly_report`) renders any same-node `Anomaly` list
-into the master spec's literal human-readable report block (`Node: / <Label>: <value> / Evidence:
-...`), generically derived from each anomaly's own `evidence_values` keys — no per-dimension
-hardcoding, so it renders correctly for dimensions that don't exist yet too. Deliberately no new
-detection signal: FR-1.18's own text asks for "historical vs. current destination counts" and
-"specific new ports observed," both already true; specific new-*destination*-identity tracking (the
-spec's illustrative "New destination: X") stays an honest, documented limitation for a later phase,
-not silently added or silently skipped. No persistence or API wiring — `GET /anomalies` remains a 501
-stub. See `docs/architecture/explainable_anomalies.md` for the full design, worked example, and
-verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
-live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
-session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
-limitations").
+Phase 42 (FLOWMIND Evaluation) complete, unit-verified. New `experiments/metrics/
+anomaly_evaluation.py` (`evaluate_anomaly_detection`) scores real `Anomaly` output (Phase 40) against
+caller-supplied `LabeledAnomalyEvent` ground truth, computing real precision/recall/F1/
+false-negative-rate always, real detection latency across matched true positives, and a real
+false-positive-rate whenever the caller supplies `total_checks` (the total number of node×dimension
+detection attempts actually run — otherwise honestly `None`, never fabricated, since no countable
+negative-instance universe exists from detections alone). Matching is greedy per `(node_id,
+dimension)`, one label to at most one detection with `detected_at >= onset_at`. Mirrors Phase 32/37's
+established "plain dataclass, not `MetricResult`" precedent exactly — no experiment registry exists
+anywhere in this repo to legitimately populate `MetricResult.experiment_id`. `GET /metrics` stays
+untouched, already explicitly scoped to Phase 68 in its own docstring. No injected-anomaly dataset
+generator (RQ3's `dataset_anomaly`/`dataset_noisy`) exists yet — this phase only scores against
+whatever labels a caller supplies. See `docs/architecture/flowmind_evaluation.md` for the full design,
+worked example, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item
+still stands: controlled live capture is implemented and unit-verified but not yet verified against a
+real Docker lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -697,6 +695,43 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   example. `docs/architecture/explainable_anomalies.md` has full detail, including the scope-decision
   argument and the worked example.
 
+- Phase 42 — FLOWMIND Evaluation (new `experiments/metrics/anomaly_evaluation.py`; FR-1.19; RQ3).
+  `evaluate_anomaly_detection(detected: List[Anomaly], labeled_events: List[LabeledAnomalyEvent],
+  total_checks=None) -> AnomalyDetectionEvaluation` scores real Phase 40 detector output against
+  caller-supplied labeled ground truth (`LabeledAnomalyEvent(node_id, dimension, onset_at)` --
+  deliberately minimal, since no injected-anomaly dataset generator exists anywhere in this repo;
+  RQ3's own `dataset_anomaly`/`dataset_noisy` remain future work, not this phase's job). Matching is
+  greedy per `(node_id, dimension)`: each label claims at most one detection (the earliest with
+  `detected_at >= onset_at`); an early detection cannot be credited and itself becomes a false
+  positive. `precision`/`recall`/`f1`/`false_negative_rate` are always real and computable (`0.0`
+  convention when a denominator is structurally empty, e.g. zero detections at all -- never a
+  fabricated `1.0`); `false_positive_rate` needs a countable negative-instance universe that
+  `detected`/`labeled_events` alone can't supply, so it stays honestly `None` unless the caller
+  supplies `total_checks` (the real number of node×dimension checks actually run), from which
+  `true_negative_count = total_checks - TP - FP - FN` (raises `ValueError` if negative);
+  `mean_detection_latency_seconds` is `None` with zero true positives, never `0.0`. Mirrors Phase
+  32/37's established "plain dataclass, not `MetricResult`" precedent exactly --
+  `MetricResult.experiment_id` is still required and no experiment registry exists anywhere in this
+  repo (`Experiment`, Phase 04, is never constructed for real anywhere). `GET /metrics` untouched,
+  already explicitly scoped to Phase 68 in its own docstring. Verified: new `experiments/tests/
+  test_anomaly_evaluation.py` (10/10: perfect detection scores precision/recall/f1 all `1.0`; a
+  missed label drops recall only; a spurious detection drops precision only; a pre-onset detection
+  counts as neither a match nor a free pass -- the label becomes a false negative AND the early
+  detection becomes a false positive; empty `labeled_events` raises `ValueError`; a hand-computed
+  mean detection latency across two true positives matches exactly; zero true positives leaves mean
+  latency `None`; `false_positive_rate` is `None` without `total_checks` and real with it; an
+  inconsistent `total_checks` raises `ValueError`; a real end-to-end run through
+  `build_node_baseline`/`detect_node_anomalies`, not hand-built `Anomaly` fixtures, scores a
+  genuinely detector-produced anomaly as a true positive with real, non-fabricated latency); combined
+  suite 335/335 (up from 325/325), no regressions; `scripts.validate_data_contracts` re-verified
+  clean (38/38, no schema changes this phase); `scripts.check_ground_truth_boundary` re-verified
+  clean; a real, manual end-to-end run (no Docker needed) built a synthetic fingerprint history for
+  node `API-2`, triggered a real `DESTINATIONS` anomaly detected 6 seconds after a labeled onset, and
+  confirmed real `precision=1.0`/`recall=1.0`/`f1=1.0`/`mean_detection_latency_seconds=6.0` plus a
+  real `false_positive_rate=0.0` with `total_checks=50` supplied. `docs/architecture/
+  flowmind_evaluation.md` has full detail, including the matching algorithm, the
+  `MetricResult`-vs-dataclass argument, and the worked example.
+
 ## Blocked phases
 
 None.
@@ -1088,6 +1123,9 @@ None yet — no experiments have been run.
   (specific new-destination identity, unlike ports/protocols, remains an honest, documented
   limitation) and no API/persistence wiring — documented in
   `docs/architecture/explainable_anomalies.md`.
-- Next: Phase 42 (FLOWMIND Evaluation, FR-1.19). Measure and report FLOWMIND's own precision,
-  recall, F1, false-positive rate, false-negative rate, and detection latency against labeled
-  experiments. Not started; awaiting explicit request.
+- FLOWMIND evaluation (Phase 42) is a pure scoring function (`evaluate_anomaly_detection`,
+  `experiments/metrics/anomaly_evaluation.py`) over caller-supplied `Anomaly` output and labeled
+  ground truth — it builds no dataset itself. `false_positive_rate` is honestly `None` unless the
+  caller supplies `total_checks`; documented in `docs/architecture/flowmind_evaluation.md`.
+- Next: Phase 43 (Temporal Graph Model, FR-1.20). Represent the network as a time-indexed graph
+  G(t), not only a static snapshot. Not started; awaiting explicit request.
