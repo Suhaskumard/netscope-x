@@ -25,6 +25,15 @@ A pure computation over two already-persisted snapshots -- no new
 persistence, no API wiring (mirrors Phase 41's `format_anomaly_report` and
 Phase 42's `evaluate_anomaly_detection`). Never imports
 `simulator.ground_truth` (spec §4).
+
+Extended by Phase 48 (Change Attribution, FR-1.23) to populate
+`GraphChangeEvent.affected_flow_ids` -- see
+`docs/architecture/change_attribution.md` for the full design. Flows are
+matched against a node/edge's IP set(s), filtered to
+`flow.first_seen <= to_snapshot.captured_at` -- the same `as_of` bound
+Phase 43/44 already use (a snapshot's `captured_at` doubles as its `as_of`),
+so attribution stays evidence-consistent with what the later snapshot
+actually saw.
 """
 
 from __future__ import annotations
@@ -32,9 +41,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List
 
+from backend.app.models.flow import Flow
 from backend.app.models.snapshot import ChangeType, GraphChangeEvent, NetworkSnapshot
 from backend.app.models.topology import Edge, Node
 from backend.archaeology.snapshots import read_snapshot_graph
+from experiments.artifacts.io import read_jsonl
+from experiments.artifacts.paths import flows_path
 
 # Edge attributes worth reporting as ATTRIBUTE_CHANGED. Deliberately edges
 # only -- a Node's only non-identity field is last_observed, which
@@ -44,8 +56,39 @@ from backend.archaeology.snapshots import read_snapshot_graph
 # same pattern as Phase 40 explicitly never producing TOPOLOGY).
 
 
+def _flows_as_of(root: Path, capture_id: str, as_of) -> List[Flow]:
+    path = flows_path(root, capture_id)
+    if not path.is_file():
+        return []
+    flows = read_jsonl(path, Flow)
+    return [f for f in flows if f.first_seen <= as_of]
+
+
+def _flow_ids_for_node(flows: List[Flow], node: Node) -> List[str]:
+    node_ips = {str(ip) for ip in node.ip_addresses}
+    return sorted({f.flow_id for f in flows if str(f.src_ip) in node_ips or str(f.dst_ip) in node_ips})
+
+
+def _flow_ids_for_edge(flows: List[Flow], node_a: Node, node_b: Node) -> List[str]:
+    a_ips = {str(ip) for ip in node_a.ip_addresses}
+    b_ips = {str(ip) for ip in node_b.ip_addresses}
+    return sorted(
+        {
+            f.flow_id
+            for f in flows
+            if (str(f.src_ip) in a_ips and str(f.dst_ip) in b_ips)
+            or (str(f.src_ip) in b_ips and str(f.dst_ip) in a_ips)
+        }
+    )
+
+
 def _node_event(
-    change_type: ChangeType, from_id: str, to_snapshot: NetworkSnapshot, node: Node, note: str
+    change_type: ChangeType,
+    from_id: str,
+    to_snapshot: NetworkSnapshot,
+    node: Node,
+    note: str,
+    flow_ids: List[str],
 ) -> GraphChangeEvent:
     return GraphChangeEvent(
         event_id=f"{to_snapshot.snapshot_id}:{change_type.value}:{node.node_id}",
@@ -57,11 +100,17 @@ def _node_event(
         evidence=[
             f"node {node.node_id} ({', '.join(str(ip) for ip in node.ip_addresses)}) {note}"
         ],
+        affected_flow_ids=flow_ids,
     )
 
 
 def _edge_event(
-    change_type: ChangeType, from_id: str, to_snapshot: NetworkSnapshot, edge: Edge, note: str
+    change_type: ChangeType,
+    from_id: str,
+    to_snapshot: NetworkSnapshot,
+    edge: Edge,
+    note: str,
+    flow_ids: List[str],
 ) -> GraphChangeEvent:
     return GraphChangeEvent(
         event_id=f"{to_snapshot.snapshot_id}:{change_type.value}:{edge.edge_id}",
@@ -71,11 +120,16 @@ def _edge_event(
         change_type=change_type,
         affected_edge_id=edge.edge_id,
         evidence=[f"edge {edge.edge_id} ({edge.source_node_id}<->{edge.target_node_id}) {note}"],
+        affected_flow_ids=flow_ids,
     )
 
 
 def _edge_attribute_events(
-    from_id: str, to_snapshot: NetworkSnapshot, before: Edge, after: Edge
+    from_id: str,
+    to_snapshot: NetworkSnapshot,
+    before: Edge,
+    after: Edge,
+    flow_ids: List[str],
 ) -> List[GraphChangeEvent]:
     events: List[GraphChangeEvent] = []
 
@@ -96,6 +150,7 @@ def _edge_attribute_events(
                     f"{after.confidence:.3f} (observation_count {before.observation_count} -> "
                     f"{after.observation_count})"
                 ],
+                affected_flow_ids=flow_ids,
             )
         )
 
@@ -115,6 +170,7 @@ def _edge_attribute_events(
                     f"edge {after.edge_id} protocols changed from "
                     f"[{','.join(before.protocols)}] to [{','.join(after.protocols)}]"
                 ],
+                affected_flow_ids=flow_ids,
             )
         )
 
@@ -155,53 +211,69 @@ def diff_snapshots(
     from_edges: Dict[str, Edge] = {e.edge_id: e for e in from_graph.edges}
     to_edges: Dict[str, Edge] = {e.edge_id: e for e in to_graph.edges}
 
+    # Phase 48 (FR-1.23): flow evidence attributable to each change, bounded
+    # by the same as_of the later snapshot itself used (captured_at).
+    flows = _flows_as_of(root, capture_id, to_snapshot.captured_at)
+
     events: List[GraphChangeEvent] = []
 
     for node_id in to_nodes.keys() - from_nodes.keys():
+        node = to_nodes[node_id]
         events.append(
             _node_event(
                 ChangeType.NODE_ADDED,
                 from_id,
                 to_snapshot,
-                to_nodes[node_id],
+                node,
                 "not present as of the earlier snapshot",
+                _flow_ids_for_node(flows, node),
             )
         )
     for node_id in from_nodes.keys() - to_nodes.keys():
+        node = from_nodes[node_id]
         events.append(
             _node_event(
                 ChangeType.NODE_REMOVED,
                 from_id,
                 to_snapshot,
-                from_nodes[node_id],
+                node,
                 "was present in the earlier snapshot but not in the later one",
+                _flow_ids_for_node(flows, node),
             )
         )
 
     for edge_id in to_edges.keys() - from_edges.keys():
+        edge = to_edges[edge_id]
         events.append(
             _edge_event(
                 ChangeType.EDGE_ADDED,
                 from_id,
                 to_snapshot,
-                to_edges[edge_id],
+                edge,
                 "not present as of the earlier snapshot",
+                _flow_ids_for_edge(flows, to_nodes[edge.source_node_id], to_nodes[edge.target_node_id]),
             )
         )
     for edge_id in from_edges.keys() - to_edges.keys():
+        edge = from_edges[edge_id]
         events.append(
             _edge_event(
                 ChangeType.EDGE_REMOVED,
                 from_id,
                 to_snapshot,
-                from_edges[edge_id],
+                edge,
                 "was present in the earlier snapshot but not in the later one",
+                _flow_ids_for_edge(
+                    flows, from_nodes[edge.source_node_id], from_nodes[edge.target_node_id]
+                ),
             )
         )
 
     for edge_id in to_edges.keys() & from_edges.keys():
+        after = to_edges[edge_id]
+        flow_ids = _flow_ids_for_edge(flows, to_nodes[after.source_node_id], to_nodes[after.target_node_id])
         events.extend(
-            _edge_attribute_events(from_id, to_snapshot, from_edges[edge_id], to_edges[edge_id])
+            _edge_attribute_events(from_id, to_snapshot, from_edges[edge_id], after, flow_ids)
         )
 
     return sorted(events, key=_sort_key)

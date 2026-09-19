@@ -131,3 +131,7 @@ the master spec's named change types, built on a directly-verified id-stability 
 than an assumed one. Node attribute changes are an explicit, documented scope-out; removals are a
 structurally real but today practically-vacuous capability, also documented. No persistence or API
 wiring exists yet — both are natural jobs for Phase 47 and beyond.
+
+**Amendment (Phase 48)**: `diff_snapshots` was extended in place to also populate a new
+`GraphChangeEvent.affected_flow_ids` field, closing FR-1.23's "affected flows" attribution
+requirement. See `docs/architecture/change_attribution.md` for the full design.

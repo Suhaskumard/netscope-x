@@ -5,25 +5,26 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 47 (Topology Event Timeline) complete, unit-verified. New `backend/archaeology/timeline.py`
-(`build_topology_event_timeline`/`read_topology_event_timeline`) chains Phase 45's `diff_snapshots`
--- unmodified -- across every consecutive pair of a capture's own persisted `NetworkSnapshot`s
-(via Phase 44's `list_snapshots`, already ordered by generation), concatenating the results in
-pair order into one flat, persisted, chronological `GraphChangeEvent` stream (new
-`events_path`/`topology_events.jsonl`, `experiments/artifacts/paths.py`). No new schema --
-`GraphChangeEvent`'s own docstring already scoped it to "spec Phase 45, 47-48" -- and no new
-comparison logic, purely assembly over already-real, already-evidenced events, the same
-"combine, don't reinvent" pattern Phase 32's `build_topology_graph` used for nodes/edges. Chains by
-snapshot generation order (not a `captured_at` re-sort) -- equivalent under normal usage, an
-explicit documented caveat otherwise, mirroring Phase 45's own "practically vacuous under normal
-usage" caveat style. Write-through persistence, not a cache, mirroring Phase 32's `topology_path`
-convention. No API wiring -- `GET /history` remains an untouched 501 stub, explicitly scoped to
-Phase 49 ("Backing implementation: spec Phase 49"), which will query exactly this stream. See
-`docs/architecture/topology_event_timeline.md` for the full design, the generation-order caveat,
-worked example, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item
-still stands: controlled live capture is implemented and unit-verified but not yet verified against
-a real Docker lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 48 (Change Attribution) complete, unit-verified. `GraphChangeEvent`
+(`backend/app/models/snapshot.py`) gains a backward-compatible `affected_flow_ids` field (the same
+"extend an earlier phase's schema once a later phase's requirement needs it" precedent Phase 40
+already set for `total_byte_count`), closing the one real gap in FR-1.23's four named attribution
+items -- evidence/timestamps/affected nodes were already real from Phase 45. `diff_snapshots`
+(Phase 45, extended in place) populates it by matching flows against the affected node's/edge's IP
+set(s), bounded by the same `as_of` (`captured_at`) Phase 43/44 already use. New
+`backend/archaeology/attribution.py` (`format_change_attribution`/`format_timeline_attribution`,
+mirroring Phase 41's `explain.py`) renders every change's evidence, timestamp, affected node/edge,
+and affected flows, paired with a fixed, unconditional non-causal disclaimer -- structural, not a
+confidence threshold, since no causal-inference mechanism exists anywhere in this system yet (that
+begins at Phase 50-56). `ATTRIBUTE_CHANGED` events attribute to every flow supporting the edge, not
+only the ones that drove that specific delta -- a documented, honest scope limitation. No new
+persistence or API wiring -- `affected_flow_ids` reaches disk automatically via Phase 47's existing
+`topology_events.jsonl`. See `docs/architecture/change_attribution.md` for the full design, the
+schema-extension precedent, the causal-disclaimer rationale, worked example, and verification
+record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live
+capture is implemented and unit-verified but not yet verified against a real Docker lab (this
+session's environment has no Docker installation — see `docs/architecture/packet_capture.md`
+"Known limitations").
 
 ## Process note
 
@@ -924,6 +925,45 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   exactly matched the doc's worked example. `docs/architecture/topology_event_timeline.md` has full
   detail, including the generation-order-vs-captured_at-order caveat.
 
+- Phase 48 — Change Attribution (`backend/app/models/snapshot.py`; `backend/archaeology/diff.py`
+  extended in place; new `backend/archaeology/attribution.py`; FR-1.23). Three of FR-1.23's four
+  named attribution items (observation evidence, timestamps, affected nodes) were already real on
+  `GraphChangeEvent` since Phase 45; the real gap was affected flows -- no code anywhere linked a
+  change event to concrete `Flow`s. Closed by adding `GraphChangeEvent.affected_flow_ids: List[str]
+  = []` (backward-compatible, default-valued), the same "extend an earlier phase's schema once a
+  later phase's requirement needs it" precedent Phase 40 already set for `total_byte_count` -- a
+  separate `ChangeAttribution` dataclass was considered and rejected as pure duplication of fields
+  `GraphChangeEvent` already has. `diff_snapshots` (Phase 45, extended in place, not a new function)
+  now also reads `flows_path`, filtered to `flow.first_seen <= to_snapshot.captured_at` (the same
+  `as_of` bound Phase 43/44 already establish), and matches flows against the affected node's/
+  edge's IP set(s) -- genuine recomputation from typed `Flow` objects, not string-parsing of
+  `Edge.evidence`'s human-readable text. Documented, honest scope limitation: an `ATTRIBUTE_CHANGED`
+  event attributes to every flow supporting the edge as of the later snapshot, not only the
+  specific new flow(s) that drove that one attribute's delta -- isolating that subset would need
+  flow-level diffing between snapshots, not attempted here, mirroring Phase 30's own
+  "evidence is every flow in the bucket" granularity. New `format_change_attribution`/
+  `format_timeline_attribution` (mirroring Phase 41's `explain.py`) render each event's full
+  attribution plus a fixed, unconditional causal disclaimer -- structural, not a confidence
+  threshold, since this system has no causal-inference mechanism at all yet (`CausalEvidenceReport`,
+  `backend/app/models/dependency.py`, is explicitly scoped to Phase 56, a different, later concern,
+  not reusable here). No new persistence (`affected_flow_ids` reaches disk automatically via Phase
+  47's existing `topology_events.jsonl`) and no API wiring -- `GET /history` remains Phase 49's
+  untouched 501 stub. Verified: `backend/tests/test_archaeology_diff.py` grew from 10/10 to 14/14
+  (a `NODE_ADDED` event's `affected_flow_ids` matches the real flows touching that node; an
+  `EDGE_ADDED` event's matches the real flows connecting its two nodes; an `ATTRIBUTE_CHANGED`
+  event's matches every flow supporting the edge; an ICMP-only node's added event correctly gets
+  `[]`); new `backend/tests/test_archaeology_attribution.py` (9/9: every rendered field present and
+  correct; an honest "none directly attributable" line when no flows exist; the causal disclaimer
+  present in every report across all five `ChangeType` values with no exceptions; multi-event
+  timeline ordering; empty-timeline handling); combined suite 400/400 (up from 387/387), no
+  regressions; `scripts.validate_data_contracts` re-verified clean (38/38, the new field is
+  optional/default-valued); `scripts.check_ground_truth_boundary` re-verified clean; a real, manual
+  end-to-end run (no Docker needed) rebuilt the same two-episode capture, diffed two snapshots, and
+  confirmed the printed `edge_added` event's `affected_flow_ids` and rendered report exactly matched
+  the doc's worked example. `docs/architecture/change_attribution.md` has full detail, including
+  the schema-extension precedent and the causal-disclaimer design rationale; a one-line amendment
+  pointer was added to `docs/architecture/graph_difference_engine.md`.
+
 ## Blocked phases
 
 None.
@@ -1347,6 +1387,13 @@ None yet — no experiments have been run.
   usage" limitation unchanged (no new removal-detection logic was added). No API wiring yet — `GET
   /history` remains explicitly scoped to Phase 49; documented in
   `docs/architecture/topology_event_timeline.md`.
-- Next: Phase 48 (Change Attribution, FR-1.23). Associate changes with observation evidence,
-  timestamps, and affected flows/nodes; do not claim a causal explanation without sufficient
-  evidence. Not started; awaiting explicit request.
+- Change attribution (Phase 48) attributes an `ATTRIBUTE_CHANGED` event to every flow supporting
+  the edge as of the later snapshot, not only the specific flow(s) that drove that one attribute's
+  delta — isolating that subset would require flow-level diffing between snapshots, not attempted
+  here; a documented, honest limitation, not a gap. The causal disclaimer is unconditional because
+  no causal-inference mechanism exists anywhere in this system yet (Phase 50-56's job), not because
+  a sufficiency threshold was evaluated and passed; documented in
+  `docs/architecture/change_attribution.md`.
+- Next: Phase 49 (Historical Investigation Engine, FR-1.24). Support queries such as "what changed
+  between time A and time B?", returning structured results. Not started; awaiting explicit
+  request.

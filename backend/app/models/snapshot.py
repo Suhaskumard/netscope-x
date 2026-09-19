@@ -47,6 +47,13 @@ class GraphChangeEvent(BaseModel):
     evidence: List[str] = Field(
         ..., min_length=1, description="Evidence tying this change to observations (spec Phase 48)."
     )
+    affected_flow_ids: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Flow ids observationally supporting this change (spec Phase 48). Empty when no "
+            "directly-attributable flow evidence exists, e.g. an ICMP-only node."
+        ),
+    )
 
     @model_validator(mode="after")
     def _target_matches_change_type(self) -> "GraphChangeEvent":

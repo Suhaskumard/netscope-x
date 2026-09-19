@@ -17,11 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 47 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 48 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`build_topology_event_timeline` now chains Phase 45's `diff_snapshots` across every consecutive
-pair of a capture's snapshots into one real, persisted, chronological `GraphChangeEvent` stream —
-see `docs/architecture/topology_event_timeline.md`. Next: Phase 48.
+`GraphChangeEvent` now carries real `affected_flow_ids`, and `format_change_attribution` renders
+every change with its evidence, timestamp, affected node/edge, affected flows, and a structural,
+unconditional non-causal disclaimer — see `docs/architecture/change_attribution.md`. Next: Phase 49.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -390,15 +390,30 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   by 8 real tests, including one confirming the timeline exactly equals a direct concatenation of
   two separate `diff_snapshots` calls — `backend/archaeology/timeline.py`,
   `docs/architecture/topology_event_timeline.md`.
+- **Change attribution** (Phase 48): closes the one real gap in FR-1.23's four named attribution
+  items — `GraphChangeEvent` gains `affected_flow_ids` (a backward-compatible field addition,
+  mirroring Phase 40's own precedent of extending an earlier phase's schema rather than inventing a
+  parallel one), populated by extending Phase 45's `diff_snapshots` in place: flows are matched
+  against the affected node's or edge's IP set(s), bounded by the same `as_of` (`captured_at`)
+  Phase 43/44 already use. New `format_change_attribution`/`format_timeline_attribution`
+  (`backend/archaeology/attribution.py`, mirroring Phase 41's `explain.py`) render every change's
+  evidence, timestamp, affected node/edge, and affected flows, paired with a fixed, unconditional
+  non-causal disclaimer — structural, not a confidence threshold, since this system has no
+  causal-inference mechanism at all yet (that begins at Phase 50-56). `ATTRIBUTE_CHANGED` events
+  attribute to every flow supporting the edge, not only the ones that drove that specific delta — a
+  documented, honest scope limitation, not a gap. No new persistence or API wiring. Proven by 23
+  real tests (14 extended `diff.py` tests + 9 new attribution tests), including one confirming an
+  ICMP-only node correctly gets `[]`, never a fabricated flow id — `backend/archaeology/diff.py`,
+  `backend/archaeology/attribution.py`, `docs/architecture/change_attribution.md`.
 
 ### What doesn't exist yet
 
-Change attribution, historical investigation queries, dependency/causal reasoning, the digital
-twin, simulation, and counterfactual engines have not been implemented yet — those begin at Phase
-48 and continue through the 69-phase plan. The API surface and data contracts are real and tested;
-most of the research intelligence they will eventually serve is not built yet. Nothing in this
-repository currently fabricates results — every phase's completion report documents exactly what
-was and wasn't verified by actual execution.
+Historical investigation queries, dependency/causal reasoning, the digital twin, simulation, and
+counterfactual engines have not been implemented yet — those begin at Phase 49 and continue through
+the 69-phase plan. The API surface and data contracts are real and tested; most of the research
+intelligence they will eventually serve is not built yet. Nothing in this repository currently
+fabricates results — every phase's completion report documents exactly what was and wasn't verified
+by actual execution.
 
 ## Repository layout
 
@@ -428,6 +443,7 @@ backend/archaeology/
   diff.py  Phase 45 graph difference engine (two NetworkSnapshots -> List[GraphChangeEvent])
   behavior_evolution.py  Phase 46 behavioral evolution tracking (one node's BehavioralFingerprint history -> List[BehavioralEvolutionEvent])
   timeline.py  Phase 47 topology event timeline (chains diff_snapshots across a capture's snapshots -> persisted List[GraphChangeEvent])
+  attribution.py  Phase 48 change attribution (GraphChangeEvent -> human-readable report with evidence, timestamp, affected flows/nodes, non-causal disclaimer)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -452,7 +468,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (387 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (400 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

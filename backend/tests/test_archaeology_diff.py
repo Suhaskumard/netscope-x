@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from backend.app.models.flow import Flow
 from backend.app.models.packet import Packet, PacketDirection, TransportProtocol
 from backend.app.models.snapshot import ChangeType
 from backend.archaeology.diff import diff_snapshots
 from backend.archaeology.snapshots import create_snapshot, read_snapshot_graph
 from backend.nettrace.reconstruct import reconstruct_flows
-from experiments.artifacts.io import write_jsonl
-from experiments.artifacts.paths import packets_path
+from experiments.artifacts.io import read_jsonl, write_jsonl
+from experiments.artifacts.paths import flows_path, packets_path
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -269,6 +270,139 @@ def test_diff_every_event_has_non_empty_evidence(tmp_path: Path) -> None:
     for event in events:
         assert len(event.evidence) >= 1
         assert all(len(e) > 0 for e in event.evidence)
+
+
+def test_diff_attributes_node_added_events_to_supporting_flows(tmp_path: Path) -> None:
+    """Phase 48 (FR-1.23): a NODE_ADDED event's affected_flow_ids names the
+    real flow(s) touching that node, not an invented value."""
+    root = tmp_path / "artifacts"
+    _seed_two_episodes(root)
+
+    early = create_snapshot(root, "cap-1", captured_at=BASE + timedelta(seconds=50))
+    late = create_snapshot(root, "cap-1", captured_at=BASE + timedelta(seconds=200))
+
+    events = diff_snapshots(root, "cap-1", early, late)
+    all_flows = read_jsonl(flows_path(root, "cap-1"), Flow)
+    episode_2_flow_ids = {
+        f.flow_id for f in all_flows if {str(f.src_ip), str(f.dst_ip)} == {"10.0.0.3", "10.0.0.4"}
+    }
+    assert episode_2_flow_ids  # sanity: the fixture really does produce this flow
+
+    node_added = [e for e in events if e.change_type == ChangeType.NODE_ADDED]
+    assert len(node_added) == 2
+    for event in node_added:
+        assert set(event.affected_flow_ids) == episode_2_flow_ids
+
+
+def test_diff_attributes_edge_added_events_to_supporting_flows(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    _seed_two_episodes(root)
+
+    early = create_snapshot(root, "cap-1", captured_at=BASE + timedelta(seconds=50))
+    late = create_snapshot(root, "cap-1", captured_at=BASE + timedelta(seconds=200))
+
+    events = diff_snapshots(root, "cap-1", early, late)
+    all_flows = read_jsonl(flows_path(root, "cap-1"), Flow)
+    episode_2_flow_ids = {
+        f.flow_id for f in all_flows if {str(f.src_ip), str(f.dst_ip)} == {"10.0.0.3", "10.0.0.4"}
+    }
+
+    edge_added = [e for e in events if e.change_type == ChangeType.EDGE_ADDED]
+    assert len(edge_added) == 1
+    assert set(edge_added[0].affected_flow_ids) == episode_2_flow_ids
+
+
+def test_diff_attributes_attribute_changed_events_to_supporting_flows(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 9999, TransportProtocol.TCP),
+        _pkt("p1", BASE, "10.0.0.2", 9999, "10.0.0.1", 1000, TransportProtocol.TCP),
+        *[
+            _pkt(
+                f"q{i}",
+                BASE + timedelta(seconds=30 + i),
+                "10.0.0.1" if i % 2 == 0 else "10.0.0.2",
+                1001 if i % 2 == 0 else 9999,
+                "10.0.0.2" if i % 2 == 0 else "10.0.0.1",
+                9999 if i % 2 == 0 else 1001,
+                TransportProtocol.TCP,
+            )
+            for i in range(20)
+        ],
+    ]
+    write_jsonl(packets_path(root, "cap-1"), packets)
+    reconstruct_flows(root, "cap-1")
+
+    early = create_snapshot(root, "cap-1", captured_at=BASE)
+    late = create_snapshot(root, "cap-1", captured_at=BASE + timedelta(seconds=60))
+
+    events = diff_snapshots(root, "cap-1", early, late)
+    all_flows = read_jsonl(flows_path(root, "cap-1"), Flow)
+    all_flow_ids = {f.flow_id for f in all_flows}
+
+    confidence_events = [
+        e
+        for e in events
+        if e.change_type == ChangeType.ATTRIBUTE_CHANGED and e.attribute_name == "confidence"
+    ]
+    assert len(confidence_events) == 1
+    # Every flow between the two nodes supports the edge's current state --
+    # not only the ones that newly arrived since the earlier snapshot (a
+    # documented scope limitation, see docs/architecture/change_attribution.md).
+    assert set(confidence_events[0].affected_flow_ids) == all_flow_ids
+
+
+def test_diff_icmp_only_node_has_no_attributable_flows(tmp_path: Path) -> None:
+    """Phase 48: an ICMP-only node has genuinely zero contributing flows --
+    an honest [] result, not a fabricated one."""
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", None, "10.0.0.2", None, TransportProtocol.ICMP),
+        _pkt(
+            "p1",
+            BASE + timedelta(seconds=10),
+            "10.0.0.2",
+            None,
+            "10.0.0.1",
+            None,
+            TransportProtocol.ICMP,
+        ),
+    ]
+    write_jsonl(packets_path(root, "cap-1"), packets)
+    reconstruct_flows(root, "cap-1")
+    early = create_snapshot(root, "cap-1", captured_at=BASE)
+
+    packets.extend(
+        [
+            _pkt(
+                "p2",
+                BASE + timedelta(seconds=15),
+                "10.0.0.5",
+                None,
+                "10.0.0.6",
+                None,
+                TransportProtocol.ICMP,
+            ),
+            _pkt(
+                "p3",
+                BASE + timedelta(seconds=15),
+                "10.0.0.6",
+                None,
+                "10.0.0.5",
+                None,
+                TransportProtocol.ICMP,
+            ),
+        ]
+    )
+    write_jsonl(packets_path(root, "cap-1"), packets)
+    reconstruct_flows(root, "cap-1")
+    later = create_snapshot(root, "cap-1", captured_at=BASE + timedelta(seconds=20))
+
+    events = diff_snapshots(root, "cap-1", early, later)
+    node_added = [e for e in events if e.change_type == ChangeType.NODE_ADDED]
+    assert len(node_added) == 2
+    for event in node_added:
+        assert event.affected_flow_ids == []
 
 
 def test_diff_is_deterministic_across_repeated_calls(tmp_path: Path) -> None:
