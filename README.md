@@ -17,12 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 53 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 54 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`generate_causal_candidates` now promotes a `DependencyEdge` to a real `CausalCandidate` only when it
-has both sufficient strength AND genuine temporal-precedence evidence — strength (correlation)
-alone is never enough, structurally implementing "do not equate correlation with causation" — see
-`docs/architecture/causal_candidate_generation.md`. Next: Phase 54.
+`propagate_failure` now represents a real, evidenced multi-order (primary/secondary/tertiary)
+failure-impact graph, traversing Phase 53's evidenced `CausalCandidate`s rather than raw,
+undirected `DependencyEdge`s — see `docs/architecture/failure_propagation_graph.md`. Next: Phase 55.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -473,12 +472,27 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   tests including a real end-to-end run confirming the genuinely-leading pair becomes a candidate
   while unrelated side-conversation edges do not — `backend/dependency/causal_candidates.py`,
   `docs/architecture/causal_candidate_generation.md`.
+- **Failure propagation graph** (Phase 54): `propagate_failure` (new
+  `backend/dependency/failure_propagation.py`) is the first real use of `PropagationImpact`/
+  `ImpactOrder` (Phase 04). A real, previously-undocumented design decision: traverses Phase 53's
+  `CausalCandidate`s, not raw `DependencyEdge`s — the latter are undirected (alphabetically-sorted
+  node-id pairs, not a real dependency direction), so propagating along them would often follow a
+  direction with zero supporting evidence. `CausalCandidate`s are the only edge set in the codebase
+  where "if source fails, target is impacted" is actually justified by real evidence. Produces the
+  primary impact (the failed node) plus a breadth-first traversal exactly two hops deep (matching
+  the spec's literal primary/secondary/tertiary list); each node visited at most once, so cycles
+  never loop and diamond patterns never double-count; fully deterministic processing order. Every
+  non-primary impact's evidence cites the real strength/temporal-precedence values that caused it.
+  No persistence or API wiring — `POST /simulation` remains untouched, explicitly scoped to Phase
+  59-61. Proven by 8 real tests including a real end-to-end run over a genuine 3-hop lagged-activity
+  capture with no direct shortcut edge — `backend/dependency/failure_propagation.py`,
+  `docs/architecture/failure_propagation_graph.md`.
 
 ### What doesn't exist yet
 
-Failure propagation, criticality metrics, causal evidence reports, the
+Criticality metrics, causal evidence reports, the
 digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
-Phase 54 and continue through the 69-phase plan. The API surface and
+Phase 55 and continue through the 69-phase plan. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -517,6 +531,7 @@ backend/dependency/
   strength.py  Phase 51 dependency strength estimation (CommunicationRelationship + Edge -> List[DependencyEdge], real via GET /dependencies); Phase 52 folds in real temporal_precedence_score
   temporal_precedence.py  Phase 52 temporal precedence analysis (per-node flow activity -> time-lagged cross-correlation score)
   causal_candidates.py  Phase 53 causal candidate generation (DependencyEdge list -> List[CausalCandidate], strength + temporal precedence both required)
+  failure_propagation.py  Phase 54 failure propagation graph (CausalCandidate list + failed node -> List[PropagationImpact], primary/secondary/tertiary)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -541,7 +556,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (436 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (444 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

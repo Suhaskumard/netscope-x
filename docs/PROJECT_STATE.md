@@ -5,36 +5,32 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 53 (Causal Candidate Generation) complete, tested. New `backend/dependency/
-causal_candidates.py` (`CausalCandidate`, `generate_causal_candidates`, `format_causal_candidate`)
-implements the design boundary already committed at Phase 05: `algorithm_selection.md` section 6
-explicitly rejected constraint-based causal discovery (the PC algorithm) in favor of a
-"scored-candidate approach" satisfying the spec's "generate candidate causal relationships... do
-not equate correlation with causation" wording without full causal-graph discovery -- this phase is
-a filter/promotion step over Phase 51/52's already-real `DependencyEdge` list, not a new
-causal-inference algorithm. The qualifying rule is the literal, structural implementation of "do
-not equate correlation with causation": a `DependencyEdge` is promoted only when it has BOTH
-sufficient `strength` (new provisional `Settings.causal_candidate_strength_threshold=0.5`) AND a
-real, positive `temporal_precedence_score` (Phase 52) -- `strength` alone, however high, is
-deliberately never sufficient by itself, since it's built entirely from
-correlation/communication-style signals (frequency, persistence, directionality, traffic
-characteristics), while temporal precedence is the one signal specifically supporting directional,
-time-ordered evidence, the logical prerequisite for a causal claim, not proof of one. `CausalCandidate`
-is a plain dataclass (no new Phase 04 schema), following the precedent already set by Phase
-32/37/42/46's own evaluation/filtering-style outputs; `generate_causal_candidates` is a pure
-function over caller-supplied `DependencyEdge`s (mirrors Phase 41/42's own "pure function
-downstream of already-computed data" style), deterministically ordered by strength descending,
-tie-broken by `dependency_id`. Every candidate's `rationale` names concrete evidence values, never a
-bare label. `format_causal_candidate` unconditionally appends a new `CAUSAL_CANDIDATE_DISCLAIMER`
-(worded for this context, distinct from Phase 48's own structural-change disclaimer), mirroring
-Phase 48's "structural, not confidence-gated" disclaimer pattern. No persistence, no API wiring --
-`GET /causal/{dependency_id}` stays untouched, explicitly scoped to Phase 56 in its own docstring;
-`CausalEvidenceReport` remains unpopulated, also explicitly Phase 56's job. See
-`docs/architecture/causal_candidate_generation.md` for the full design, worked example, and
-verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands:
-controlled live capture is implemented and unit-verified but not yet verified against a real Docker
-lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 54 (Failure Propagation Graph) complete, tested. New `backend/dependency/
+failure_propagation.py` (`propagate_failure`) is the first real use of
+`backend/app/models/failure.py`'s `PropagationImpact`/`ImpactOrder` (Phase 04, docstring-tagged
+"spec Phase 54, 61", never constructed anywhere before this). A real, previously-undocumented
+design decision: propagates over Phase 53's `List[CausalCandidate]`, not raw
+`List[DependencyEdge]` -- `Edge`/`DependencyEdge.source_node_id`/`target_node_id` are undirected
+(`discover_edges` assigns them by alphabetically sorting the node-id pair, not by any real
+dependency direction), so following a raw `DependencyEdge`'s `source -> target` would often mean
+propagating in a direction with zero supporting evidence (`temporal_precedence_score == 0.0`) --
+an artifact of alphabetical sorting, not a causal claim. `CausalCandidate`s are exactly the subset
+where `source -> target` carries genuine, positive temporal-precedence evidence, making this the
+only edge set in the codebase where "if source fails, target is impacted" is actually justified.
+Algorithm: primary impact is the failed node itself; secondary/tertiary are a breadth-first
+traversal over `source_node_id -> target_node_id`, exactly two hops deep (matching the spec's
+literal three-order list, no further cascading); each node visited at most once (first
+order/candidate wins, so cycles never loop and diamond patterns never double-count); fully
+deterministic processing order (frontier sorted by node id, each node's outgoing candidates sorted
+by `dependency_id`). Every non-primary impact's evidence cites the specific candidate's real
+strength/temporal-precedence values. Returns `[PRIMARY only]` for no outgoing candidates or empty
+input, never an error. No new `Settings` field -- governed entirely by Phase 53's own threshold. No
+persistence, no API wiring -- `POST /simulation` stays untouched, explicitly scoped to "spec Phase
+59-61" in its own docstring. See `docs/architecture/failure_propagation_graph.md` for the full
+design, the undirected-edge argument, worked example, and verification record. Phase 21
+(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
+and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -1154,6 +1150,50 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   causal_candidate_generation.md` has full detail, including the qualifying-rule argument and the
   worked example.
 
+- Phase 54 — Failure Propagation Graph (new `backend/dependency/failure_propagation.py`; FR-1.28).
+  The first real use of `PropagationImpact`/`ImpactOrder` (Phase 04, docstring-tagged "spec Phase
+  54, 61", never constructed anywhere before this). A real, previously-undocumented design
+  decision: propagates over Phase 53's `List[CausalCandidate]`, not raw `List[DependencyEdge]` --
+  `Edge`/`DependencyEdge.source_node_id`/`target_node_id` are undirected (`discover_edges` assigns
+  them by alphabetically sorting the node-id pair, not by any real dependency direction), so
+  following a raw `DependencyEdge`'s `source -> target` would often mean propagating in a direction
+  with zero supporting evidence (`temporal_precedence_score == 0.0`) -- an artifact of alphabetical
+  sorting, not a causal claim. `CausalCandidate`s are exactly the subset where `source -> target`
+  carries genuine, positive temporal-precedence evidence, making this the only edge set in the
+  codebase where "if source fails, target is impacted" is actually justified by real evidence --
+  the natural, evidence-grounded continuation of Phase 51 -> 52 -> 53. Algorithm: `propagate_failure`
+  produces the primary impact (the failed node itself, `caused_by_node_id=None`) plus a
+  breadth-first traversal over `source_node_id -> target_node_id`, exactly two hops deep (matching
+  the spec's literal three-order list -- primary/secondary/tertiary, no further cascading, a
+  documented future-enhancement possibility, not attempted, NFR-9). Each node is visited at most
+  once across the whole traversal -- a cycle can never loop, and a diamond-shaped candidate graph
+  (two paths converging on one descendant) never double-counts a node; the first order/candidate
+  that reaches it wins. Fully deterministic processing order: frontier nodes sorted by node id,
+  each node's outgoing candidates sorted by `dependency_id`. Every non-primary impact's `evidence`
+  cites the specific `CausalCandidate`'s real `strength`/`temporal_precedence_score` values, never a
+  bare label. Returns `[PRIMARY only]` for a failed node with no outgoing candidates or empty input
+  -- never an error. No new `Settings` field -- the edge set is already governed entirely by Phase
+  53's own `causal_candidate_strength_threshold`. No persistence, no API wiring -- `POST /simulation`
+  stays untouched, its own docstring already scoped to "spec Phase 59-61". Verified: new
+  `backend/tests/test_dependency_failure_propagation.py` (8/8: a simple chain produces exactly
+  primary/secondary/tertiary with a fourth hop correctly excluded; a node with no outgoing
+  candidates produces only the primary impact; a diamond pattern visits the shared descendant
+  exactly once, deterministically attributed; a cycle never infinite-loops or revisits an
+  already-impacted node; every non-primary impact's evidence references the real candidate values
+  that caused it; empty input produces only the primary impact; repeated calls produce identical,
+  identically-ordered output; a real end-to-end run through `estimate_dependency_strength` ->
+  `generate_causal_candidates`, not hand-built `CausalCandidate` fixtures, over a genuine 3-hop
+  lagged-activity capture -- with no direct A<->C traffic at all, so tertiary discovery of C must
+  come from real propagation through B, not a shortcut edge -- confirms real primary/secondary/
+  tertiary impacts); combined suite 444/444 (up from 436/436), no regressions; `scripts.
+  validate_data_contracts` re-verified clean (38/38, no schema changes this phase -- first real use
+  of already-reserved fields); `scripts.check_ground_truth_boundary` re-verified clean; a real,
+  manual end-to-end run (no Docker needed) built the same 3-hop lagged-activity capture and ran the
+  full `estimate_dependency_strength` -> `generate_causal_candidates` -> `propagate_failure`
+  pipeline, confirming the printed output exactly matched the doc's worked example.
+  `docs/architecture/failure_propagation_graph.md` has full detail, including the undirected-edge
+  argument and the worked example.
+
 ## Blocked phases
 
 None.
@@ -1616,6 +1656,10 @@ None yet — no experiments have been run.
   is deliberately never sufficient, since FR-1.26's other four signals are all correlation/
   communication evidence, not temporal-ordering evidence; documented in
   `docs/architecture/causal_candidate_generation.md`.
-- Next: Phase 54 (Failure Propagation Graph, FR-1.28). Represent failure propagation as a
-  multi-order impact graph (primary → secondary → tertiary impact). Not started; awaiting explicit
-  request.
+- Failure propagation (Phase 54) traverses Phase 53's `CausalCandidate`s, not raw `DependencyEdge`s
+  -- the latter are undirected (alphabetically-sorted node-id pairs), so propagating along them
+  would often follow a direction with zero real evidence; documented in
+  `docs/architecture/failure_propagation_graph.md`.
+- Next: Phase 55 (Criticality Analysis, FR-1.29). Compute graph criticality metrics (degree,
+  betweenness, articulation points, path dependency, connectivity) with documented rationale for
+  each metric's relevance. Not started; awaiting explicit request.
