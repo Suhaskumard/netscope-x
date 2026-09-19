@@ -5,25 +5,25 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 46 (Behavioral Evolution Tracking) complete, unit-verified. New
-`backend/archaeology/behavior_evolution.py` (`track_node_behavioral_evolution`) is the first
-Network Archaeology code to operate on FLOWMIND's `BehavioralFingerprint` (Phase 33-35) rather than
-`TopologyGraph`/`NetworkSnapshot` (Phase 43-45). It is a pure function over a caller-supplied,
-time-ordered list of one node's fingerprints, comparing every consecutive pair field-by-field and
-emitting one `BehavioralEvolutionEvent` (new plain dataclass, mirroring Phase 38/39's own precedent
--- no Phase 04 schema is reserved for this, unlike `GraphChangeEvent` whose own docstring scopes it
-to "spec Phase 45, 47-48" not 46) per changed field, each carrying concrete before/after evidence.
-Deliberately distinct from Phase 39's `track_node_drift`: that classifies a sequence against a
-static baseline as `CONCEPT_DRIFT`/`TRANSIENT_ANOMALY` (a FLOWMIND detection judgment); this phase
-makes no statistical judgment at all -- it is a raw, evidenced historical record, the direct
-behavioral analogue of Phase 45's `diff_snapshots`. No new persistent fingerprint-history store
-exists (Phase 35's `fingerprints.jsonl` is overwritten per batch, not appended, same as Phase
-38/39's own "no cross-capture store" scope decision), and no persistence/API wiring was added --
-see `docs/architecture/behavioral_evolution_tracking.md` for the full design, the Phase 39
-non-duplication argument, the worked example, and the verification record. Phase 21 (High-Fidelity
-Packet Capture)'s one open item still stands: controlled live capture is implemented and
-unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 47 (Topology Event Timeline) complete, unit-verified. New `backend/archaeology/timeline.py`
+(`build_topology_event_timeline`/`read_topology_event_timeline`) chains Phase 45's `diff_snapshots`
+-- unmodified -- across every consecutive pair of a capture's own persisted `NetworkSnapshot`s
+(via Phase 44's `list_snapshots`, already ordered by generation), concatenating the results in
+pair order into one flat, persisted, chronological `GraphChangeEvent` stream (new
+`events_path`/`topology_events.jsonl`, `experiments/artifacts/paths.py`). No new schema --
+`GraphChangeEvent`'s own docstring already scoped it to "spec Phase 45, 47-48" -- and no new
+comparison logic, purely assembly over already-real, already-evidenced events, the same
+"combine, don't reinvent" pattern Phase 32's `build_topology_graph` used for nodes/edges. Chains by
+snapshot generation order (not a `captured_at` re-sort) -- equivalent under normal usage, an
+explicit documented caveat otherwise, mirroring Phase 45's own "practically vacuous under normal
+usage" caveat style. Write-through persistence, not a cache, mirroring Phase 32's `topology_path`
+convention. No API wiring -- `GET /history` remains an untouched 501 stub, explicitly scoped to
+Phase 49 ("Backing implementation: spec Phase 49"), which will query exactly this stream. See
+`docs/architecture/topology_event_timeline.md` for the full design, the generation-order caveat,
+worked example, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item
+still stands: controlled live capture is implemented and unit-verified but not yet verified against
+a real Docker lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -890,6 +890,40 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   exactly matched the doc's worked example. `docs/architecture/behavioral_evolution_tracking.md` has
   full detail, including the Phase 39 non-duplication argument and the no-reserved-schema rationale.
 
+- Phase 47 — Topology Event Timeline (new `backend/archaeology/timeline.py`; new
+  `experiments/artifacts/paths.py::events_path`; FR-1.22 second half). Reuses `GraphChangeEvent`/
+  `ChangeType` (Phase 04) unmodified -- its own docstring already scoped it to "spec Phase 45,
+  47-48", so no new schema was needed. `build_topology_event_timeline(root, capture_id)` fetches
+  every persisted `NetworkSnapshot` for a capture via Phase 44's `list_snapshots` (already ordered
+  by `version` ascending -- generation order), calls Phase 45's `diff_snapshots` unmodified on
+  every consecutive pair, and concatenates the results in pair order into one flat list -- no new
+  comparison or sorting logic; `diff_snapshots`'s own `(change_type, target_id, attribute_name)`
+  ordering within a pair is preserved exactly as-is. Fewer than 2 snapshots returns `[]`, never an
+  error, mirroring `create_snapshot`/`list_snapshots`'s own convention. Chains by snapshot
+  *generation* order, not a `captured_at` re-sort -- `create_snapshot`'s own docstring already
+  documents these as potentially different if snapshots are created out of sequence; normal usage
+  makes them equivalent, and the divergent case is an explicit, documented caveat, the same style
+  as Phase 45's own "practically vacuous under normal usage" note. Write-through persistence via
+  the new `events_path` (`captures/<capture_id>/topology_events.jsonl`, `write_jsonl`) -- always
+  recomputed and overwritten on every call, mirroring Phase 32's `topology_path` convention, not a
+  cache. `read_topology_event_timeline` reads it back, returning `[]` for a capture with no
+  timeline built yet, mirroring `list_snapshots`'s missing-directory convention. No API wiring --
+  `GET /history` remains an untouched 501 stub, its own docstring already scoping its backing
+  implementation to "spec Phase 49 (Historical Investigation Engine)"; this phase builds the
+  capability that route will later query. Verified: new
+  `backend/tests/test_archaeology_timeline.py` (8/8: zero and one snapshots both produce an empty
+  timeline; three snapshots produce a timeline exactly equal to the concatenation of two separate
+  `diff_snapshots` calls; events are grouped by consecutive generation pair in order, not re-sorted
+  globally; `read_topology_event_timeline` round-trips byte-for-byte with what was just persisted;
+  a capture with no timeline built yet reads back `[]`; repeated builds are deterministic; every
+  event carries real non-empty evidence); combined suite 387/387 (up from 379/379), no
+  regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no schema changes);
+  `scripts.check_ground_truth_boundary` re-verified clean; a real, manual end-to-end run (no Docker
+  needed) built the same two-episode capture, created three snapshots, and confirmed the printed
+  timeline (2 node additions + 1 edge addition, all attributed to the first generation pair)
+  exactly matched the doc's worked example. `docs/architecture/topology_event_timeline.md` has full
+  detail, including the generation-order-vs-captured_at-order caveat.
+
 ## Blocked phases
 
 None.
@@ -1306,5 +1340,13 @@ None yet — no experiments have been run.
   building one is future work, not a gap in this phase's own scope. It also makes no statistical
   significance judgment (deliberately left to Phase 39's `track_node_drift`, not duplicated here);
   documented in `docs/architecture/behavioral_evolution_tracking.md`.
-- Next: Phase 47 (Topology Event Timeline, FR-1.22's second half). Create a chronological network
-  event stream. Not started; awaiting explicit request.
+- Topology event timeline (Phase 47) chains snapshots by generation order, not a `captured_at`
+  re-sort — equivalent under normal (chronologically increasing) usage, but would reflect
+  generation order rather than wall-clock order if snapshots were ever created out of sequence; a
+  documented caveat, not a gap. Inherits Phase 45's own "removals practically vacuous under normal
+  usage" limitation unchanged (no new removal-detection logic was added). No API wiring yet — `GET
+  /history` remains explicitly scoped to Phase 49; documented in
+  `docs/architecture/topology_event_timeline.md`.
+- Next: Phase 48 (Change Attribution, FR-1.23). Associate changes with observation evidence,
+  timestamps, and affected flows/nodes; do not claim a causal explanation without sufficient
+  evidence. Not started; awaiting explicit request.

@@ -17,12 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 46 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 47 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`track_node_behavioral_evolution` now computes a real, evidenced chronological record of a node's
-own `BehavioralFingerprint` changes over time — the first Network Archaeology code built on
-FLOWMIND's fingerprints rather than NETTRACE's topology graphs — see
-`docs/architecture/behavioral_evolution_tracking.md`. Next: Phase 47.
+`build_topology_event_timeline` now chains Phase 45's `diff_snapshots` across every consecutive
+pair of a capture's snapshots into one real, persisted, chronological `GraphChangeEvent` stream —
+see `docs/architecture/topology_event_timeline.md`. Next: Phase 48.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -378,15 +377,28 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   stub. Proven by 12 real tests including a real end-to-end run through
   `assemble_node_fingerprint` — `backend/archaeology/behavior_evolution.py`,
   `docs/architecture/behavioral_evolution_tracking.md`.
+- **Topology event timeline** (Phase 47): `build_topology_event_timeline` chains Phase 45's
+  `diff_snapshots` — unmodified — across every consecutive pair of a capture's own persisted
+  `NetworkSnapshot`s (via Phase 44's `list_snapshots`), concatenating the results in generation
+  order into one flat, persisted, chronological `GraphChangeEvent` stream (new
+  `events_path`/`topology_events.jsonl`, write-through like Phase 32's `topology_path`). No new
+  schema (`GraphChangeEvent`'s own docstring already scoped it to "spec Phase 45, 47-48") and no
+  new comparison logic — pure assembly over already-real, already-evidenced events. Chains by
+  snapshot generation order, not a `captured_at` re-sort — a documented caveat under
+  out-of-sequence snapshot creation, equivalent under normal usage. No API wiring — `GET /history`
+  stays an untouched 501 stub, explicitly scoped to Phase 49, which will query this stream. Proven
+  by 8 real tests, including one confirming the timeline exactly equals a direct concatenation of
+  two separate `diff_snapshots` calls — `backend/archaeology/timeline.py`,
+  `docs/architecture/topology_event_timeline.md`.
 
 ### What doesn't exist yet
 
-The topology event timeline, dependency/causal reasoning, the digital twin, simulation, and
-counterfactual engines have not been implemented yet — those begin at Phase 47 and continue through
-the 69-phase plan. The API surface and data contracts are real and tested; most of the research
-intelligence they will eventually serve is not built yet. Nothing in this repository currently
-fabricates results — every phase's completion report documents exactly what was and wasn't verified
-by actual execution.
+Change attribution, historical investigation queries, dependency/causal reasoning, the digital
+twin, simulation, and counterfactual engines have not been implemented yet — those begin at Phase
+48 and continue through the 69-phase plan. The API surface and data contracts are real and tested;
+most of the research intelligence they will eventually serve is not built yet. Nothing in this
+repository currently fabricates results — every phase's completion report documents exactly what
+was and wasn't verified by actual execution.
 
 ## Repository layout
 
@@ -415,6 +427,7 @@ backend/archaeology/
   snapshots.py  Phase 44 versioned network snapshot generation (capture_id + captured_at -> NetworkSnapshot + persisted TopologyGraph)
   diff.py  Phase 45 graph difference engine (two NetworkSnapshots -> List[GraphChangeEvent])
   behavior_evolution.py  Phase 46 behavioral evolution tracking (one node's BehavioralFingerprint history -> List[BehavioralEvolutionEvent])
+  timeline.py  Phase 47 topology event timeline (chains diff_snapshots across a capture's snapshots -> persisted List[GraphChangeEvent])
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -439,7 +452,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (379 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (387 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

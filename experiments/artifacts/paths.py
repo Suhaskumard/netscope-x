@@ -16,6 +16,7 @@ Layout:
         topology/<graph_id>.json
         fingerprints.jsonl            (assembled BehavioralFingerprints, spec Phase 35)
         snapshots/<snapshot_id>.json
+        topology_events.jsonl         (chronological GraphChangeEvent stream, spec Phase 47)
       ground_truth/<capture_id>/
         topology.json
         topology.json.sha256          (content-hash sidecar, spec Phase 10)
@@ -75,6 +76,13 @@ def snapshots_dir(root: Path, capture_id: str) -> Path:
 
 def snapshot_path(root: Path, capture_id: str, snapshot_id: str) -> Path:
     return snapshots_dir(root, capture_id) / f"{snapshot_id}.json"
+
+
+def events_path(root: Path, capture_id: str) -> Path:
+    """One capture's chronological `GraphChangeEvent` stream (spec Phase 47), as JSON Lines --
+    built by chaining Phase 45's `diff_snapshots` across every consecutive pair of Phase 44's
+    `NetworkSnapshot`s for this capture."""
+    return capture_dir(root, capture_id) / "topology_events.jsonl"
 
 
 def ground_truth_dir(root: Path, capture_id: str) -> Path:
