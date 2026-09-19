@@ -152,6 +152,46 @@ def _evidence_summary_line(
     )
 
 
+def bucket_flows_by_node_pair(
+    root: Path,
+    capture_id: str,
+    nodes: List[Node],
+    as_of: Optional[datetime] = None,
+) -> Dict[Tuple[str, str], List[Flow]]:
+    """Reads `flows_path(root, capture_id)` and groups TCP/UDP flows by unordered node-pair (sorted
+    `node_id` tuple) -- the exact same grouping `discover_edges` itself builds one `Edge` per pair
+    from. Extracted as its own function in Phase 51 (`backend/dependency/strength.py`) so dependency-
+    strength estimation can reuse the identical buckets `discover_edges` computes (e.g. for
+    directionality's `forward_byte_ratio`) rather than re-deriving flow-to-node-pair grouping a
+    second time. `discover_edges` itself calls this function unchanged -- pure refactor, no behavior
+    change.
+
+    Same conventions as `discover_edges`: a flow whose `src_ip`/`dst_ip` doesn't resolve against
+    `nodes`, or is self-referential, is silently skipped; `as_of` (spec Phase 43) filters to
+    `flow.first_seen <= as_of`; returns `{}` for a missing/empty `flows.jsonl`, never an error.
+    """
+    ip_to_node_id: Dict[str, str] = {
+        str(ip): node.node_id for node in nodes for ip in node.ip_addresses
+    }
+
+    path = flows_path(root, capture_id)
+    if not path.is_file():
+        return {}
+    flows: List[Flow] = read_jsonl(path, Flow)
+    if as_of is not None:
+        flows = [f for f in flows if f.first_seen <= as_of]
+
+    buckets: Dict[Tuple[str, str], List[Flow]] = defaultdict(list)
+    for flow in flows:
+        src_node_id = ip_to_node_id.get(str(flow.src_ip))
+        dst_node_id = ip_to_node_id.get(str(flow.dst_ip))
+        if src_node_id is None or dst_node_id is None or src_node_id == dst_node_id:
+            continue
+        key = tuple(sorted((src_node_id, dst_node_id)))
+        buckets[key].append(flow)
+    return buckets
+
+
 def discover_edges(
     root: Path,
     capture_id: str,
@@ -178,25 +218,7 @@ def discover_edges(
     monotonic in evidence). `None` (default) reproduces the original,
     whole-capture behavior exactly.
     """
-    ip_to_node_id: Dict[str, str] = {
-        str(ip): node.node_id for node in nodes for ip in node.ip_addresses
-    }
-
-    path = flows_path(root, capture_id)
-    if not path.is_file():
-        return []
-    flows: List[Flow] = read_jsonl(path, Flow)
-    if as_of is not None:
-        flows = [f for f in flows if f.first_seen <= as_of]
-
-    buckets: Dict[Tuple[str, str], List[Flow]] = defaultdict(list)
-    for flow in flows:
-        src_node_id = ip_to_node_id.get(str(flow.src_ip))
-        dst_node_id = ip_to_node_id.get(str(flow.dst_ip))
-        if src_node_id is None or dst_node_id is None or src_node_id == dst_node_id:
-            continue
-        key = tuple(sorted((src_node_id, dst_node_id)))
-        buckets[key].append(flow)
+    buckets = bucket_flows_by_node_pair(root, capture_id, nodes, as_of=as_of)
 
     aggregated = []
     for (source_node_id, target_node_id), bucket_flows in buckets.items():

@@ -428,12 +428,23 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   tests, including one confirming every returned relationship's field set is structurally incapable
   of carrying a dependency-shaped claim — `backend/dependency/communication.py`,
   `docs/architecture/communication_vs_dependency.md`.
+- **Dependency strength** (Phase 51): `GET /dependencies` is now real. `estimate_dependency_strength`
+  computes `DependencyEdge.strength`/`directionality_score` from four of FR-1.26's five signals —
+  frequency/persistence (Phase 50's `derive_communication_relationships`, unmodified), directionality
+  (Phase 30-31's `_bidirectionality(forward_byte_ratio)`, inverted), and traffic characteristics
+  (`Edge.confidence`, Phase 31, reused directly) — combined via the same noisy-OR shape Phase 31's
+  edge confidence already uses. Temporal relationships (`temporal_precedence_score`) is deliberately
+  excluded — stays at its schema default `0.0` until Phase 52. A small, behavior-preserving refactor
+  (`bucket_flows_by_node_pair`, extracted from `discover_edges`) let this phase reuse the same
+  per-node-pair flow buckets rather than re-deriving them. Proven by 7 real tests plus 3 new
+  `GET /dependencies` route tests — `backend/dependency/strength.py`,
+  `docs/architecture/dependency_strength.md`.
 
 ### What doesn't exist yet
 
-Dependency strength estimation, temporal precedence, failure propagation, criticality metrics,
-causal evidence reports, the digital twin, simulation, and counterfactual engines have not been
-implemented yet — those begin at Phase 51 and continue through the 69-phase plan. The API surface and
+Temporal precedence, failure propagation, criticality metrics, causal evidence reports, the digital
+twin, simulation, and counterfactual engines have not been implemented yet — those begin at Phase 52
+and continue through the 69-phase plan. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -469,6 +480,7 @@ backend/archaeology/
   attribution.py  Phase 48 change attribution (GraphChangeEvent -> human-readable report with evidence, timestamp, affected flows/nodes, non-causal disclaimer)
 backend/dependency/
   communication.py  Phase 50 communication relationship derivation (Node + Edge lists -> List[CommunicationRelationship], no dependency scoring)
+  strength.py  Phase 51 dependency strength estimation (CommunicationRelationship + Edge -> List[DependencyEdge], real via GET /dependencies; temporal_precedence_score deferred to Phase 52)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)

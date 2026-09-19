@@ -5,25 +5,32 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 50 (Dependency and Causal Reasoning: Communication vs. Dependency Distinction) complete, unit-
-verified. New `backend/dependency/` package, `derive_communication_relationships`
-(`backend/dependency/communication.py`) is the first real computation of `CommunicationRelationship`
-(`backend/app/models/dependency.py`, Phase 04) -- pure aggregation over Phase 29's `discover_nodes`
-and Phase 30-31's `discover_edges`, both reused unmodified: `persistence_seconds` is
-`edge.last_observed - edge.first_observed`, `frequency` is `observation_count / persistence_seconds`
-(falling back to raw `observation_count` when `persistence_seconds == 0`, an honest, documented
-zero-duration edge case, never a `ZeroDivisionError`). No new schema -- the "A communicates with B"
-vs. "A depends on B" type separation (`CommunicationRelationship` vs. `DependencyEdge`) was already
-built in Phase 04 and is FR-1.25's own central design point; this phase makes the "communicates"
-side real for the first time. No strength/directionality/temporal-precedence scoring and no API
-wiring -- `GET /dependencies` remains explicitly scoped to Phase 51 ("Dependency Strength"), which
-will be the first consumer of this phase's output, the same build-now-wire-later precedent as Phase
-44's `NetworkSnapshot` (unwired until Phase 47). See
-`docs/architecture/communication_vs_dependency.md` for the full design, the zero-duration fallback
-rationale, worked example, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one
-open item still stands: controlled live capture is implemented and unit-verified but not yet
-verified against a real Docker lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 51 (Dependency Strength) complete, tested. New `backend/dependency/strength.py`
+(`estimate_dependency_strength`) estimates `DependencyEdge.strength`/`directionality_score` from
+frequency, persistence, directionality, and traffic characteristics -- four of FR-1.26's five named
+signals; temporal relationships is deliberately excluded (`docs/architecture/algorithm_selection.md`
+section 6 tags it "spec Phase 52", and `DependencyEdge.temporal_precedence_score` stays at its
+schema default `0.0`, never set here). Every signal reuses already-real evidence: frequency/
+persistence from Phase 50's `derive_communication_relationships`, unmodified; directionality from
+Phase 30-31's `_bidirectionality(forward_byte_ratio)`, inverted (`directionality_score = 1 -
+_bidirectionality(mean_ratio)`, since that helper measures balanced-ness, the opposite of "how
+one-directional"); traffic characteristics from `Edge.confidence` (Phase 31) directly, not
+re-derived. Combination mirrors Phase 31's `_confidence` noisy-OR formula shape exactly (one
+primary saturating frequency term, three secondary signals scaled by one shared
+`dependency_signal_strength` constant), via three new provisional `Settings` fields
+(`dependency_frequency_scale`, `dependency_persistence_scale`, `dependency_signal_strength`,
+mirroring `edge_confidence_*`'s own "provisional default pending Phase 68 calibration" wording). One
+small, behavior-preserving refactor was needed first: `discover_edges`'s inline flow-bucketing loop
+was extracted into `bucket_flows_by_node_pair` (`backend/nettrace/topology/edges.py`) so this phase
+could reuse the identical per-node-pair buckets for directionality, verified unchanged by re-running
+the full edge/topology/API suite before adding new code. `GET /dependencies` is now real (unlike
+Phase 50, whose route stayed untouched by design) -- same "missing means empty" convention Phase 49/
+50 established, no 404 on an unrecognized `capture_id`. See `docs/architecture/dependency_strength.md`
+for the full design, the noisy-OR formula, the index-alignment invariant between `discover_edges`
+and `derive_communication_relationships` output, worked example, and verification record. Phase 21
+(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
+and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -1010,6 +1017,41 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   detail, including the zero-duration fallback rationale and the explicit "what this phase does NOT
   do" scope boundary.
 
+- Phase 51 — Dependency Strength (new `backend/dependency/strength.py`; refactored
+  `backend/nettrace/topology/edges.py`; three new `Settings` fields; FR-1.26). Estimates
+  `DependencyEdge.strength`/`directionality_score` from four of FR-1.26's five named signals --
+  frequency, persistence, directionality, traffic characteristics -- deliberately excluding temporal
+  relationships (`algorithm_selection.md` section 6 tags it "spec Phase 52";
+  `temporal_precedence_score` stays at its schema default `0.0`). No new evidence anywhere: frequency/
+  persistence reuse Phase 50's `derive_communication_relationships` unmodified; directionality reuses
+  Phase 30-31's `_bidirectionality(forward_byte_ratio)` inverted (that helper measures balanced-ness,
+  the opposite of "how one-directional"); traffic characteristics reuses `Edge.confidence` (Phase 31)
+  directly. Combination mirrors Phase 31's `_confidence` noisy-OR shape exactly (one primary
+  saturating frequency term, three secondary signals scaled by one shared, uniformly-applied
+  `dependency_signal_strength`), via new provisional `Settings` fields (`dependency_frequency_scale`,
+  `dependency_persistence_scale`, `dependency_signal_strength`, mirroring `edge_confidence_*`'s own
+  "pending Phase 68 calibration" wording). One small, behavior-preserving refactor first:
+  `discover_edges`'s inline flow-bucketing loop was extracted into `bucket_flows_by_node_pair`
+  (`edges.py`) so this phase could reuse the identical per-node-pair buckets for directionality --
+  `discover_edges`'s own signature/behavior are unchanged, verified by re-running the full edge/
+  topology/API suite before any new code. `GET /dependencies` is now real (unlike Phase 50, whose
+  route stayed untouched by design), keeping the "missing means empty" convention -- no 404 on an
+  unrecognized `capture_id`. `estimate_dependency_strength` relies on an explicit, documented
+  invariant: `discover_edges` and `derive_communication_relationships` output are index-aligned
+  since both are deterministic functions of the identical inputs, so `edges[i]`/`relationships[i]`
+  refer to the same node pair without a separate lookup. Verified: new
+  `backend/tests/test_dependency_strength.py` (7/7: empty capture returns `[]`; a single exchange's
+  `DependencyEdge` matches hand-computed fields exactly with `temporal_precedence_score` always
+  `0.0`; two independent episodes produce two dependency edges; `as_of` bounding excludes later
+  communication; one-way vs. balanced traffic produce near-maximal vs. near-minimal
+  `directionality_score`; a missing capture never raises); `backend/tests/test_api.py` gained 3 new
+  `GET /dependencies` tests (unknown capture returns `200`/empty; a real ingested capture returns
+  real, bounded `DependencyEdge`s; pagination respected) and lost its 501-stub parametrization entry
+  (8 -> 7 remaining stub groups); full repo suite 419/419 (up from 410/410), no regressions;
+  `scripts.validate_data_contracts` 38/38 and `scripts.check_ground_truth_boundary` both
+  re-verified clean (no schema changes this phase). `docs/architecture/dependency_strength.md` has
+  full detail, including the noisy-OR formula and the index-alignment invariant.
+
 ## Blocked phases
 
 None.
@@ -1453,7 +1495,17 @@ None yet — no experiments have been run.
   instant), documented, not hidden. No strength/directionality/temporal-precedence scoring exists
   anywhere in this system yet (Phase 51/52-53's job); documented in
   `docs/architecture/communication_vs_dependency.md`.
-- Next: Phase 51 (Dependency Strength, FR-1.26). Estimate `DependencyEdge.strength` from frequency,
-  persistence, directionality, and traffic characteristics over Phase 50's
-  `CommunicationRelationship`s, and wire `GET /dependencies` for real. Not started; awaiting explicit
-  request.
+- Dependency strength (Phase 51) uses provisional, uncalibrated noisy-OR weights
+  (`dependency_frequency_scale`/`dependency_persistence_scale`/`dependency_signal_strength`), pending
+  real calibration (Phase 68), not claimed-accurate values -- same status as `edge_confidence_*`'s
+  own weights since Phase 31. A high-frequency, persistent, one-directional but coincidental
+  communication pattern (e.g. a health-check poller) can score a falsely high `strength` -- an
+  expected, documented failure mode (`algorithm_selection.md` section 6), not eliminated by
+  construction; measuring it is Phase 68's job. `strength` can compute to exactly `1.0` under
+  floating-point underflow for extreme frequency/persistence values relative to their scales (the
+  schema's `le=1` already allows this); documented in `docs/architecture/dependency_strength.md`.
+- Next: Phase 52-53 (Temporal Precedence / Causal Candidate Generation, FR-1.27). Analyze temporal
+  precedence between component changes via time-lagged cross-correlation, generating causal
+  candidates without equating correlation with causation; populates
+  `DependencyEdge.temporal_precedence_score`, left at `0.0` since Phase 04. Not started; awaiting
+  explicit request.

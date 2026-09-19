@@ -1,16 +1,25 @@
 """GET /dependencies. Backing implementation: spec Phase 51 (Dependency Strength).
 
-Deliberately distinct from mere communication (spec Phase 50; RQ5) -- this
-endpoint returns inferred DependencyEdge records, never plain
-communication-observation records."""
+Deliberately distinct from mere communication (spec Phase 50; RQ5) -- this endpoint returns
+inferred `DependencyEdge` records, never plain communication-observation records. Estimates
+`strength`/`directionality_score` from frequency, persistence, directionality, and traffic
+characteristics over Phase 50's `CommunicationRelationship`s (`estimate_dependency_strength`,
+`backend/dependency/strength.py`); `temporal_precedence_score` stays at its schema default `0.0`
+until Phase 52.
+
+Same "missing means empty" convention `GET /history`/Phase 50 already use for this layer: an
+unrecognized `capture_id` returns an empty, still-200 paginated result, not a 404 -- there is no
+per-request pcap processing here to make a missing capture a distinct error condition.
+"""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from backend.app.api.errors import NotYetImplemented
 from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
+from backend.app.core.config import get_settings
 from backend.app.models import DependencyEdge
+from backend.dependency.strength import estimate_dependency_strength
 
 router = APIRouter(prefix="/dependencies", tags=["dependencies"])
 
@@ -20,4 +29,18 @@ def list_dependencies(
     capture_id: str = Query(..., description="Capture session to list dependencies for."),
     page: PageParams = Depends(get_page_params),
 ) -> PaginatedResponse[DependencyEdge]:
-    raise NotYetImplemented("dependency inference (spec Phase 51)")
+    settings = get_settings()
+    dependencies = estimate_dependency_strength(
+        settings.artifact_root,
+        capture_id,
+        edge_confidence_packet_scale=settings.edge_confidence_packet_scale,
+        edge_confidence_signal_strength=settings.edge_confidence_signal_strength,
+        dependency_frequency_scale=settings.dependency_frequency_scale,
+        dependency_persistence_scale=settings.dependency_persistence_scale,
+        dependency_signal_strength=settings.dependency_signal_strength,
+    )
+
+    page_items = dependencies[page.offset : page.offset + page.limit]
+    return PaginatedResponse[DependencyEdge](
+        items=page_items, limit=page.limit, offset=page.offset, total=len(dependencies)
+    )

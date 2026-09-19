@@ -1,12 +1,12 @@
-"""Phase 09 API architecture tests, updated for Phases 21, 23, 32, and 49.
+"""Phase 09 API architecture tests, updated for Phases 21, 23, 32, 49, and 51.
 
-Verifies the 8 still-unimplemented endpoint groups (spec Phase 09) return
+Verifies the 7 still-unimplemented endpoint groups (spec Phase 09) return
 a consistent 501 ErrorResponse envelope, that validation errors use the
 same envelope shape, and that the OpenAPI schema documents every required
 path. `POST /capture` (Phase 21), `GET /flows` (Phase 23),
-`GET /topology` (Phase 32), and `GET /history` (Phase 49) are no longer in
-the 501 list -- their real behavior is covered by the dedicated tests at
-the bottom of this file.
+`GET /topology` (Phase 32), `GET /history` (Phase 49), and
+`GET /dependencies` (Phase 51) are no longer in the 501 list -- their real
+behavior is covered by the dedicated tests at the bottom of this file.
 """
 
 from __future__ import annotations
@@ -55,7 +55,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
     [
         ("get", "/api/v1/behaviors/node-1", dict()),
         ("get", "/api/v1/anomalies", dict()),
-        ("get", "/api/v1/dependencies", dict(params={"capture_id": "cap1"})),
         ("get", "/api/v1/causal/dep-1", dict()),
         (
             "post",
@@ -104,10 +103,10 @@ def test_endpoint_returns_structured_501(method: str, path: str, kwargs: dict) -
 def test_all_12_endpoint_groups_exist() -> None:
     # Sanity check: if a group is ever renamed/removed from router.py
     # without updating this test file, this count catches the drift
-    # instead of silently under-testing. Only 8 of these 12 are covered
+    # instead of silently under-testing. Only 7 of these 12 are covered
     # by the generic 501 parametrization above -- /capture (Phase 21),
-    # /flows (Phase 23), /topology (Phase 32), and /history (Phase 49)
-    # are real and tested separately below.
+    # /flows (Phase 23), /topology (Phase 32), /history (Phase 49), and
+    # /dependencies (Phase 51) are real and tested separately below.
     paths = {
         "/api/v1/capture",
         "/api/v1/flows",
@@ -466,6 +465,50 @@ def test_history_respects_pagination_params() -> None:
     assert full["total"] >= 2
 
     paged = client.get("/api/v1/history", params={**params, "limit": 1, "offset": 0}).json()
+    assert paged["total"] == full["total"]
+    assert len(paged["items"]) == 1
+    assert paged["limit"] == 1
+    assert paged["offset"] == 0
+
+
+# --- Phase 51: GET /dependencies real behavior ---
+
+
+def test_dependencies_unknown_capture_returns_empty_not_404() -> None:
+    response = client.get("/api/v1/dependencies", params={"capture_id": "does-not-exist"})
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "limit": 50, "offset": 0, "total": 0}
+
+
+def test_dependencies_returns_real_dependency_edges_for_ingested_capture() -> None:
+    capture_id = _ingest_real_two_flow_capture("dependencies.pcap")
+    client.get("/api/v1/flows", params={"capture_id": capture_id})
+
+    response = client.get("/api/v1/dependencies", params={"capture_id": capture_id})
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["total"] == 2  # one dependency edge per topology edge (TCP pair + UDP pair)
+    for dep in body["items"]:
+        assert dep["source_node_id"] != dep["target_node_id"]
+        assert 0.0 <= dep["strength"] <= 1.0
+        assert 0.0 <= dep["directionality_score"] <= 1.0
+        assert dep["frequency"] >= 0
+        assert dep["persistence_seconds"] >= 0
+        assert dep["temporal_precedence_score"] == 0.0
+        assert dep["dependency_id"]
+
+
+def test_dependencies_respects_pagination_params() -> None:
+    capture_id = _ingest_real_two_flow_capture("dependencies_pagination.pcap")
+    client.get("/api/v1/flows", params={"capture_id": capture_id})
+
+    full = client.get("/api/v1/dependencies", params={"capture_id": capture_id}).json()
+    assert full["total"] == 2
+
+    paged = client.get(
+        "/api/v1/dependencies", params={"capture_id": capture_id, "limit": 1, "offset": 0}
+    ).json()
     assert paged["total"] == full["total"]
     assert len(paged["items"]) == 1
     assert paged["limit"] == 1

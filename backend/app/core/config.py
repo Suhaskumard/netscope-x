@@ -100,6 +100,42 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Phase 51 -- dependency strength estimation (ties to NFR-4, FR-1.26).
+    dependency_frequency_scale: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Saturation scale for dependency strength's frequency term = "
+            "1 - exp(-frequency / scale); at frequency == scale, the term is ~0.63, "
+            "approaching but never reaching 1.0 as communication frequency grows (spec "
+            "FR-1.26). A provisional default pending real calibration (spec Phase 68), not "
+            "a claimed-accurate value."
+        ),
+    )
+    dependency_persistence_scale: float = Field(
+        default=60.0,
+        gt=0,
+        description=(
+            "Saturation scale (seconds) for dependency strength's persistence term = "
+            "1 - exp(-persistence_seconds / scale) (spec FR-1.26). A provisional default "
+            "pending real calibration (spec Phase 68), not a claimed-accurate value."
+        ),
+    )
+    dependency_signal_strength: float = Field(
+        default=0.3,
+        gt=0,
+        lt=1,
+        description=(
+            "Noisy-OR evidence strength applied uniformly to dependency strength's "
+            "secondary signals (persistence, directionality, traffic characteristics) on "
+            "top of the frequency term (spec Phase 51, FR-1.26). Uniform for the same "
+            "reason `edge_confidence_signal_strength` is: no empirical basis yet justifies "
+            "weighting one signal above another -- that is Phase 68's job, not invented "
+            "here. A provisional default pending real calibration, not a claimed-accurate "
+            "value."
+        ),
+    )
+
     # Phase 34 -- multi-window behavior modeling (ties to NFR-4, FR-1.12).
     behavior_window_short_seconds: float = Field(
         default=10.0,
