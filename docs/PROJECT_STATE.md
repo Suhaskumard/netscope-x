@@ -5,26 +5,20 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 48 (Change Attribution) complete, unit-verified. `GraphChangeEvent`
-(`backend/app/models/snapshot.py`) gains a backward-compatible `affected_flow_ids` field (the same
-"extend an earlier phase's schema once a later phase's requirement needs it" precedent Phase 40
-already set for `total_byte_count`), closing the one real gap in FR-1.23's four named attribution
-items -- evidence/timestamps/affected nodes were already real from Phase 45. `diff_snapshots`
-(Phase 45, extended in place) populates it by matching flows against the affected node's/edge's IP
-set(s), bounded by the same `as_of` (`captured_at`) Phase 43/44 already use. New
-`backend/archaeology/attribution.py` (`format_change_attribution`/`format_timeline_attribution`,
-mirroring Phase 41's `explain.py`) renders every change's evidence, timestamp, affected node/edge,
-and affected flows, paired with a fixed, unconditional non-causal disclaimer -- structural, not a
-confidence threshold, since no causal-inference mechanism exists anywhere in this system yet (that
-begins at Phase 50-56). `ATTRIBUTE_CHANGED` events attribute to every flow supporting the edge, not
-only the ones that drove that specific delta -- a documented, honest scope limitation. No new
-persistence or API wiring -- `affected_flow_ids` reaches disk automatically via Phase 47's existing
-`topology_events.jsonl`. See `docs/architecture/change_attribution.md` for the full design, the
-schema-extension precedent, the causal-disclaimer rationale, worked example, and verification
-record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live
-capture is implemented and unit-verified but not yet verified against a real Docker lab (this
-session's environment has no Docker installation — see `docs/architecture/packet_capture.md`
-"Known limitations").
+Phase 49 (Historical Investigation Engine) complete, tested. `GET /history`
+(`backend/app/api/routes/history.py`) is wired for real, replacing its 501 stub: it calls Phase 47's
+`build_topology_event_timeline(root, capture_id)` unmodified, filters the result to `start <=
+occurred_at <= end` (inclusive both ends), and paginates with the existing `PageParams`/
+`PaginatedResponse` machinery `GET /flows` already uses -- no new schema, no new inference logic,
+pure wiring over already-real, already-evidenced data. Deliberately does not 404 on an unrecognized
+`capture_id` (unlike `GET /flows`/`GET /topology`): the archaeology layer's existing "missing means
+empty" convention already makes an unknown capture and a real one with no snapshots yet
+indistinguishable, so both return an empty, still-200 paginated result. See
+`docs/architecture/historical_investigation_engine.md` for the full design, the empty-not-404
+convention rationale, worked example, and verification record. Phase 21 (High-Fidelity Packet
+Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
+not yet verified against a real Docker lab (this session's environment has no Docker installation —
+see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -964,6 +958,25 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   the schema-extension precedent and the causal-disclaimer design rationale; a one-line amendment
   pointer was added to `docs/architecture/graph_difference_engine.md`.
 
+- Phase 49 — Historical Investigation Engine (`backend/app/api/routes/history.py`; FR-1.24). A
+  wire-up phase, not a new-capability one: `GET /history` now calls Phase 47's
+  `build_topology_event_timeline(root, capture_id)` unmodified, filters to `start <= occurred_at <=
+  end` (inclusive both ends), and paginates with the existing `PageParams`/`PaginatedResponse`
+  machinery `GET /flows` already uses -- no new schema, no new inference. Deliberately does not 404
+  on an unknown `capture_id`, unlike `GET /flows`/`GET /topology`: `build_topology_event_timeline` ->
+  `list_snapshots` already follows the archaeology layer's "missing means empty" convention, so an
+  unrecognized capture and a real one with no snapshots yet are indistinguishable at this layer, and
+  both correctly return an empty, still-200 paginated result rather than reintroducing a distinction
+  the layer underneath doesn't make. Verified: `backend/tests/test_api.py` gained 4 new `GET
+  /history` tests (unknown capture returns `200`/empty, not `404`; a full window returns the real
+  events `build_topology_event_timeline` produces; a narrow window before any snapshot pair excludes
+  every event; pagination `limit`/`offset` is honored and `total` reflects the pre-pagination window
+  count) and lost its old 501-stub parametrization entry for `/history` (9 -> 8 remaining stub
+  groups); full repo suite re-run clean, no regressions; `scripts.validate_data_contracts` and
+  `scripts.check_ground_truth_boundary` both re-verified clean (no schema changes this phase).
+  `docs/architecture/historical_investigation_engine.md` has full detail, including the
+  empty-not-404 convention rationale.
+
 ## Blocked phases
 
 None.
@@ -1394,6 +1407,13 @@ None yet — no experiments have been run.
   no causal-inference mechanism exists anywhere in this system yet (Phase 50-56's job), not because
   a sufficiency threshold was evaluated and passed; documented in
   `docs/architecture/change_attribution.md`.
-- Next: Phase 49 (Historical Investigation Engine, FR-1.24). Support queries such as "what changed
-  between time A and time B?", returning structured results. Not started; awaiting explicit
-  request.
+- Historical investigation engine (Phase 49) deliberately does not 404 on an unrecognized
+  `capture_id` -- the archaeology layer's own "missing means empty" convention makes that
+  indistinguishable from a real capture with no snapshots yet, so both return an empty, still-200
+  result; a documented convention choice, not a gap. Inherits Phase 47's generation-order-vs-
+  `captured_at`-order caveat and Phase 45's "removals practically vacuous" limitation unchanged --
+  no new filtering logic was added beyond the `start`/`end` window; documented in
+  `docs/architecture/historical_investigation_engine.md`.
+- Next: Phase 50 (Dependency and Causal Reasoning, FR-1.25). Explicitly distinguish "A communicates
+  with B" from "A depends on B" -- communication alone shall never automatically imply dependency.
+  Not started; awaiting explicit request.

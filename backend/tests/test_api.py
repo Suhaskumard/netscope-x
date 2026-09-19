@@ -1,16 +1,17 @@
-"""Phase 09 API architecture tests, updated for Phases 21, 23, and 32.
+"""Phase 09 API architecture tests, updated for Phases 21, 23, 32, and 49.
 
-Verifies the 9 still-unimplemented endpoint groups (spec Phase 09) return
+Verifies the 8 still-unimplemented endpoint groups (spec Phase 09) return
 a consistent 501 ErrorResponse envelope, that validation errors use the
 same envelope shape, and that the OpenAPI schema documents every required
-path. `POST /capture` (Phase 21), `GET /flows` (Phase 23), and
-`GET /topology` (Phase 32) are no longer in the 501 list -- their real
-behavior is covered by the dedicated tests at the bottom of this file.
+path. `POST /capture` (Phase 21), `GET /flows` (Phase 23),
+`GET /topology` (Phase 32), and `GET /history` (Phase 49) are no longer in
+the 501 list -- their real behavior is covered by the dedicated tests at
+the bottom of this file.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,6 +20,7 @@ from scapy.all import IP, TCP, UDP, wrpcap
 from backend.app.core.config import get_settings
 from backend.app.main import app
 from backend.app.models import TopologyGraph
+from backend.archaeology.snapshots import create_snapshot
 from experiments.artifacts.io import read_json
 from experiments.artifacts.paths import topology_path
 
@@ -53,16 +55,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
     [
         ("get", "/api/v1/behaviors/node-1", dict()),
         ("get", "/api/v1/anomalies", dict()),
-        (
-            "get",
-            "/api/v1/history",
-            dict(
-                params={
-                    "start": datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat(),
-                    "end": datetime(2026, 1, 2, tzinfo=timezone.utc).isoformat(),
-                }
-            ),
-        ),
         ("get", "/api/v1/dependencies", dict(params={"capture_id": "cap1"})),
         ("get", "/api/v1/causal/dep-1", dict()),
         (
@@ -112,10 +104,10 @@ def test_endpoint_returns_structured_501(method: str, path: str, kwargs: dict) -
 def test_all_12_endpoint_groups_exist() -> None:
     # Sanity check: if a group is ever renamed/removed from router.py
     # without updating this test file, this count catches the drift
-    # instead of silently under-testing. Only 9 of these 12 are covered
+    # instead of silently under-testing. Only 8 of these 12 are covered
     # by the generic 501 parametrization above -- /capture (Phase 21),
-    # /flows (Phase 23), and /topology (Phase 32) are real and tested
-    # separately below.
+    # /flows (Phase 23), /topology (Phase 32), and /history (Phase 49)
+    # are real and tested separately below.
     paths = {
         "/api/v1/capture",
         "/api/v1/flows",
@@ -369,3 +361,112 @@ def test_health_endpoint_still_unversioned_and_unaffected() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+# --- Phase 49: GET /history real behavior ---
+
+_HISTORY_BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def _ingest_two_episode_capture(filename: str) -> str:
+    settings = get_settings()
+    path = settings.upload_staging_dir / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    episode1 = IP(src="10.0.0.1", dst="10.0.0.2") / TCP(sport=1000, dport=80, flags="S")
+    episode1.time = _HISTORY_BASE.timestamp()
+    episode2 = IP(src="10.0.0.3", dst="10.0.0.4") / UDP(sport=2000, dport=53)
+    episode2.time = (_HISTORY_BASE + timedelta(seconds=100)).timestamp()
+    wrpcap(str(path), [episode1, episode2])
+
+    ingest = client.post("/api/v1/capture", json={"source": "pcap_upload", "pcap_filename": filename})
+    capture_id = ingest.json()["capture_id"]
+
+    # Populates packets.jsonl/flows.jsonl so create_snapshot's build_topology_graph has
+    # something real to read, same prerequisite GET /flows/GET /topology depend on.
+    client.get("/api/v1/flows", params={"capture_id": capture_id})
+    return capture_id
+
+
+def test_history_unknown_capture_returns_empty_not_404() -> None:
+    response = client.get(
+        "/api/v1/history",
+        params={
+            "capture_id": "does-not-exist",
+            "start": _HISTORY_BASE.isoformat(),
+            "end": (_HISTORY_BASE + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"items": [], "limit": 50, "offset": 0, "total": 0}
+
+
+def test_history_returns_events_within_window() -> None:
+    capture_id = _ingest_two_episode_capture("history_full_window.pcap")
+    settings = get_settings()
+    create_snapshot(settings.artifact_root, capture_id, captured_at=_HISTORY_BASE + timedelta(seconds=10))
+    create_snapshot(settings.artifact_root, capture_id, captured_at=_HISTORY_BASE + timedelta(seconds=200))
+
+    response = client.get(
+        "/api/v1/history",
+        params={
+            "capture_id": capture_id,
+            "start": _HISTORY_BASE.isoformat(),
+            "end": (_HISTORY_BASE + timedelta(seconds=300)).isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] > 0
+    assert all(
+        event["change_type"] in {"node_added", "edge_added", "attribute_changed"} for event in body["items"]
+    )
+
+
+def test_history_narrow_window_excludes_events_outside_it() -> None:
+    capture_id = _ingest_two_episode_capture("history_narrow_window.pcap")
+    settings = get_settings()
+    create_snapshot(settings.artifact_root, capture_id, captured_at=_HISTORY_BASE + timedelta(seconds=10))
+    create_snapshot(settings.artifact_root, capture_id, captured_at=_HISTORY_BASE + timedelta(seconds=200))
+
+    full = client.get(
+        "/api/v1/history",
+        params={
+            "capture_id": capture_id,
+            "start": _HISTORY_BASE.isoformat(),
+            "end": (_HISTORY_BASE + timedelta(seconds=300)).isoformat(),
+        },
+    ).json()
+    assert full["total"] > 0
+
+    before_any_event = client.get(
+        "/api/v1/history",
+        params={
+            "capture_id": capture_id,
+            "start": (_HISTORY_BASE - timedelta(days=1)).isoformat(),
+            "end": (_HISTORY_BASE - timedelta(hours=1)).isoformat(),
+        },
+    ).json()
+    assert before_any_event == {"items": [], "limit": 50, "offset": 0, "total": 0}
+
+
+def test_history_respects_pagination_params() -> None:
+    capture_id = _ingest_two_episode_capture("history_pagination.pcap")
+    settings = get_settings()
+    create_snapshot(settings.artifact_root, capture_id, captured_at=_HISTORY_BASE + timedelta(seconds=10))
+    create_snapshot(settings.artifact_root, capture_id, captured_at=_HISTORY_BASE + timedelta(seconds=200))
+
+    params = {
+        "capture_id": capture_id,
+        "start": _HISTORY_BASE.isoformat(),
+        "end": (_HISTORY_BASE + timedelta(seconds=300)).isoformat(),
+    }
+    full = client.get("/api/v1/history", params=params).json()
+    assert full["total"] >= 2
+
+    paged = client.get("/api/v1/history", params={**params, "limit": 1, "offset": 0}).json()
+    assert paged["total"] == full["total"]
+    assert len(paged["items"]) == 1
+    assert paged["limit"] == 1
+    assert paged["offset"] == 0

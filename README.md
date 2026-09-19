@@ -405,15 +405,23 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   real tests (14 extended `diff.py` tests + 9 new attribution tests), including one confirming an
   ICMP-only node correctly gets `[]`, never a fabricated flow id — `backend/archaeology/diff.py`,
   `backend/archaeology/attribution.py`, `docs/architecture/change_attribution.md`.
+- **Historical investigation engine** (Phase 49): `GET /history` is now real, wiring Phase 47's
+  persisted `build_topology_event_timeline` stream to a `capture_id` + `start`/`end` window filter
+  (inclusive both ends) and the same pagination machinery `GET /flows` already uses — no new schema,
+  no new inference logic. Deliberately does not 404 on an unknown `capture_id`: the archaeology
+  layer's existing "missing means empty" convention already makes that indistinguishable from "no
+  snapshots yet," so it returns an empty, still-200 paginated result instead. Proven by 4 new route
+  tests (empty-not-404, full-window, narrow-window exclusion, pagination) plus the 8 existing
+  `build_topology_event_timeline` tests this route relies on unchanged —
+  `backend/app/api/routes/history.py`, `docs/architecture/historical_investigation_engine.md`.
 
 ### What doesn't exist yet
 
-Historical investigation queries, dependency/causal reasoning, the digital twin, simulation, and
-counterfactual engines have not been implemented yet — those begin at Phase 49 and continue through
-the 69-phase plan. The API surface and data contracts are real and tested; most of the research
-intelligence they will eventually serve is not built yet. Nothing in this repository currently
-fabricates results — every phase's completion report documents exactly what was and wasn't verified
-by actual execution.
+Dependency/causal reasoning, the digital twin, simulation, and counterfactual engines have not been
+implemented yet — those begin at Phase 50 and continue through the 69-phase plan. The API surface and
+data contracts are real and tested; most of the research intelligence they will eventually serve is
+not built yet. Nothing in this repository currently fabricates results — every phase's completion
+report documents exactly what was and wasn't verified by actual execution.
 
 ## Repository layout
 
