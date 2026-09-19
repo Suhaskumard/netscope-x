@@ -17,11 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 44 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 45 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`create_snapshot` now generates real, versioned, persisted `NetworkSnapshot` records whose graphs
-are genuinely bounded by their claimed capture time — the first real code in a new
-`backend/archaeology/` package — see `docs/architecture/network_snapshot_engine.md`. Next: Phase 45.
+`diff_snapshots` now computes real, evidenced structural diffs between two `NetworkSnapshot`s —
+node/edge additions/removals and edge attribute changes — the first real use of `GraphChangeEvent`
+— see `docs/architecture/graph_difference_engine.md`. Next: Phase 46.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -346,11 +346,26 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   (no `/snapshots` route exists among Phase 09's 12 fixed endpoint groups at all). Proven by 9 real
   tests including a real end-to-end run against a two-episode synthetic capture —
   `backend/archaeology/snapshots.py`, `docs/architecture/network_snapshot_engine.md`.
+- **Graph difference engine** (Phase 45): `diff_snapshots` is the first real use of
+  `GraphChangeEvent`/`ChangeType` (Phase 04) — its 5-value enum is the master spec's own bullet
+  list verbatim. Diffs two snapshots by plain `node_id`/`edge_id` set comparison, resting on a
+  directly-verified (not assumed) property: Phase 43's `as_of` filtering only ever adds evidence as
+  `as_of` grows, so an already-observed node/edge's deterministic id is stable across snapshots of
+  the same capture — no separate entity-matching problem, unlike Phase 32's ground-truth
+  comparison. Attribute changes tracked for edges only (`confidence`, `protocols`) — node attribute
+  changes are explicitly never produced, since a `Node`'s only non-identity field (`last_observed`)
+  trivially advances with any later traffic and would be pure noise. Every event carries real,
+  concrete evidence from construction. Removals are structurally real (verified via a
+  reversed-snapshot-order test) but practically vacuous under normal forward-in-time usage, since
+  topology reconstruction here is cumulative with no expiry concept — documented, not hidden. No
+  persistence or API wiring — a pure function over two already-persisted snapshots. Proven by 10
+  real tests including a real end-to-end run producing a human-readable change list —
+  `backend/archaeology/diff.py`, `docs/architecture/graph_difference_engine.md`.
 
 ### What doesn't exist yet
 
-Graph diffing, dependency/causal reasoning, the digital twin, simulation, and counterfactual
-engines have not been implemented yet — those begin at Phase 45 and
+Behavioral evolution tracking, dependency/causal reasoning, the digital twin, simulation, and counterfactual
+engines have not been implemented yet — those begin at Phase 46 and
 continue through the 69-phase
 plan. The API surface and data contracts are real and tested; most of the
 research intelligence they will eventually serve is not built yet. Nothing in this
@@ -384,6 +399,7 @@ backend/flowmind/
   anomaly/explain.py  Phase 41 human-readable anomaly report rendering (Anomaly list -> spec-shaped report string)
 backend/archaeology/
   snapshots.py  Phase 44 versioned network snapshot generation (capture_id + captured_at -> NetworkSnapshot + persisted TopologyGraph)
+  diff.py  Phase 45 graph difference engine (two NetworkSnapshots -> List[GraphChangeEvent])
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -408,7 +424,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (357 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (367 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

@@ -5,26 +5,26 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 44 (Network Snapshot Engine) complete, unit-verified. New `backend/archaeology/snapshots.py`
-(the first real code in a new `backend/archaeology/` package, deliberately deferred from Phase 43)
-implements `create_snapshot`/`list_snapshots`/`read_snapshot_graph`, finally connecting three
-pieces that were each already designed for this moment: `NetworkSnapshot` (Phase 04, never
-constructed for real anywhere), `snapshot_path` (reserved since Phase 10, never called anywhere),
-and Phase 43's `as_of`-aware `build_topology_graph`. `captured_at` doubles as both the
-`NetworkSnapshot` label and the `as_of` bound passed into graph construction, so a snapshot's
-claimed capture time always genuinely matches its graph's evidence -- never a label decoupled from
-content. Versioning is per-`capture_id`, sequential by generation order (`1` if none exist, else
-`max(existing) + 1`). `snapshot_id`/`graph_id` use `-` separators
-(`{capture_id}-snapshot-{version}`), not this project's usual `:`-separated id convention, because
-these ids are used directly as filename components and `:` is invalid in a Windows path (hit and
-fixed during this phase's own test run). No deduplication of unchanged consecutive snapshots (an
-honest simplification -- detecting *whether* something changed is Phase 45's job) and no API wiring
-(no `/snapshots` route exists among Phase 09's 12 fixed endpoint groups; `GET /history` is
-explicitly scoped to Phase 49 and returns `GraphChangeEvent`, Phase 45's schema, not raw snapshots).
-See `docs/architecture/network_snapshot_engine.md` for the full design, worked example, and
-verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands:
-controlled live capture is implemented and unit-verified but not yet verified against a real Docker
-lab (this session's environment has no Docker installation — see
+Phase 45 (Graph Difference Engine) complete, unit-verified. New `backend/archaeology/diff.py`
+(`diff_snapshots`) is the first real use of `GraphChangeEvent`/`ChangeType` (Phase 04) -- whose
+5-value enum (`NODE_ADDED`/`NODE_REMOVED`/`EDGE_ADDED`/`EDGE_REMOVED`/`ATTRIBUTE_CHANGED`) is the
+master spec's own bullet list verbatim. Diffs two of Phase 44's `NetworkSnapshot`s by plain
+`node_id`/`edge_id` set comparison, relying on a directly-verified property (not just assumed):
+because Phase 43's `as_of` filtering only ever adds evidence as `as_of` grows, an already-observed
+node/edge's deterministic index-based id is stable across snapshots of the same capture. Attribute
+changes are tracked for edges only (`confidence`, `protocols`) -- node attribute changes are
+explicitly never produced, since a `Node`'s only non-identity field (`last_observed`) trivially
+advances with any later traffic at all and would be pure noise. Every event carries real, concrete
+evidence from construction (mirroring how Phase 40 "unavoidably produced real evidence" ahead of
+Phase 41 standardizing its format). Removals are structurally real (verified via a reversed-order
+comparison test) but practically vacuous under normal chronological usage, since this system's
+topology reconstruction is cumulative with no expiry concept -- documented, not hidden. No
+persistence, no API wiring -- a pure function over two already-persisted snapshots, mirroring Phase
+41/42's own unpersisted evaluation functions. See `docs/architecture/graph_difference_engine.md`
+for the full design, the id-stability argument, worked example, and verification record. Phase 21
+(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
+and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see
 `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
@@ -816,6 +816,44 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/network_snapshot_engine.md` has full detail, including the
   captured-at-doubles-as-as_of design decision and both explicit non-goals.
 
+- Phase 45 — Graph Difference Engine (new `backend/archaeology/diff.py`; FR-1.21 second half). The
+  first real use of `GraphChangeEvent`/`ChangeType` (Phase 04) -- its 5-value enum is the master
+  spec's own bullet list verbatim. `diff_snapshots(root, capture_id, from_snapshot, to_snapshot)`
+  fetches both graphs via Phase 44's `read_snapshot_graph` and diffs by plain `node_id`/`edge_id`
+  set comparison, relying on a directly-verified property: because Phase 43's `as_of` filtering
+  only ever adds evidence as `as_of` grows, every already-included node/edge's `first_observed`
+  (and therefore its deterministic index-based id) never changes, so an entity's id is stable
+  across snapshots of the same capture -- no separate "same real-world entity" matching problem to
+  solve, unlike Phase 32's ground-truth comparison. Attribute changes tracked for edges only
+  (`confidence`, `protocols`); node attribute changes are explicitly never produced -- a `Node`'s
+  only non-identity field (`last_observed`) trivially advances with any later traffic at all and
+  would be pure noise with no topological significance (the same documented-scope-out pattern as
+  Phase 40 never producing `TOPOLOGY`). One event per changed attribute (the schema allows exactly
+  one `attribute_name` per event); every event carries real, concrete evidence from construction
+  (specific ids, specific old/new values), satisfying `GraphChangeEvent.evidence`'s own
+  non-empty requirement with genuine content from the start. Deterministically ordered by
+  `(change_type, target_id, attribute_name)`. Removals are structurally real (correctly produced
+  when snapshots are compared out of chronological order) but practically vacuous under normal
+  forward-in-time usage, since topology reconstruction is cumulative with no expiry concept --
+  documented, not hidden. No persistence (no `events_path` exists or was added) and no API wiring
+  -- a pure function over two already-persisted snapshots, mirroring Phase 41/42's own unpersisted
+  evaluation functions; `GET /history` remains explicitly scoped to Phase 49. Verified: new
+  `backend/tests/test_archaeology_diff.py` (10/10: the id-stability property holds directly, not
+  just assumed; node/edge additions detected; no changes between identical snapshots; a genuinely
+  growing edge confidence produces one `ATTRIBUTE_CHANGED` event with `previous_value <
+  new_value`; a new protocol on an existing edge produces an `ATTRIBUTE_CHANGED` event; no
+  node-level attribute-change event ever fires even when `last_observed` demonstrably advances;
+  reversed-order comparison correctly produces `NODE_REMOVED`/`EDGE_REMOVED` and zero additions;
+  every event carries real non-empty evidence; identical repeated calls produce identical,
+  identically-ordered output); combined suite 367/367 (up from 357/357), no regressions;
+  `scripts.validate_data_contracts` re-verified clean (38/38, `GraphChangeEvent`/`ChangeType`
+  unchanged, first real use only); `scripts.check_ground_truth_boundary` re-verified clean; a real,
+  manual end-to-end run (no Docker needed) built the same two-episode capture, created two
+  snapshots, diffed them, and confirmed the printed output (2 node additions, 1 edge addition, each
+  with concrete evidence) exactly matched the doc's worked example. `docs/architecture/
+  graph_difference_engine.md` has full detail, including the id-stability argument and both
+  explicit limitations.
+
 ## Blocked phases
 
 None.
@@ -1220,6 +1258,10 @@ None yet — no experiments have been run.
   always matches its graph's evidence. Snapshot/graph ids use `-` separators, not this project's
   usual `:`, because `:` is invalid in a Windows filename and these ids become path components;
   documented in `docs/architecture/network_snapshot_engine.md`.
-- Next: Phase 45 (Graph Difference Engine, FR-1.21's second half). Detect node/edge
-  additions/removals and attribute changes between two snapshots. Not started; awaiting explicit
-  request.
+- Graph difference engine (Phase 45) diffs snapshots by plain `node_id`/`edge_id` set comparison,
+  relying on a directly-verified id-stability property from Phase 43's monotonic `as_of` filtering
+  — no separate entity-matching problem, unlike Phase 32's ground-truth comparison. Node attribute
+  changes are never produced (only `last_observed` exists, which is pure noise); documented in
+  `docs/architecture/graph_difference_engine.md`.
+- Next: Phase 46 (Behavioral Evolution Tracking, FR-1.22's first half). Track behavioral changes
+  for individual nodes over time. Not started; awaiting explicit request.
