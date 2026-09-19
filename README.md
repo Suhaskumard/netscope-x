@@ -17,12 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 55 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 56 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`compute_graph_criticality` now computes real degree/betweenness/articulation-point/path-dependency/
-connectivity metrics via exact NetworkX algorithms, with a `mean_incident_edge_confidence` field
-resolving Phase 05's own flagged confidence caveat — see
-`docs/architecture/criticality_analysis.md`. Next: Phase 56.
+`GET /causal/{dependency_id}` is now real — every inferred dependency or propagation relationship
+gets a genuine `CausalEvidenceReport` (relationship, evidence, confidence, counter-evidence,
+limitations), never a bare causal claim — see `docs/architecture/causal_evidence_report.md`. Next:
+Phase 57.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -46,10 +46,11 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
 - **Configuration & secrets** (Phase 08): environment-driven settings, secret handling with a
   production safety guard — `backend/app/core/config.py`, `.env.example`, `.env.test`.
 - **API architecture** (Phase 09): all 12 required endpoint groups routed and validated under
-  `/api/v1`, with consistent error handling — `backend/app/api/`. `POST /capture` (Phase 21) and
-  `GET /flows` (Phase 23, now including real TCP state as of Phase 24), and `GET /topology`
-  (Phase 32) are real; the other 9 still return a structured 501 (not yet implemented) — see
-  "What doesn't exist yet" below.
+  `/api/v1`, with consistent error handling — `backend/app/api/`. `POST /capture` (Phase 21),
+  `GET /flows` (Phase 23, now including real TCP state as of Phase 24), `GET /topology`
+  (Phase 32), `GET /history` (Phase 49), `GET /dependencies` (Phase 51), and
+  `GET /causal/{dependency_id}` (Phase 56) are real; the other 6 still return a structured 501
+  (not yet implemented) — see "What doesn't exist yet" below.
 - **Research artifact architecture** (Phase 10): reproducible on-disk formats (JSON / JSON Lines) for
   flows, graphs, snapshots, experiments, metrics, and hash-verified ground truth —
   `experiments/artifacts/`.
@@ -505,12 +506,28 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   with hand-computed expected values) including a real end-to-end run over a hub-and-spoke capture
   confirming the gateway is discovered as a genuine articulation point —
   `backend/dependency/criticality.py`, `docs/architecture/criticality_analysis.md`.
+- **Causal evidence report** (Phase 56): `GET /causal/{dependency_id}` is now real — the sixth of
+  Phase 09's 12 endpoint groups to become so. Two relationship kinds per FR-1.30's own "dependency
+  OR propagation" wording: `build_dependency_evidence_report` words `relationship` differently for
+  a `CausalCandidate` (Phase 53) vs. a mere `DependencyEdge`, reuses `strength` as `confidence`
+  directly, and builds `counter_evidence` only from genuine per-edge signals (zero/low temporal
+  precedence, low directionality, non-candidate status) — legitimately empty for a strong
+  candidate, verified directly. `limitations` always carries the health-check-poller confounding
+  risk and provisional-thresholds caveats regardless of the edge's own numbers.
+  `build_propagation_evidence_report` looks up the specific candidate that caused a
+  secondary/tertiary impact, rejecting primary impacts (the given input, not an inferred
+  relationship) and mismatched candidate lists with `ValueError`. The route takes an explicit
+  `capture_id` query parameter — deliberately not parsed out of `dependency_id`'s internal id
+  format — and 404s via a new `DependencyNotFoundError` for an unknown id, mirroring
+  `GET /flows`/`GET /topology`'s single-resource convention. Proven by 11 real tests plus 3 new API
+  tests, including a real end-to-end run through the full dependency-strength →
+  causal-candidate → failure-propagation pipeline — `backend/dependency/{causal_evidence,errors}.py`,
+  `docs/architecture/causal_evidence_report.md`.
 
 ### What doesn't exist yet
 
-Causal evidence reports, the
-digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
-Phase 56 and continue through the 69-phase plan. The API surface and
+The digital twin, simulation, and counterfactual engines have not been implemented yet — those
+begin at Phase 57 and continue through the 69-phase plan. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -551,6 +568,8 @@ backend/dependency/
   causal_candidates.py  Phase 53 causal candidate generation (DependencyEdge list -> List[CausalCandidate], strength + temporal precedence both required)
   failure_propagation.py  Phase 54 failure propagation graph (CausalCandidate list + failed node -> List[PropagationImpact], primary/secondary/tertiary)
   criticality.py  Phase 55 criticality analysis (TopologyGraph -> GraphCriticalityReport: degree/betweenness/articulation points/path dependency/connectivity)
+  causal_evidence.py  Phase 56 causal evidence reports (DependencyEdge/PropagationImpact -> CausalEvidenceReport), real via GET /causal/{dependency_id}
+  errors.py  Phase 56 DependencyNotFoundError (404 for an unknown dependency_id)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -575,7 +594,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (454 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (467 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

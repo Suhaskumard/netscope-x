@@ -1,12 +1,13 @@
-"""Phase 09 API architecture tests, updated for Phases 21, 23, 32, 49, and 51.
+"""Phase 09 API architecture tests, updated for Phases 21, 23, 32, 49, 51, and 56.
 
-Verifies the 7 still-unimplemented endpoint groups (spec Phase 09) return
+Verifies the 6 still-unimplemented endpoint groups (spec Phase 09) return
 a consistent 501 ErrorResponse envelope, that validation errors use the
 same envelope shape, and that the OpenAPI schema documents every required
 path. `POST /capture` (Phase 21), `GET /flows` (Phase 23),
-`GET /topology` (Phase 32), `GET /history` (Phase 49), and
-`GET /dependencies` (Phase 51) are no longer in the 501 list -- their real
-behavior is covered by the dedicated tests at the bottom of this file.
+`GET /topology` (Phase 32), `GET /history` (Phase 49),
+`GET /dependencies` (Phase 51), and `GET /causal/{dependency_id}`
+(Phase 56) are no longer in the 501 list -- their real behavior is covered
+by the dedicated tests at the bottom of this file.
 """
 
 from __future__ import annotations
@@ -55,7 +56,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
     [
         ("get", "/api/v1/behaviors/node-1", dict()),
         ("get", "/api/v1/anomalies", dict()),
-        ("get", "/api/v1/causal/dep-1", dict()),
         (
             "post",
             "/api/v1/simulation",
@@ -103,10 +103,11 @@ def test_endpoint_returns_structured_501(method: str, path: str, kwargs: dict) -
 def test_all_12_endpoint_groups_exist() -> None:
     # Sanity check: if a group is ever renamed/removed from router.py
     # without updating this test file, this count catches the drift
-    # instead of silently under-testing. Only 7 of these 12 are covered
+    # instead of silently under-testing. Only 6 of these 12 are covered
     # by the generic 501 parametrization above -- /capture (Phase 21),
-    # /flows (Phase 23), /topology (Phase 32), /history (Phase 49), and
-    # /dependencies (Phase 51) are real and tested separately below.
+    # /flows (Phase 23), /topology (Phase 32), /history (Phase 49),
+    # /dependencies (Phase 51), and /causal (Phase 56) are real and
+    # tested separately below.
     paths = {
         "/api/v1/capture",
         "/api/v1/flows",
@@ -513,3 +514,47 @@ def test_dependencies_respects_pagination_params() -> None:
     assert len(paged["items"]) == 1
     assert paged["limit"] == 1
     assert paged["offset"] == 0
+
+
+# --- Phase 56: GET /causal/{dependency_id} real behavior ---
+
+
+def test_causal_unknown_capture_returns_404() -> None:
+    response = client.get(
+        "/api/v1/causal/does-not-exist:dependency:0", params={"capture_id": "does-not-exist"}
+    )
+    _assert_error_envelope(response, 404)
+    assert response.json()["error"] == "dependency_not_found"
+
+
+def test_causal_unknown_dependency_id_within_real_capture_returns_404() -> None:
+    capture_id = _ingest_real_two_flow_capture("causal_unknown.pcap")
+    client.get("/api/v1/flows", params={"capture_id": capture_id})
+
+    response = client.get(
+        f"/api/v1/causal/{capture_id}:dependency:999", params={"capture_id": capture_id}
+    )
+    _assert_error_envelope(response, 404)
+    assert response.json()["error"] == "dependency_not_found"
+
+
+def test_causal_returns_real_evidence_report_for_ingested_capture() -> None:
+    capture_id = _ingest_real_two_flow_capture("causal.pcap")
+    client.get("/api/v1/flows", params={"capture_id": capture_id})
+
+    dependencies = client.get(
+        "/api/v1/dependencies", params={"capture_id": capture_id}
+    ).json()["items"]
+    dependency_id = dependencies[0]["dependency_id"]
+
+    response = client.get(
+        f"/api/v1/causal/{dependency_id}", params={"capture_id": capture_id}
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["relationship"]
+    assert len(body["evidence"]) >= 1
+    assert 0.0 <= body["confidence"] <= 1.0
+    assert len(body["limitations"]) >= 1
+    assert body["report_id"] == f"{dependency_id}:causal_evidence"

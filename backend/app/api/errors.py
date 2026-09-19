@@ -1,7 +1,7 @@
 """Consistent error handling (spec Phase 09; API DESIGN PRINCIPLES:
 "avoid leaking internal exceptions", "return consistent errors").
 
-Six cases, all rendered through the same ErrorResponse envelope:
+Seven cases, all rendered through the same ErrorResponse envelope:
 1. NotYetImplemented -- a real, validated endpoint whose backing pipeline
    stage doesn't exist yet (spec Phase 21+). Maps to 501.
 2. RequestValidationError -- FastAPI/Pydantic input validation failure.
@@ -15,7 +15,9 @@ Six cases, all rendered through the same ErrorResponse envelope:
    §5 Safety Boundary). Maps to 403.
 5. CaptureNotFoundError (spec Phase 23) -- GET /flows for a capture_id with
    no ingested raw.pcap. Maps to 404.
-6. Any other unhandled Exception -- logged with full detail via the
+6. DependencyNotFoundError (spec Phase 56) -- GET /causal/{dependency_id}
+   for a dependency_id nothing computed matches. Maps to 404.
+7. Any other unhandled Exception -- logged with full detail via the
    observability framework (Phase 07), but the client only ever sees a
    generic message plus request_id, never the raw exception text.
 """
@@ -29,6 +31,7 @@ from fastapi.responses import JSONResponse
 from backend.app.api.schemas import ErrorResponse
 from backend.app.core.context import get_request_id
 from backend.app.core.logging import get_logger, log_exception
+from backend.dependency.errors import DependencyNotFoundError
 from backend.nettrace.capture.errors import CaptureNotFoundError, InvalidPcapError, UnauthorizedInterfaceError
 
 logger = get_logger(__name__)
@@ -83,6 +86,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             content=ErrorResponse(
                 error="capture_not_found",
+                detail=str(exc),
+                request_id=get_request_id(),
+            ).model_dump(),
+        )
+
+    @app.exception_handler(DependencyNotFoundError)
+    async def _dependency_not_found_handler(request: Request, exc: DependencyNotFoundError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=ErrorResponse(
+                error="dependency_not_found",
                 detail=str(exc),
                 request_id=get_request_id(),
             ).model_dump(),

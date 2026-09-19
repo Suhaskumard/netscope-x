@@ -5,28 +5,36 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 55 (Criticality Analysis) complete, tested. New `backend/dependency/criticality.py`
-(`compute_graph_criticality`) implements the algorithm and per-metric rationale already committed
-at Phase 05 (`algorithm_selection.md` section 4: exact NetworkX degree centrality, Brandes'
-betweenness centrality, Tarjan's articulation points), operating on `TopologyGraph` (confirmed by
-section 4's own confidence caveat referencing `Edge.confidence`, not `DependencyEdge`), living in
-`backend/dependency/` per that package's own Phase 50 docstring which already named "criticality
-metrics" as an anticipated later addition. Resolves section 4's explicitly flagged open question
-(a low-confidence edge contributing to a high betweenness score should be flagged, not reported
-with false precision) via a new `mean_incident_edge_confidence` field reported alongside -- not
-blended into -- the exact, unweighted centrality numbers, avoiding an unjustified confidence-weighting
-scheme the spec never asked for. Adds `path_dependency_impact`, a real graph-theoretic quantity (how
-many other nodes are stranded outside the main remaining component if this node is removed) as a
-graded refinement of the boolean articulation-point flag. `METRIC_RATIONALE` carries the "why each
-metric is relevant" documentation FR-1.29 requires as a real, quotable in-code artifact. No combined/
-ranked criticality score -- the five metrics stay separate, avoiding an unjustified weighting formula.
-No new `Settings` field (every metric is an exact, parameter-free algorithm); no persistence, no API
-wiring (no `/criticality` route exists among Phase 09's 12 fixed groups). See
-`docs/architecture/criticality_analysis.md` for the full design, the confidence resolution, the
-path-dependency-impact formula, worked example, and verification record. Phase 21 (High-Fidelity
-Packet Capture)'s one open item still stands: controlled live capture is implemented and
-unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 56 (Causal Evidence Report) complete, tested. New `backend/dependency/causal_evidence.py`
+(`build_dependency_evidence_report`, `build_propagation_evidence_report`) is the first real use of
+`CausalEvidenceReport` (Phase 04). Two relationship kinds per FR-1.30's own "dependency OR
+propagation" wording: dependency reports word `relationship` differently depending on whether the
+edge was promoted to a `CausalCandidate` (Phase 53) -- "causal candidate" vs. weaker "mere
+communicate" language, never overclaiming beyond what Phase 53 established; `confidence` reuses
+`strength` directly; `counter_evidence` carries only genuine, per-edge signals (zero/low temporal
+precedence, low directionality, non-candidate status) and can be legitimately empty for a strong
+candidate (verified directly, not just implied); `limitations` always carries two structural
+caveats (the health-check-poller confounding risk already named in `algorithm_selection.md` section
+6, and the provisional/uncalibrated-thresholds note) regardless of the specific edge's numbers.
+Propagation reports look up the specific `CausalCandidate` that caused a `SECONDARY`/`TERTIARY`
+impact (raising `ValueError` for a `PRIMARY` impact -- the given input, not an inferred
+relationship -- or if no matching candidate is found), reuse the impact's own real evidence and the
+candidate's real strength, always have empty `counter_evidence` (a promoted candidate already
+cleared both of Phase 53's gates) and one additional propagation-specific limitation. A real scope
+difference from Phases 53-55: `GET /causal/{dependency_id}` is wired for real this phase (its own
+docstring already named Phase 56 as its backing implementation, the same pattern Phase 51 followed
+for `GET /dependencies`) -- with a deliberate, documented deviation from the bare path shown in
+that docstring: an explicit `capture_id` query parameter (matching every sibling route, rather than
+fragile-parsing `capture_id` out of `dependency_id`'s internal `f"{capture_id}:dependency:
+{index}"` string format). A new `DependencyNotFoundError` (`backend/dependency/errors.py`) maps to
+404, mirroring `GET /flows`/`GET /topology`'s single-resource-by-id convention (not `GET
+/dependencies`/`GET /history`'s empty-list-means-200 convention, which is specific to paginated
+list routes). `build_propagation_evidence_report` stays unwired -- no route exists for it in the
+fixed Phase 09 API surface. See `docs/architecture/causal_evidence_report.md` for the full design,
+the API-wiring reasoning, worked example, and verification record. Phase 21 (High-Fidelity Packet
+Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
+not yet verified against a real Docker lab (this session's environment has no Docker installation —
+see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -1230,6 +1238,62 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   matched the doc's worked example. `docs/architecture/criticality_analysis.md` has full detail,
   including the confidence resolution and the path-dependency-impact formula.
 
+- Phase 56 — Causal Evidence Report (new `backend/dependency/{causal_evidence,errors}.py`; `GET
+  /causal/{dependency_id}` wired for real; FR-1.30). The first real use of `CausalEvidenceReport`
+  (Phase 04). Two relationship kinds per FR-1.30's own "dependency OR propagation" wording.
+  `build_dependency_evidence_report`: `relationship` worded differently for a `CausalCandidate`
+  (Phase 53) vs. a mere `DependencyEdge`, never overclaiming beyond what Phase 53 established;
+  `confidence` reuses `strength` directly; `counter_evidence` carries only genuine, per-edge
+  signals (zero/low `temporal_precedence_score`, low `directionality_score`, non-candidate status)
+  and is legitimately empty for a strong candidate -- verified directly
+  (`test_strong_candidate_can_have_empty_counter_evidence`), not just implied, since the schema's
+  `counter_evidence` has no `min_length` unlike `evidence`/`limitations`; `limitations` always
+  carries `CONFOUNDER_LIMITATION` (the health-check-poller confounding risk `algorithm_selection.md`
+  section 6 already named) and `THRESHOLD_LIMITATION` (Phase 51/52/53's own recurring
+  provisional-constants note) regardless of the specific edge's numbers -- deliberately distinct in
+  purpose from the edge-specific `counter_evidence`. `build_propagation_evidence_report`: raises
+  `ValueError` for a `PRIMARY` impact (the given input, not an inferred relationship) or when no
+  matching `CausalCandidate` is found in the caller-supplied list; reuses the impact's own real
+  evidence and the matched candidate's real strength; `counter_evidence` always `[]` (a promoted
+  candidate already cleared both of Phase 53's gates -- structural, not a gap); `limitations` adds
+  one more, propagation-specific caveat (multi-hop propagation compounds each hop's own
+  uncertainty, not itself validated against a real controlled experiment, Phase 63/68's job). A
+  real scope difference from Phases 53-55: `GET /causal/{dependency_id}` wired for real this phase
+  -- its own docstring already named Phase 56 as its backing implementation (the same pattern
+  Phase 51 followed for `GET /dependencies`), with a deliberate, documented deviation from the bare
+  path shown there: an explicit `capture_id` query parameter, matching every sibling route
+  (`GET /flows`/`GET /topology`/`GET /dependencies`) rather than fragile-parsing `capture_id` out
+  of `dependency_id`'s internal `f"{capture_id}:dependency:{index}"` string format, which was never
+  meant to be a public parsing contract. New `DependencyNotFoundError`
+  (`backend/dependency/errors.py`, mirroring `backend/nettrace/capture/errors.py`'s plain-Exception
+  convention) maps to 404 via a new handler in `backend/app/api/errors.py` -- mirrors `GET
+  /flows`/`GET /topology`'s single-resource-by-id 404 convention, not `GET /dependencies`/`GET
+  /history`'s empty-list-means-200 convention (specific to paginated *list* routes). One uniform
+  error path: `estimate_dependency_strength` already returns `[]` for a missing capture, which
+  naturally flows into "no matching `dependency_id`" either way, so no separate capture-existence
+  check was added. `build_propagation_evidence_report` stays unwired -- no `propagation_impact_id`
+  concept exists anywhere in the fixed Phase 09 API surface (`PropagationImpact` carries no id
+  field of its own), and `POST /simulation` remains explicitly scoped to Phase 59-61. Verified: new
+  `backend/tests/test_dependency_causal_evidence.py` (11/11: candidate-backed dependencies use the
+  causal-candidate wording, non-candidates the weaker wording with a threshold counter-evidence
+  item; zero/positive temporal precedence and low/high directionality correctly toggle their
+  respective counter-evidence items; a strong candidate legitimately produces empty
+  counter-evidence; a `PRIMARY` impact and a missing-candidate call both raise `ValueError`; a real
+  `SECONDARY` impact report uses the candidate's real strength and the impact's own real evidence; a
+  real end-to-end run through the full `estimate_dependency_strength` -> `generate_causal_candidates`
+  -> `propagate_failure` pipeline produces both report kinds from genuinely-computed objects); new
+  `backend/tests/test_api.py` tests (unknown capture and unknown `dependency_id` within a real
+  capture both 404 with `error="dependency_not_found"`; a real ingested capture's real dependency
+  returns 200 with a genuine report); removed `/causal/dep-1` from the 501 parametrization (6
+  groups remain, down from 7); combined suite 467/467 (up from 454/454), no regressions;
+  `scripts.validate_data_contracts` re-verified clean (38/38, `CausalEvidenceReport` unchanged,
+  first real use only); `scripts.check_ground_truth_boundary` re-verified clean; a real, manual
+  end-to-end run (no Docker needed) built the same 3-hop lagged-activity capture, generated both
+  report kinds, and separately exercised the real `GET /causal/{dependency_id}` route via
+  `TestClient` against a real ingested capture, confirming a genuine 200 response.
+  `docs/architecture/causal_evidence_report.md` has full detail, including the API-wiring reasoning
+  and worked examples of both report kinds.
+
 ## Blocked phases
 
 None.
@@ -1700,6 +1764,11 @@ None yet — no experiments have been run.
   Phase 05's own confidence caveat referencing `Edge.confidence`. Resolves that caveat via
   `mean_incident_edge_confidence` reported alongside, not blended into, the exact centrality
   numbers; documented in `docs/architecture/criticality_analysis.md`.
-- Next: Phase 56 (Causal Evidence Report, FR-1.30). For every inferred dependency or propagation
-  relationship, produce a report containing relationship, evidence, confidence, counter-evidence,
-  and limitations. Not started; awaiting explicit request.
+- Causal evidence report (Phase 56) wired `GET /causal/{dependency_id}` with an explicit
+  `capture_id` query parameter rather than parsing it out of `dependency_id`'s internal string
+  format; `counter_evidence` is genuinely per-edge and can be empty, while `limitations` always
+  carries the structural confounding/threshold caveats regardless of the edge's own numbers;
+  documented in `docs/architecture/causal_evidence_report.md`.
+- Next: Phase 57 (Digital Twin Model, FR-1.31). Build a computational digital twin combining
+  topology, behavior, history, dependencies, routing, and state. Not started; awaiting explicit
+  request.
