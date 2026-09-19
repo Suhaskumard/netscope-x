@@ -5,31 +5,27 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 54 (Failure Propagation Graph) complete, tested. New `backend/dependency/
-failure_propagation.py` (`propagate_failure`) is the first real use of
-`backend/app/models/failure.py`'s `PropagationImpact`/`ImpactOrder` (Phase 04, docstring-tagged
-"spec Phase 54, 61", never constructed anywhere before this). A real, previously-undocumented
-design decision: propagates over Phase 53's `List[CausalCandidate]`, not raw
-`List[DependencyEdge]` -- `Edge`/`DependencyEdge.source_node_id`/`target_node_id` are undirected
-(`discover_edges` assigns them by alphabetically sorting the node-id pair, not by any real
-dependency direction), so following a raw `DependencyEdge`'s `source -> target` would often mean
-propagating in a direction with zero supporting evidence (`temporal_precedence_score == 0.0`) --
-an artifact of alphabetical sorting, not a causal claim. `CausalCandidate`s are exactly the subset
-where `source -> target` carries genuine, positive temporal-precedence evidence, making this the
-only edge set in the codebase where "if source fails, target is impacted" is actually justified.
-Algorithm: primary impact is the failed node itself; secondary/tertiary are a breadth-first
-traversal over `source_node_id -> target_node_id`, exactly two hops deep (matching the spec's
-literal three-order list, no further cascading); each node visited at most once (first
-order/candidate wins, so cycles never loop and diamond patterns never double-count); fully
-deterministic processing order (frontier sorted by node id, each node's outgoing candidates sorted
-by `dependency_id`). Every non-primary impact's evidence cites the specific candidate's real
-strength/temporal-precedence values. Returns `[PRIMARY only]` for no outgoing candidates or empty
-input, never an error. No new `Settings` field -- governed entirely by Phase 53's own threshold. No
-persistence, no API wiring -- `POST /simulation` stays untouched, explicitly scoped to "spec Phase
-59-61" in its own docstring. See `docs/architecture/failure_propagation_graph.md` for the full
-design, the undirected-edge argument, worked example, and verification record. Phase 21
-(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
-and unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Phase 55 (Criticality Analysis) complete, tested. New `backend/dependency/criticality.py`
+(`compute_graph_criticality`) implements the algorithm and per-metric rationale already committed
+at Phase 05 (`algorithm_selection.md` section 4: exact NetworkX degree centrality, Brandes'
+betweenness centrality, Tarjan's articulation points), operating on `TopologyGraph` (confirmed by
+section 4's own confidence caveat referencing `Edge.confidence`, not `DependencyEdge`), living in
+`backend/dependency/` per that package's own Phase 50 docstring which already named "criticality
+metrics" as an anticipated later addition. Resolves section 4's explicitly flagged open question
+(a low-confidence edge contributing to a high betweenness score should be flagged, not reported
+with false precision) via a new `mean_incident_edge_confidence` field reported alongside -- not
+blended into -- the exact, unweighted centrality numbers, avoiding an unjustified confidence-weighting
+scheme the spec never asked for. Adds `path_dependency_impact`, a real graph-theoretic quantity (how
+many other nodes are stranded outside the main remaining component if this node is removed) as a
+graded refinement of the boolean articulation-point flag. `METRIC_RATIONALE` carries the "why each
+metric is relevant" documentation FR-1.29 requires as a real, quotable in-code artifact. No combined/
+ranked criticality score -- the five metrics stay separate, avoiding an unjustified weighting formula.
+No new `Settings` field (every metric is an exact, parameter-free algorithm); no persistence, no API
+wiring (no `/criticality` route exists among Phase 09's 12 fixed groups). See
+`docs/architecture/criticality_analysis.md` for the full design, the confidence resolution, the
+path-dependency-impact formula, worked example, and verification record. Phase 21 (High-Fidelity
+Packet Capture)'s one open item still stands: controlled live capture is implemented and
+unit-verified but not yet verified against a real Docker lab (this session's environment has no
 Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
@@ -1194,6 +1190,46 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   `docs/architecture/failure_propagation_graph.md` has full detail, including the undirected-edge
   argument and the worked example.
 
+- Phase 55 — Criticality Analysis (new `backend/dependency/criticality.py`; FR-1.29). Implements
+  the algorithm and per-metric rationale already committed at Phase 05
+  (`algorithm_selection.md` section 4: exact NetworkX degree centrality, Brandes' betweenness
+  centrality, Tarjan's articulation points), confirmed to operate on `TopologyGraph` (Phase 30-32)
+  by section 4's own confidence caveat referencing `Edge.confidence` -- not `DependencyEdge`, which
+  has `strength`, no raw confidence field. Lives in `backend/dependency/` per that package's own
+  Phase 50 docstring, which already named "criticality metrics" as an anticipated later addition.
+  Resolves section 4's explicitly flagged open question (a low-confidence edge contributing to a
+  high betweenness score should be flagged as lower-confidence, not reported with false precision)
+  via new `mean_incident_edge_confidence` (real mean confidence of a node's incident edges,
+  `None` for a node with none) reported alongside -- not blended into -- the exact, unweighted
+  centrality numbers, avoiding an unjustified confidence-weighting scheme the spec never asked for.
+  Adds `path_dependency_impact`: `(total other nodes) - (size of the largest connected component
+  after removing this node)`, a real graph-theoretic quantity and graded refinement of the boolean
+  articulation-point flag. `METRIC_RATIONALE` (module-level dict) carries the "why each metric is
+  relevant" documentation FR-1.29 requires as a real, quotable in-code artifact, adapted directly
+  from section 4's own already-written text. Deliberately no combined/ranked criticality score --
+  the five metrics stay separate, matching the spec's literal "compute... metrics" (not "rank
+  nodes") and avoiding an unjustified weighting formula (same reasoning as Phase 31/51's uniform,
+  not hand-tuned, signal-strength constants). No new `Settings` field (every metric is an exact,
+  parameter-free algorithm); no persistence, no API wiring (no `/criticality` route exists among
+  Phase 09's 12 fixed endpoint groups at all). Verified: new `backend/tests/
+  test_dependency_criticality.py` (10/10: a star topology's hub has maximal degree/betweenness, is
+  a genuine articulation point, and its path_dependency_impact matches a hand-computed value; a
+  linear chain's interior nodes are articulation points with correct distinct impact values,
+  endpoints are not; a 4-cycle has zero articulation points and zero impact everywhere with
+  `node_connectivity=2`; an isolated node scores all zeros/`None` correctly;
+  `mean_incident_edge_confidence` matches a hand-computed mean; `node_connectivity` correctly
+  reflects chain/cycle/disconnected topologies; an empty graph returns an empty report, never an
+  error; `METRIC_RATIONALE` documents every reported metric; identical repeated calls produce
+  identical output; a real end-to-end run through `build_topology_graph`, not hand-built
+  `TopologyGraph` fixtures, over a real hub-and-spoke capture confirms the gateway node is
+  discovered as a genuine articulation point from real pipeline output); combined suite 454/454 (up
+  from 444/444), no regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no
+  schema changes this phase); `scripts.check_ground_truth_boundary` re-verified clean; a real,
+  manual end-to-end run (no Docker needed) built a real 5-node hub-and-spoke capture, ran
+  `build_topology_graph` then `compute_graph_criticality`, and confirmed the printed output exactly
+  matched the doc's worked example. `docs/architecture/criticality_analysis.md` has full detail,
+  including the confidence resolution and the path-dependency-impact formula.
+
 ## Blocked phases
 
 None.
@@ -1660,6 +1696,10 @@ None yet — no experiments have been run.
   -- the latter are undirected (alphabetically-sorted node-id pairs), so propagating along them
   would often follow a direction with zero real evidence; documented in
   `docs/architecture/failure_propagation_graph.md`.
-- Next: Phase 55 (Criticality Analysis, FR-1.29). Compute graph criticality metrics (degree,
-  betweenness, articulation points, path dependency, connectivity) with documented rationale for
-  each metric's relevance. Not started; awaiting explicit request.
+- Criticality analysis (Phase 55) operates on `TopologyGraph`, not `DependencyEdge` -- confirmed by
+  Phase 05's own confidence caveat referencing `Edge.confidence`. Resolves that caveat via
+  `mean_incident_edge_confidence` reported alongside, not blended into, the exact centrality
+  numbers; documented in `docs/architecture/criticality_analysis.md`.
+- Next: Phase 56 (Causal Evidence Report, FR-1.30). For every inferred dependency or propagation
+  relationship, produce a report containing relationship, evidence, confidence, counter-evidence,
+  and limitations. Not started; awaiting explicit request.

@@ -17,11 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 54 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 55 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`propagate_failure` now represents a real, evidenced multi-order (primary/secondary/tertiary)
-failure-impact graph, traversing Phase 53's evidenced `CausalCandidate`s rather than raw,
-undirected `DependencyEdge`s — see `docs/architecture/failure_propagation_graph.md`. Next: Phase 55.
+`compute_graph_criticality` now computes real degree/betweenness/articulation-point/path-dependency/
+connectivity metrics via exact NetworkX algorithms, with a `mean_incident_edge_confidence` field
+resolving Phase 05's own flagged confidence caveat — see
+`docs/architecture/criticality_analysis.md`. Next: Phase 56.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -487,12 +488,29 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   59-61. Proven by 8 real tests including a real end-to-end run over a genuine 3-hop lagged-activity
   capture with no direct shortcut edge — `backend/dependency/failure_propagation.py`,
   `docs/architecture/failure_propagation_graph.md`.
+- **Criticality analysis** (Phase 55): `compute_graph_criticality` (new
+  `backend/dependency/criticality.py`) implements the algorithm and per-metric rationale already
+  committed at Phase 05 — exact NetworkX degree centrality, Brandes' betweenness centrality,
+  Tarjan's articulation points — confirmed to operate on `TopologyGraph`, not `DependencyEdge`, by
+  Phase 05's own confidence caveat referencing `Edge.confidence`. Resolves that caveat (a
+  low-confidence edge shouldn't inflate a criticality score with false precision) via a new
+  `mean_incident_edge_confidence` field reported *alongside*, not blended into, the exact centrality
+  numbers — avoiding an unjustified confidence-weighting scheme the spec never asked for. Adds
+  `path_dependency_impact`, a real graph-theoretic quantity (how many other nodes are stranded
+  outside the main remaining component if this node is removed) as a graded refinement of the
+  boolean articulation-point flag. `METRIC_RATIONALE` documents why each metric matters as a real,
+  quotable in-code artifact. No combined/ranked score — the five metrics stay separate, matching the
+  spec's literal "compute... metrics." No persistence or API wiring — no `/criticality` route exists
+  among Phase 09's 12 fixed endpoint groups. Proven by 10 real tests (star/chain/cycle topologies
+  with hand-computed expected values) including a real end-to-end run over a hub-and-spoke capture
+  confirming the gateway is discovered as a genuine articulation point —
+  `backend/dependency/criticality.py`, `docs/architecture/criticality_analysis.md`.
 
 ### What doesn't exist yet
 
-Criticality metrics, causal evidence reports, the
+Causal evidence reports, the
 digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
-Phase 55 and continue through the 69-phase plan. The API surface and
+Phase 56 and continue through the 69-phase plan. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -532,6 +550,7 @@ backend/dependency/
   temporal_precedence.py  Phase 52 temporal precedence analysis (per-node flow activity -> time-lagged cross-correlation score)
   causal_candidates.py  Phase 53 causal candidate generation (DependencyEdge list -> List[CausalCandidate], strength + temporal precedence both required)
   failure_propagation.py  Phase 54 failure propagation graph (CausalCandidate list + failed node -> List[PropagationImpact], primary/secondary/tertiary)
+  criticality.py  Phase 55 criticality analysis (TopologyGraph -> GraphCriticalityReport: degree/betweenness/articulation points/path dependency/connectivity)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -556,7 +575,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (444 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (454 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
