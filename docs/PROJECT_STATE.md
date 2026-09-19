@@ -5,27 +5,25 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 45 (Graph Difference Engine) complete, unit-verified. New `backend/archaeology/diff.py`
-(`diff_snapshots`) is the first real use of `GraphChangeEvent`/`ChangeType` (Phase 04) -- whose
-5-value enum (`NODE_ADDED`/`NODE_REMOVED`/`EDGE_ADDED`/`EDGE_REMOVED`/`ATTRIBUTE_CHANGED`) is the
-master spec's own bullet list verbatim. Diffs two of Phase 44's `NetworkSnapshot`s by plain
-`node_id`/`edge_id` set comparison, relying on a directly-verified property (not just assumed):
-because Phase 43's `as_of` filtering only ever adds evidence as `as_of` grows, an already-observed
-node/edge's deterministic index-based id is stable across snapshots of the same capture. Attribute
-changes are tracked for edges only (`confidence`, `protocols`) -- node attribute changes are
-explicitly never produced, since a `Node`'s only non-identity field (`last_observed`) trivially
-advances with any later traffic at all and would be pure noise. Every event carries real, concrete
-evidence from construction (mirroring how Phase 40 "unavoidably produced real evidence" ahead of
-Phase 41 standardizing its format). Removals are structurally real (verified via a reversed-order
-comparison test) but practically vacuous under normal chronological usage, since this system's
-topology reconstruction is cumulative with no expiry concept -- documented, not hidden. No
-persistence, no API wiring -- a pure function over two already-persisted snapshots, mirroring Phase
-41/42's own unpersisted evaluation functions. See `docs/architecture/graph_difference_engine.md`
-for the full design, the id-stability argument, worked example, and verification record. Phase 21
-(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
-and unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 46 (Behavioral Evolution Tracking) complete, unit-verified. New
+`backend/archaeology/behavior_evolution.py` (`track_node_behavioral_evolution`) is the first
+Network Archaeology code to operate on FLOWMIND's `BehavioralFingerprint` (Phase 33-35) rather than
+`TopologyGraph`/`NetworkSnapshot` (Phase 43-45). It is a pure function over a caller-supplied,
+time-ordered list of one node's fingerprints, comparing every consecutive pair field-by-field and
+emitting one `BehavioralEvolutionEvent` (new plain dataclass, mirroring Phase 38/39's own precedent
+-- no Phase 04 schema is reserved for this, unlike `GraphChangeEvent` whose own docstring scopes it
+to "spec Phase 45, 47-48" not 46) per changed field, each carrying concrete before/after evidence.
+Deliberately distinct from Phase 39's `track_node_drift`: that classifies a sequence against a
+static baseline as `CONCEPT_DRIFT`/`TRANSIENT_ANOMALY` (a FLOWMIND detection judgment); this phase
+makes no statistical judgment at all -- it is a raw, evidenced historical record, the direct
+behavioral analogue of Phase 45's `diff_snapshots`. No new persistent fingerprint-history store
+exists (Phase 35's `fingerprints.jsonl` is overwritten per batch, not appended, same as Phase
+38/39's own "no cross-capture store" scope decision), and no persistence/API wiring was added --
+see `docs/architecture/behavioral_evolution_tracking.md` for the full design, the Phase 39
+non-duplication argument, the worked example, and the verification record. Phase 21 (High-Fidelity
+Packet Capture)'s one open item still stands: controlled live capture is implemented and
+unit-verified but not yet verified against a real Docker lab (this session's environment has no
+Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -854,6 +852,44 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   graph_difference_engine.md` has full detail, including the id-stability argument and both
   explicit limitations.
 
+- Phase 46 — Behavioral Evolution Tracking (new `backend/archaeology/behavior_evolution.py`;
+  FR-1.22 first half). The first Network Archaeology code to operate on FLOWMIND's
+  `BehavioralFingerprint` (Phase 33-35) rather than a `TopologyGraph`/`NetworkSnapshot` (Phase
+  43-45). `track_node_behavioral_evolution(fingerprints)` is a pure function over a caller-supplied,
+  time-ordered list of one node's fingerprints (no Phase 04 schema is reserved for this -- unlike
+  `GraphChangeEvent`, whose own docstring scopes it to "spec Phase 45, 47-48" not 46 -- so this
+  follows Phase 38/39's own precedent of a plain `@dataclass`, `BehavioralEvolutionEvent`, instead).
+  Walks consecutive fingerprint pairs and compares all 7 fields: `distinct_ports`/
+  `distinct_protocols` by set difference (evidence names the concrete added/removed elements,
+  mirroring Phase 38's set-valued novelty tracking); `distinct_destinations`/
+  `mean_flow_duration_seconds`/`outbound_byte_ratio`/`total_byte_count` by exact value inequality --
+  the same "no invented magnitude threshold" precedent Phase 45 already set comparing
+  `Edge.confidence`, also a continuous float, the exact same way; `is_persistent_talker` by boolean
+  flip. One event per changed field per transition, each carrying concrete, non-empty evidence.
+  Deliberately NOT a duplicate of Phase 39's `track_node_drift`: that classifies a sequence against
+  a static baseline as `CONCEPT_DRIFT`/`TRANSIENT_ANOMALY` (a FLOWMIND statistical detection
+  judgment); this phase makes no such judgment -- it is a raw, evidenced chronological record, the
+  direct behavioral analogue of Phase 45's `diff_snapshots`. No new persistent fingerprint-history
+  store exists -- Phase 35's `fingerprints.jsonl` is overwritten per batch, not appended, so no real
+  cross-batch history exists on disk yet; building one remains explicitly out of scope, the same
+  call Phase 38/39 already made for their own history parameters. No persistence (no new artifact
+  path) and no API wiring -- `GET /behaviors/{node_id}` remains a 501 stub, still blocked on Phase
+  36-37's role wiring, unrelated to this phase; mirrors Phase 41/42/45's own pure, unpersisted
+  function precedent. Verified: new `backend/tests/test_archaeology_behavior_evolution.py` (12/12:
+  empty/mixed-node/mixed-window `ValueError`s; a single fingerprint returns `[]`; no changes between
+  identical fingerprints returns `[]`; a changed continuous feature produces exactly one event with
+  correct previous/new values; a changed port set names the added port; a removed protocol names
+  it; an `is_persistent_talker` flip is detected; every event carries non-empty evidence; multiple
+  transitions are chronologically ordered and identical repeated calls produce identical output; a
+  real end-to-end-shaped test building fingerprints via Phase 35's `assemble_node_fingerprint` from
+  two distinct flow sets for the same node); combined suite 379/379 (up from 367/367), no
+  regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no schema changes);
+  `scripts.check_ground_truth_boundary` re-verified clean; a real, manual end-to-end run (no Docker
+  needed) built two synthetic fingerprints for the same node 5 minutes apart with a deliberately
+  widened port set, byte ratio, persistence flag, and byte volume, and confirmed the printed events
+  exactly matched the doc's worked example. `docs/architecture/behavioral_evolution_tracking.md` has
+  full detail, including the Phase 39 non-duplication argument and the no-reserved-schema rationale.
+
 ## Blocked phases
 
 None.
@@ -1263,5 +1299,12 @@ None yet — no experiments have been run.
   — no separate entity-matching problem, unlike Phase 32's ground-truth comparison. Node attribute
   changes are never produced (only `last_observed` exists, which is pure noise); documented in
   `docs/architecture/graph_difference_engine.md`.
-- Next: Phase 46 (Behavioral Evolution Tracking, FR-1.22's first half). Track behavioral changes
-  for individual nodes over time. Not started; awaiting explicit request.
+- Behavioral evolution tracking (Phase 46) has no real cross-batch fingerprint-history store to read
+  from — Phase 35's `fingerprints.jsonl` is overwritten per batch, not appended — so
+  `track_node_behavioral_evolution` is verified only against caller-constructed and
+  `assemble_node_fingerprint`-derived fingerprint lists, never a real persisted multi-batch history;
+  building one is future work, not a gap in this phase's own scope. It also makes no statistical
+  significance judgment (deliberately left to Phase 39's `track_node_drift`, not duplicated here);
+  documented in `docs/architecture/behavioral_evolution_tracking.md`.
+- Next: Phase 47 (Topology Event Timeline, FR-1.22's second half). Create a chronological network
+  event stream. Not started; awaiting explicit request.

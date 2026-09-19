@@ -17,11 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 45 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 46 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`diff_snapshots` now computes real, evidenced structural diffs between two `NetworkSnapshot`s —
-node/edge additions/removals and edge attribute changes — the first real use of `GraphChangeEvent`
-— see `docs/architecture/graph_difference_engine.md`. Next: Phase 46.
+`track_node_behavioral_evolution` now computes a real, evidenced chronological record of a node's
+own `BehavioralFingerprint` changes over time — the first Network Archaeology code built on
+FLOWMIND's fingerprints rather than NETTRACE's topology graphs — see
+`docs/architecture/behavioral_evolution_tracking.md`. Next: Phase 47.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -361,18 +362,31 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   persistence or API wiring — a pure function over two already-persisted snapshots. Proven by 10
   real tests including a real end-to-end run producing a human-readable change list —
   `backend/archaeology/diff.py`, `docs/architecture/graph_difference_engine.md`.
+- **Behavioral evolution tracking** (Phase 46): `track_node_behavioral_evolution` is the first
+  Network Archaeology code to operate on FLOWMIND's `BehavioralFingerprint` (Phase 33-35) rather
+  than a `TopologyGraph`/`NetworkSnapshot`. A pure function over a caller-supplied, time-ordered
+  list of one node's fingerprints, it walks consecutive pairs and compares all 7 fields — set
+  difference for `distinct_ports`/`distinct_protocols`, exact-value inequality for the four
+  continuous/count fields (the same no-invented-threshold precedent Phase 45 already set for
+  `Edge.confidence`), boolean flip for `is_persistent_talker` — emitting one evidenced
+  `BehavioralEvolutionEvent` (a new plain dataclass; no Phase 04 schema is reserved for this,
+  unlike `GraphChangeEvent`) per changed field. Deliberately distinct from Phase 39's
+  `track_node_drift` (a statistical baseline-relative classification): this is a raw, evidenced
+  historical record, not a detector. No real cross-batch fingerprint-history store exists yet
+  (Phase 35's `fingerprints.jsonl` is overwritten per batch, not appended) — an honest, documented
+  limitation, not a gap. No persistence or API wiring — `GET /behaviors/{node_id}` remains a 501
+  stub. Proven by 12 real tests including a real end-to-end run through
+  `assemble_node_fingerprint` — `backend/archaeology/behavior_evolution.py`,
+  `docs/architecture/behavioral_evolution_tracking.md`.
 
 ### What doesn't exist yet
 
-Behavioral evolution tracking, dependency/causal reasoning, the digital twin, simulation, and counterfactual
-engines have not been implemented yet — those begin at Phase 46 and
-continue through the 69-phase
-plan. The API surface and data contracts are real and tested; most of the
-research intelligence they will eventually serve is not built yet. Nothing in this
-repository
-currently fabricates results — every phase's completion report documents exactly what was and wasn't
-verified by
-actual execution.
+The topology event timeline, dependency/causal reasoning, the digital twin, simulation, and
+counterfactual engines have not been implemented yet — those begin at Phase 47 and continue through
+the 69-phase plan. The API surface and data contracts are real and tested; most of the research
+intelligence they will eventually serve is not built yet. Nothing in this repository currently
+fabricates results — every phase's completion report documents exactly what was and wasn't verified
+by actual execution.
 
 ## Repository layout
 
@@ -400,6 +414,7 @@ backend/flowmind/
 backend/archaeology/
   snapshots.py  Phase 44 versioned network snapshot generation (capture_id + captured_at -> NetworkSnapshot + persisted TopologyGraph)
   diff.py  Phase 45 graph difference engine (two NetworkSnapshots -> List[GraphChangeEvent])
+  behavior_evolution.py  Phase 46 behavioral evolution tracking (one node's BehavioralFingerprint history -> List[BehavioralEvolutionEvent])
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -424,7 +439,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (367 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (379 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
