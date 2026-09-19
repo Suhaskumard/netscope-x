@@ -78,8 +78,8 @@ def test_destinations_anomaly_has_expected_evidence_values() -> None:
     assert len(destination_anomalies) == 1
     anomaly = destination_anomalies[0]
     # _stable_history's destinations jitter between 3-5, median 4.0.
-    assert anomaly.evidence_values["historical_destinations"] == "4.000"
-    assert anomaly.evidence_values["current_destinations"] == "100.000"
+    assert anomaly.evidence_values["historical_destinations"] == "4"
+    assert anomaly.evidence_values["current_destinations"] == "100"
 
 
 def test_timing_anomaly_fires_on_deviating_duration() -> None:
@@ -119,6 +119,8 @@ def test_ports_anomaly_fires_only_for_new_ports() -> None:
     port_anomalies = [a for a in detect_node_anomalies(baseline, new_port) if a.dimension == AnomalyDimension.PORTS]
     assert len(port_anomalies) == 1
     assert "4444" in port_anomalies[0].evidence_values["new_ports"]
+    assert port_anomalies[0].evidence_values["historical_port_count"] == "1"
+    assert port_anomalies[0].evidence_values["current_port_count"] == "2"
 
 
 def test_protocols_anomaly_fires_only_for_new_protocols() -> None:
@@ -130,6 +132,8 @@ def test_protocols_anomaly_fires_only_for_new_protocols() -> None:
     ]
     assert len(protocol_anomalies) == 1
     assert "UDP" in protocol_anomalies[0].evidence_values["new_protocols"]
+    assert protocol_anomalies[0].evidence_values["historical_protocol_count"] == "1"
+    assert protocol_anomalies[0].evidence_values["current_protocol_count"] == "2"
 
 
 def test_scores_are_bounded_and_never_reach_exactly_one() -> None:

@@ -73,6 +73,18 @@ def _feature_value(fingerprint: BehavioralFingerprint, feature_name: str) -> flo
     return float(getattr(fingerprint, feature_name))
 
 
+def _format_value(value: float) -> str:
+    """Renders a whole-numbered float as a clean integer string (`"4"`, not
+    `"4.000"`) and a genuinely fractional value to 3 decimals -- matching
+    the evidence_values convention Phase 04 itself already established
+    (`scripts/validate_data_contracts.py`'s `"historical_destinations": "4"`
+    example), which Phase 40's original `.3f`-everywhere formatting had
+    drifted from (spec Phase 41, FR-1.18)."""
+    if value == int(value):
+        return str(int(value))
+    return f"{value:.3f}"
+
+
 @dataclass(frozen=True)
 class _Candidate:
     dimension: AnomalyDimension
@@ -95,15 +107,17 @@ def _continuous_candidate(
         return None
 
     score = 1 - math.exp(-abs(z) / z_threshold)
+    historical_str = _format_value(baseline_feature.median)
+    current_str = _format_value(current_value)
     return _Candidate(
         dimension=dimension,
         evidence=[
-            f"{label} deviates from baseline: historical median={baseline_feature.median:.3f}, "
-            f"current={current_value:.3f}, robust z-score={z:.3f}"
+            f"{label} moved from a historical typical value of {historical_str} to {current_str} "
+            f"(robust z-score {z:.3f}, threshold {z_threshold:.3f})"
         ],
         evidence_values={
-            f"historical_{label}": f"{baseline_feature.median:.3f}",
-            f"current_{label}": f"{current_value:.3f}",
+            f"historical_{label}": historical_str,
+            f"current_{label}": current_str,
             "z_score": f"{z:.3f}",
         },
         score=score,
@@ -121,13 +135,15 @@ def _novelty_candidate(
     if not new_items:
         return None
 
+    new_items_str = ", ".join(str(item) for item in new_items)
     score = 1 - math.exp(-len(new_items) / novelty_scale)
     return _Candidate(
         dimension=dimension,
-        evidence=[f"new {label}(s) observed not in historical set: {new_items}"],
+        evidence=[f"new {label}(s) observed, not present in the historical set: {new_items_str}"],
         evidence_values={
-            f"new_{label}s": ",".join(str(item) for item in new_items),
+            f"new_{label}s": new_items_str,
             f"historical_{label}_count": str(len(historical_values)),
+            f"current_{label}_count": str(len(set(current_values))),
         },
         score=score,
     )

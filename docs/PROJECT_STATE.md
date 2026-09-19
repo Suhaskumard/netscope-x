@@ -5,29 +5,24 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 40 (Multi-Dimensional Anomaly Detection) complete, unit-verified. `detect_node_anomalies`/
-`detect_node_anomalies_with_drift` (`backend/flowmind/anomaly/node_anomaly.py`, new
-`backend/flowmind/anomaly/` package) implement `docs/architecture/algorithm_selection.md` §3's two
-selected mechanisms across 5 of the 7 `AnomalyDimension` values: robust z-score deviation
-(`DESTINATIONS`, `TIMING`, `BEHAVIOR`, `TRAFFIC_VOLUME`) against Phase 38's `RobustFeatureBaseline`s,
-and set-difference novelty (`PORTS`, `PROTOCOLS`) against Phase 38's `historical_ports`/
-`historical_protocols` sets, unchanged. Closed a real gap for `TRAFFIC_VOLUME`: added
-`total_byte_count` (defaulted to `0`) to `NodeBehavioralFeatures`, `BehavioralFingerprint`, and
-`NodeBehavioralBaseline` (a 5th continuous feature, also added to Phase 39's `track_node_drift`) --
-backward-compatible, no existing fixture broke except one hardcoded "four features" test assertion
-widened to five. Explicitly scoped `TOPOLOGY` OUT (never produced) -- no time-series graph-diff
-capability exists anywhere yet, and building one is Phase 45's job (`GraphChangeEvent`/
-`NetworkSnapshot`, Phase 04 schemas already reserved, unimplemented); documented, not silent.
-Scores use the same saturating-curve formula already established for Phase 30's edge confidence
-(`1 - exp(-x/scale)`). Cold-start-guarded by reusing Phase 38's `is_sufficient` flag (returns `[]`
-below the observation threshold). `detect_node_anomalies` (single fingerprint) always assigns the
-provisional `AnomalyClass.TRANSIENT_ANOMALY` (one observation can't establish drift);
-`detect_node_anomalies_with_drift` (a sequence) genuinely upgrades this via a real call into Phase
-39's `track_feature_drift` -- real integration, not a stub. See
-`docs/architecture/multidimensional_anomaly_detection.md` for the full design and verification
-record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled live capture
-is implemented and unit-verified but not yet verified against a real Docker lab (this session's
-environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+Phase 41 (Explainable Anomalies) complete, unit-verified. `backend/flowmind/anomaly/node_anomaly.py`'s
+evidence formatting (Phase 40) is now standardized to match Phase 04's own `Anomaly` contract example
+(`scripts/validate_data_contracts.py`'s `"historical_destinations": "4"`, not the drifted `"4.000"`
+Phase 40 actually shipped) — continuous-feature values render as clean integers when whole, `z_score`
+keeps 3-decimal precision, and novelty checks (`PORTS`/`PROTOCOLS`) gained a symmetric
+`current_<label>_count` alongside the existing `historical_<label>_count`. New
+`backend/flowmind/anomaly/explain.py` (`format_anomaly_report`) renders any same-node `Anomaly` list
+into the master spec's literal human-readable report block (`Node: / <Label>: <value> / Evidence:
+...`), generically derived from each anomaly's own `evidence_values` keys — no per-dimension
+hardcoding, so it renders correctly for dimensions that don't exist yet too. Deliberately no new
+detection signal: FR-1.18's own text asks for "historical vs. current destination counts" and
+"specific new ports observed," both already true; specific new-*destination*-identity tracking (the
+spec's illustrative "New destination: X") stays an honest, documented limitation for a later phase,
+not silently added or silently skipped. No persistence or API wiring — `GET /anomalies` remains a 501
+stub. See `docs/architecture/explainable_anomalies.md` for the full design, worked example, and
+verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
+live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
+session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
 limitations").
 
 ## Process note
@@ -666,6 +661,42 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   check_ground_truth_boundary` re-verified clean. `docs/architecture/
   multidimensional_anomaly_detection.md` has full detail, including both gap-resolution arguments.
 
+- Phase 41 — Explainable Anomalies (`backend/flowmind/anomaly/node_anomaly.py`, evidence-formatting
+  fix, same functions modified not new ones; new `backend/flowmind/anomaly/explain.py`; FR-1.18).
+  Fixed a real formatting divergence: Phase 40's continuous-feature evidence always used `.3f`
+  (`"4.000"`), drifted from Phase 04's own contract example
+  (`scripts/validate_data_contracts.py`'s `"historical_destinations": "4"`) -- a new `_format_value`
+  renders whole numbers as clean integers, keeping 3-decimal precision only for genuinely fractional
+  values (`z_score` always keeps it). Novelty checks (`PORTS`/`PROTOCOLS`) gained a symmetric
+  `current_<label>_count` alongside the existing `historical_<label>_count`, using data the function
+  already had in hand. New `format_anomaly_report(anomalies: List[Anomaly]) -> str` renders any
+  same-`node_id` `Anomaly` list into the master spec's own literal PHASE 41 worked-example block
+  (`Node: / <Label>: <value> lines / Evidence: bullet lines`), deriving field labels generically from
+  each anomaly's `evidence_values` keys -- no per-dimension hardcoding. Raises `ValueError` on an
+  empty list or a list spanning more than one `node_id`, matching this project's established
+  fail-fast convention. Deliberately no new detection signal: FR-1.18's own text asks for "historical
+  vs. current destination counts" and "specific new ports observed," both already true from Phase 40;
+  specific new-*destination*-identity tracking (the spec's illustrative "New destination: X") is an
+  honest, documented, deliberately out-of-scope limitation for a later phase (confirmed with the
+  user before implementation), not silently added or silently skipped. No persistence or API wiring
+  -- `GET /anomalies` remains a 501 stub. Verified: updated `backend/tests/test_flowmind_anomaly.py`
+  (2 assertions corrected from the drifted `.3f` values to clean integers; 2 new assertions for the
+  added `current_<label>_count` keys); new `backend/tests/test_flowmind_anomaly_explain.py` (7/7:
+  empty-list and mixed-node_id `ValueError`s; a single `DESTINATIONS` anomaly renders clean
+  `Node:`/`Historical destinations:`/`Current destinations:`/`Evidence:` lines; a single `PORTS`
+  anomaly names the specific new port plus before/after counts; a combined `DESTINATIONS`+`PORTS`
+  report for one node reproduces the master spec's own worked-example shape; deterministic output
+  across repeated calls; a real end-to-end run through `build_node_baseline`/`detect_node_anomalies`,
+  not hand-built fixtures, confirming the formatting fix against genuinely detector-produced
+  evidence); combined suite 325/325 (up from 318/318), no regressions; `scripts.
+  validate_data_contracts` re-verified clean (38/38, `Anomaly` schema unchanged); `scripts.
+  check_ground_truth_boundary` re-verified clean; a real, manual end-to-end run (no Docker needed)
+  built a synthetic fingerprint history for node `API-2`, triggered a `DESTINATIONS` + `PORTS`
+  anomaly with the master spec's own example numbers (historical destinations 4, current 9, new port
+  4444), and confirmed the rendered report visually matches the spec's literal PHASE 41 worked
+  example. `docs/architecture/explainable_anomalies.md` has full detail, including the scope-decision
+  argument and the worked example.
+
 ## Blocked phases
 
 None.
@@ -1050,7 +1081,13 @@ None yet — no experiments have been run.
   `z_threshold=3.0`/`novelty_scale=1.0` are documented, evidence-light provisional defaults, not
   empirically validated (no Docker this session); documented in
   `docs/architecture/multidimensional_anomaly_detection.md`.
-- Next: Phase 41 (Explainable Anomalies). Expected to standardize/enrich the evidence formatting
-  Phase 40's detector already produces as a side effect (FR-1.18: "every reported anomaly shall
-  include concrete supporting evidence... never a bare label") — not yet scoped beyond that one-line
-  mention. Not started; awaiting explicit request.
+- Explainable anomalies (Phase 41) standardized `node_anomaly.py`'s evidence formatting to match
+  Phase 04's own contract example (clean integers, not `.3f` everywhere) and added a new
+  `format_anomaly_report` (`backend/flowmind/anomaly/explain.py`) rendering any `Anomaly` list into
+  the master spec's literal human-readable report shape. Deliberately no new detection signal
+  (specific new-destination identity, unlike ports/protocols, remains an honest, documented
+  limitation) and no API/persistence wiring — documented in
+  `docs/architecture/explainable_anomalies.md`.
+- Next: Phase 42 (FLOWMIND Evaluation, FR-1.19). Measure and report FLOWMIND's own precision,
+  recall, F1, false-positive rate, false-negative rate, and detection latency against labeled
+  experiments. Not started; awaiting explicit request.

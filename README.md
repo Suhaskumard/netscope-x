@@ -17,12 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 40 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 41 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Real multi-dimensional anomaly detection (`detect_node_anomalies`/`detect_node_anomalies_with_drift`)
-now decides *whether* a node's behavior deviates enough to flag, across 5 of 7 dimensions (`TOPOLOGY`
-explicitly deferred to Phase 45), integrating genuinely with Phase 39's drift classifier — see
-`docs/architecture/multidimensional_anomaly_detection.md`. Next: Phase 41.
+Every anomaly's evidence (`Anomaly.evidence`/`evidence_values`, Phase 40) is now standardized to
+match this project's own Phase 04 contract example (clean integers, not `.3f` everywhere), and a new
+`format_anomaly_report` renders any node's anomalies into the master spec's own literal
+human-readable report shape — see `docs/architecture/explainable_anomalies.md`. Next: Phase 42.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -294,13 +294,25 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   Proven by 12 real tests plus 26 re-verified Phase 33/38/39 tests confirming the schema extension
   didn't break anything — `backend/flowmind/anomaly/node_anomaly.py`,
   `docs/architecture/multidimensional_anomaly_detection.md`.
+- **Explainable anomalies** (Phase 41): fixed a real formatting divergence — Phase 40's evidence
+  always used `.3f` (`"4.000"`), drifted from this project's own Phase 04 contract example
+  (`"historical_destinations": "4"`); now whole numbers render as clean integers, and
+  `PORTS`/`PROTOCOLS` novelty checks gained a symmetric `current_<label>_count` alongside the
+  existing historical count. New `format_anomaly_report` renders any single node's `Anomaly` list
+  into the master spec's own literal human-readable report shape (`Node: / <Label>: <value> /
+  Evidence: ...`), deriving field labels generically from each anomaly's own evidence — no
+  per-dimension hardcoding. Deliberately no new detection signal: specific new-destination identity
+  (the spec's illustrative "New destination: X") stays an honest, documented, out-of-scope
+  limitation, not silently added or skipped. No persistence or API wiring — `GET /anomalies` remains
+  a 501 stub. Proven by 7 new tests plus 4 updated Phase 40 assertions, including a real end-to-end
+  run reproducing the master spec's own worked example — `backend/flowmind/anomaly/explain.py`,
+  `docs/architecture/explainable_anomalies.md`.
 
 ### What doesn't exist yet
 
-Explainable-anomaly evidence formatting, temporal archaeology, dependency/causal reasoning, the
-digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
-Phase 41 and continue through the 69-phase plan. The API surface and data contracts are real and
-tested; most of the
+Temporal archaeology, dependency/causal reasoning, the digital twin, simulation, and counterfactual
+engines have not been implemented yet — those begin at Phase 42 and continue through the 69-phase
+plan. The API surface and data contracts are real and tested; most of the
 research intelligence they will eventually serve is not built yet. Nothing in this
 repository
 currently fabricates results — every phase's completion report documents exactly what was and wasn't
@@ -329,6 +341,7 @@ backend/flowmind/
   baseline/node_baseline.py  Phase 38 robust median/MAD behavioral baseline + historical novelty sets
   drift/node_drift.py  Phase 39 EWMA-based transient-anomaly-vs-concept-drift classifier
   anomaly/node_anomaly.py  Phase 40 multi-dimensional anomaly detection (5 of 7 dimensions; TOPOLOGY deferred to Phase 45)
+  anomaly/explain.py  Phase 41 human-readable anomaly report rendering (Anomaly list -> spec-shaped report string)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37 evaluation-only ground-truth/calibration comparison (never reachable from backend/)
@@ -353,7 +366,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (318 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (325 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

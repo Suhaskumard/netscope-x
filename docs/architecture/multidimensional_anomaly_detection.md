@@ -115,8 +115,9 @@ cold-start-insufficient baseline: `[]`, never an error.
   above); a persistence-flip anomaly (historically persistent, suddenly not) has no dedicated check
   this phase, since it's a frequency-vs-single-boolean comparison the existing `RobustFeatureBaseline`
   pattern doesn't cleanly cover — a plausible future enhancement, not attempted here (NFR-9).
-- No persistence, no API wiring — Phase 41's evidence formatting and any eventual `/anomalies` route
-  are separate, later work.
+- No persistence, no API wiring — `/anomalies` remains a 501 stub even after Phase 41's evidence
+  formatting (`docs/architecture/explainable_anomalies.md`); there is still no anomaly persistence
+  layer to source real records from.
 
 ## Verification actually performed this phase
 
@@ -146,5 +147,6 @@ Multi-dimensional anomaly detection (spec Phase 40, FR-1.17) is implemented and 
 the 7 `AnomalyDimension` values, using exactly the two mechanisms `algorithm_selection.md` §3 already
 selected. `TOPOLOGY` is explicitly deferred to Phase 45's graph-diff machinery. Real integration with
 Phase 39's drift classification is genuine, not stubbed — `detect_node_anomalies_with_drift` calls the
-real `track_feature_drift` function. No persistence or API wiring exists yet; Phase 41's evidence
-formatting is separate, later work.
+real `track_feature_drift` function. No persistence or API wiring exists yet. The evidence this phase
+produces was standardized/enriched into a human-readable report format by Phase 41 — see
+`docs/architecture/explainable_anomalies.md`.
