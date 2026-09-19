@@ -17,11 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 43 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 44 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Topology reconstruction is now genuinely time-indexed: `build_topology_graph(..., as_of=t)` is
-literally `G(t)`, recomputing nodes/edges/confidence from only the evidence observed at or before
-`t` — see `docs/architecture/temporal_graph_model.md`. Next: Phase 44.
+`create_snapshot` now generates real, versioned, persisted `NetworkSnapshot` records whose graphs
+are genuinely bounded by their claimed capture time — the first real code in a new
+`backend/archaeology/` package — see `docs/architecture/network_snapshot_engine.md`. Next: Phase 45.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -332,11 +332,25 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   choice. `GET /topology` untouched. Proven by 13 new/extended tests across three files, including a
   real end-to-end run against a two-episode synthetic capture — `backend/nettrace/topology/
   {discovery,edges,graph}.py`, `docs/architecture/temporal_graph_model.md`.
+- **Network snapshot engine** (Phase 44, the first real code in `backend/archaeology/`):
+  `create_snapshot` finally connects three pieces each already designed for this moment —
+  `NetworkSnapshot` (Phase 04, never constructed for real before now), `snapshot_path` (reserved
+  since Phase 10, never called before now), and Phase 43's `as_of`-aware `build_topology_graph`.
+  `captured_at` is passed straight into graph construction as `as_of` *and* stored on the
+  `NetworkSnapshot`, so a snapshot's claimed capture time always genuinely matches its graph's
+  evidence, never a label decoupled from content. Versioning is per-capture, sequential by
+  generation order. Snapshot/graph ids use `-` separators rather than this project's usual `:`,
+  since `:` is invalid in a Windows filename and these ids become path components — hit and fixed
+  as a real bug during this phase's own test run. Deliberately no deduplication of unchanged
+  consecutive snapshots (detecting *whether* something changed is Phase 45's job) and no API wiring
+  (no `/snapshots` route exists among Phase 09's 12 fixed endpoint groups at all). Proven by 9 real
+  tests including a real end-to-end run against a two-episode synthetic capture —
+  `backend/archaeology/snapshots.py`, `docs/architecture/network_snapshot_engine.md`.
 
 ### What doesn't exist yet
 
-Network snapshot persistence, graph diffing, dependency/causal reasoning, the digital twin,
-simulation, and counterfactual engines have not been implemented yet — those begin at Phase 44 and
+Graph diffing, dependency/causal reasoning, the digital twin, simulation, and counterfactual
+engines have not been implemented yet — those begin at Phase 45 and
 continue through the 69-phase
 plan. The API surface and data contracts are real and tested; most of the
 research intelligence they will eventually serve is not built yet. Nothing in this
@@ -368,6 +382,8 @@ backend/flowmind/
   drift/node_drift.py  Phase 39 EWMA-based transient-anomaly-vs-concept-drift classifier
   anomaly/node_anomaly.py  Phase 40 multi-dimensional anomaly detection (5 of 7 dimensions; TOPOLOGY deferred to Phase 45)
   anomaly/explain.py  Phase 41 human-readable anomaly report rendering (Anomaly list -> spec-shaped report string)
+backend/archaeology/
+  snapshots.py  Phase 44 versioned network snapshot generation (capture_id + captured_at -> NetworkSnapshot + persisted TopologyGraph)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -392,7 +408,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (348 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (357 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

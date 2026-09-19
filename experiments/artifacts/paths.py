@@ -69,8 +69,12 @@ def fingerprints_path(root: Path, capture_id: str) -> Path:
     return capture_dir(root, capture_id) / "fingerprints.jsonl"
 
 
+def snapshots_dir(root: Path, capture_id: str) -> Path:
+    return capture_dir(root, capture_id) / "snapshots"
+
+
 def snapshot_path(root: Path, capture_id: str, snapshot_id: str) -> Path:
-    return capture_dir(root, capture_id) / "snapshots" / f"{snapshot_id}.json"
+    return snapshots_dir(root, capture_id) / f"{snapshot_id}.json"
 
 
 def ground_truth_dir(root: Path, capture_id: str) -> Path:

@@ -5,24 +5,27 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 43 (Temporal Graph Model) complete, unit-verified. `backend/nettrace/topology/
-{discovery,edges,graph}.py`'s `discover_nodes`/`discover_edges`/`build_topology_graph` (Phase
-29-32) each gained a backward-compatible `as_of: Optional[datetime] = None` parameter — when given,
-only packets/flows observed at or before `as_of` are considered, and confidence/evidence are
-genuinely recomputed from that narrower evidence set (not filtered after the fact), so
-`build_topology_graph(..., as_of=t)` is literally `G(t)`. `as_of=None` (default) reproduces the
-exact prior, whole-capture behavior. Deliberately narrow scope: no versioned snapshot identity or
-persistence (`NetworkSnapshot`, explicitly Phase 44's job per its own docstring) and no structural
-diffing (`GraphChangeEvent`, Phase 45's job) — Phase 43 is only the representation/query capability
-those later phases will build on. No new `backend/archaeology/` package created this phase (an
-intentional, explained departure — see `docs/architecture/temporal_graph_model.md`); it stays
-justified for Phase 44, when `NetworkSnapshot` persistence needs a genuine new home. `GET /topology`
-untouched — no `as_of` query parameter, since giving a time-bounded graph a stable identity is
-Phase 44's job, not this one's. See `docs/architecture/temporal_graph_model.md` for the full design,
-scope-boundary argument, worked example, and verification record. Phase 21 (High-Fidelity Packet
-Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
-not yet verified against a real Docker lab (this session's environment has no Docker installation —
-see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 44 (Network Snapshot Engine) complete, unit-verified. New `backend/archaeology/snapshots.py`
+(the first real code in a new `backend/archaeology/` package, deliberately deferred from Phase 43)
+implements `create_snapshot`/`list_snapshots`/`read_snapshot_graph`, finally connecting three
+pieces that were each already designed for this moment: `NetworkSnapshot` (Phase 04, never
+constructed for real anywhere), `snapshot_path` (reserved since Phase 10, never called anywhere),
+and Phase 43's `as_of`-aware `build_topology_graph`. `captured_at` doubles as both the
+`NetworkSnapshot` label and the `as_of` bound passed into graph construction, so a snapshot's
+claimed capture time always genuinely matches its graph's evidence -- never a label decoupled from
+content. Versioning is per-`capture_id`, sequential by generation order (`1` if none exist, else
+`max(existing) + 1`). `snapshot_id`/`graph_id` use `-` separators
+(`{capture_id}-snapshot-{version}`), not this project's usual `:`-separated id convention, because
+these ids are used directly as filename components and `:` is invalid in a Windows path (hit and
+fixed during this phase's own test run). No deduplication of unchanged consecutive snapshots (an
+honest simplification -- detecting *whether* something changed is Phase 45's job) and no API wiring
+(no `/snapshots` route exists among Phase 09's 12 fixed endpoint groups; `GET /history` is
+explicitly scoped to Phase 49 and returns `GraphChangeEvent`, Phase 45's schema, not raw snapshots).
+See `docs/architecture/network_snapshot_engine.md` for the full design, worked example, and
+verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands:
+controlled live capture is implemented and unit-verified but not yet verified against a real Docker
+lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -774,6 +777,45 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   doc's worked example. `docs/architecture/temporal_graph_model.md` has full detail, including the
   scope-boundary argument against Phase 44/45 and the recompute-vs-filter design decision.
 
+- Phase 44 — Network Snapshot Engine (new `backend/archaeology/{__init__,snapshots}.py`, the first
+  real code in a new package; `experiments/artifacts/paths.py` gains `snapshots_dir`; FR-1.21).
+  `create_snapshot(root, capture_id, captured_at=None, ...)` finally connects three pieces each
+  already designed for this moment: `NetworkSnapshot` (Phase 04, never constructed for real
+  anywhere before this), `snapshot_path` (reserved since Phase 10, never called anywhere before
+  this), and Phase 43's `as_of`-aware `build_topology_graph`. `captured_at` (default
+  `datetime.now(timezone.utc)`) is passed straight into `build_topology_graph` as `as_of` *and*
+  stored on the `NetworkSnapshot` -- so a snapshot's claimed capture time always genuinely matches
+  its graph's evidence, rather than being a label decoupled from content (rejected the alternative
+  of always building the full graph and merely labeling it, since that would let two snapshots
+  claim different times while carrying identical evidence). `list_snapshots(root, capture_id)`
+  reads every persisted snapshot back sorted by `version`; `create_snapshot` uses `1` if none exist
+  yet else `max(existing) + 1` -- generation order, not `captured_at` order, documented explicitly.
+  `read_snapshot_graph` is a small reusable one-liner fetching a snapshot's referenced graph.
+  `snapshot_id = graph_id = f"{capture_id}-snapshot-{version}"` -- `-`-separated, not this project's
+  usual `:`-separated `<capture_id>:<type>:<index>` convention (`Node`/`Edge`/`Flow`), because these
+  ids are used directly as filename components and `:` is invalid in a Windows path; an initial
+  `:`-separated attempt crashed `write_json` with a real `OSError` on this Windows environment,
+  caught and fixed during this phase's own test run, not a hypothetical concern. Deliberately no
+  deduplication of unchanged consecutive snapshots (the spec says "generate," not "generate only on
+  change"; *whether* something changed is Phase 45's job) and no API wiring (no `/snapshots` route
+  exists among Phase 09's 12 fixed endpoint groups at all; `GET /history` is explicitly scoped to
+  Phase 49 and returns `GraphChangeEvent`, Phase 45's schema, not raw snapshots). Never raises for a
+  missing/empty capture -- mirrors `build_topology_graph`'s own stance, producing a valid,
+  empty-graph version-1 snapshot instead. Verified: new `backend/tests/test_archaeology_snapshots.py`
+  (9/9: version starts at 1 and increments per call; graph and snapshot both round-trip
+  byte-for-byte through `read_json`; `captured_at` genuinely bounds the graph using Phase 43's own
+  two-episode fixture pattern; `list_snapshots` returns `[]` for none and orders existing ones by
+  version; `read_snapshot_graph` returns the exact referenced graph; omitting `captured_at` defaults
+  to approximately "now"; two capture_ids version independently; a missing capture produces a valid
+  empty-graph version-1 snapshot, never an error); combined suite 357/357 (up from 348/348), no
+  regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no schema changes);
+  `scripts.check_ground_truth_boundary` re-verified clean (the new package imports no
+  `simulator.ground_truth`); a real, manual end-to-end run (no Docker needed) built a synthetic
+  two-episode capture, created three snapshots at increasing `captured_at` values, and confirmed
+  version/node/edge counts and `list_snapshots` ordering exactly matched the doc's worked example.
+  `docs/architecture/network_snapshot_engine.md` has full detail, including the
+  captured-at-doubles-as-as_of design decision and both explicit non-goals.
+
 ## Blocked phases
 
 None.
@@ -1173,5 +1215,11 @@ None yet — no experiments have been run.
   `build_topology_graph` in place with a backward-compatible `as_of` parameter, rather than
   creating a new `backend/archaeology/` package — that package stays justified for Phase 44's
   `NetworkSnapshot` persistence instead; documented in `docs/architecture/temporal_graph_model.md`.
-- Next: Phase 44 (Network Snapshot Engine, FR-1.21). Generate versioned network snapshots. Not
-  started; awaiting explicit request.
+- Network snapshot engine (Phase 44) created `backend/archaeology/` for real, `create_snapshot`
+  ties `NetworkSnapshot.captured_at` to Phase 43's `as_of` bound so a snapshot's claimed time
+  always matches its graph's evidence. Snapshot/graph ids use `-` separators, not this project's
+  usual `:`, because `:` is invalid in a Windows filename and these ids become path components;
+  documented in `docs/architecture/network_snapshot_engine.md`.
+- Next: Phase 45 (Graph Difference Engine, FR-1.21's second half). Detect node/edge
+  additions/removals and attribute changes between two snapshots. Not started; awaiting explicit
+  request.
