@@ -163,3 +163,84 @@ def test_discover_nodes_source_only_ip_is_discovered(tmp_path: Path) -> None:
 
     ips = {str(node.ip_addresses[0]) for node in discover_nodes(root, "cap-1")}
     assert "10.0.0.1" in ips
+
+
+def test_discover_nodes_as_of_excludes_nodes_only_seen_later(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt(
+            "p1",
+            BASE + timedelta(seconds=10),
+            "10.0.0.3",
+            1000,
+            "10.0.0.4",
+            80,
+            TransportProtocol.TCP,
+        ),
+    ]
+    _seed(root, "cap-1", packets)
+
+    early_ips = {str(n.ip_addresses[0]) for n in discover_nodes(root, "cap-1", as_of=BASE)}
+    assert early_ips == {"10.0.0.1", "10.0.0.2"}
+
+    all_ips = {
+        str(n.ip_addresses[0])
+        for n in discover_nodes(root, "cap-1", as_of=BASE + timedelta(seconds=10))
+    }
+    assert all_ips == {"10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"}
+
+
+def test_discover_nodes_as_of_boundary_is_inclusive(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [_pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP)]
+    _seed(root, "cap-1", packets)
+
+    nodes = discover_nodes(root, "cap-1", as_of=BASE)
+    assert len(nodes) == 2
+
+    nodes_before = discover_nodes(root, "cap-1", as_of=BASE - timedelta(microseconds=1))
+    assert nodes_before == []
+
+
+def test_discover_nodes_as_of_narrows_last_observed(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt(
+            "p1",
+            BASE + timedelta(seconds=10),
+            "10.0.0.1",
+            1000,
+            "10.0.0.2",
+            80,
+            TransportProtocol.TCP,
+        ),
+    ]
+    _seed(root, "cap-1", packets)
+
+    nodes = {
+        str(n.ip_addresses[0]): n
+        for n in discover_nodes(root, "cap-1", as_of=BASE + timedelta(seconds=5))
+    }
+    assert nodes["10.0.0.1"].last_observed == BASE
+    assert nodes["10.0.0.1"].first_observed == BASE
+
+
+def test_discover_nodes_as_of_none_matches_unbounded_behavior(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt(
+            "p1",
+            BASE + timedelta(seconds=10),
+            "10.0.0.3",
+            1000,
+            "10.0.0.4",
+            80,
+            TransportProtocol.TCP,
+        ),
+    ]
+    _seed(root, "cap-1", packets)
+
+    assert discover_nodes(root, "cap-1") == discover_nodes(root, "cap-1", as_of=None)

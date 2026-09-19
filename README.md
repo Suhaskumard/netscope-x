@@ -17,12 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 42 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 43 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`evaluate_anomaly_detection` now scores real Phase 40 anomaly-detector output against labeled ground
-truth — real precision/recall/F1/false-negative-rate/detection-latency always, and a real
-false-positive-rate whenever the caller supplies how many detection attempts were actually run,
-honestly `None` otherwise — see `docs/architecture/flowmind_evaluation.md`. Next: Phase 43.
+Topology reconstruction is now genuinely time-indexed: `build_topology_graph(..., as_of=t)` is
+literally `G(t)`, recomputing nodes/edges/confidence from only the evidence observed at or before
+`t` — see `docs/architecture/temporal_graph_model.md`. Next: Phase 44.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -320,11 +319,25 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   `MetricResult.experiment_id`. Proven by 10 real tests including a real end-to-end run through
   `build_node_baseline`/`detect_node_anomalies` — `experiments/metrics/anomaly_evaluation.py`,
   `docs/architecture/flowmind_evaluation.md`.
+- **Temporal graph model** (Phase 43, the first Network Archaeology phase): `discover_nodes`/
+  `discover_edges`/`build_topology_graph` (Phases 29-32) each gained a backward-compatible `as_of`
+  parameter, so `build_topology_graph(..., as_of=t)` is literally `G(t)` — nodes/edges/confidence are
+  genuinely recomputed from only the packets/flows observed at or before `t`, not filtered after the
+  fact (an edge's confidence is itself computed from all its contributing flows, so post-hoc
+  filtering would silently overstate certainty at time `t`; real recomputation lets confidence
+  legitimately grow between two `as_of` values instead). `as_of=None` (default) reproduces the exact
+  prior, whole-capture behavior. Deliberately narrow: no versioned snapshot identity/persistence
+  (`NetworkSnapshot`, explicitly Phase 44's job) and no structural diffing (`GraphChangeEvent`,
+  Phase 45's job) — no new `backend/archaeology/` package yet either, an intentional, documented
+  choice. `GET /topology` untouched. Proven by 13 new/extended tests across three files, including a
+  real end-to-end run against a two-episode synthetic capture — `backend/nettrace/topology/
+  {discovery,edges,graph}.py`, `docs/architecture/temporal_graph_model.md`.
 
 ### What doesn't exist yet
 
-Temporal archaeology, dependency/causal reasoning, the digital twin, simulation, and counterfactual
-engines have not been implemented yet — those begin at Phase 43 and continue through the 69-phase
+Network snapshot persistence, graph diffing, dependency/causal reasoning, the digital twin,
+simulation, and counterfactual engines have not been implemented yet — those begin at Phase 44 and
+continue through the 69-phase
 plan. The API surface and data contracts are real and tested; most of the
 research intelligence they will eventually serve is not built yet. Nothing in this
 repository
@@ -345,7 +358,7 @@ backend/nettrace/
   reconstruct.py  Phase 23 five-tuple flow reconstruction (packets.jsonl -> Flow -> flows.jsonl)
   topology/discovery.py  Phase 29 node discovery (packets.jsonl -> Node)
   topology/edges.py  Phase 30-31 edge discovery + probabilistic confidence (flows.jsonl + Node list -> Edge)
-  topology/graph.py  Phase 32 topology assembly (Node + Edge lists -> TopologyGraph), real via GET /topology
+  topology/graph.py  Phase 32 topology assembly (Node + Edge lists -> TopologyGraph), real via GET /topology; Phase 43 added as_of for G(t)
 backend/flowmind/
   features/node_features.py  Phase 33 reusable per-node behavioral features (Flow list + Node -> NodeBehavioralFeatures)
   features/windows.py  Phase 34 multi-window modeling (nested short/medium/long trailing windows)
@@ -379,7 +392,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (335 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (348 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

@@ -632,3 +632,94 @@ def test_discover_edges_evidence_summary_line_present_and_reflects_signals(tmp_p
     assert summary.startswith("confidence signals:")
     assert "fingerprinted_protocol=yes" in summary
     assert f"confidence={edges[0].confidence:.3f}" in summary
+
+
+def test_discover_edges_as_of_excludes_flows_starting_later(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt("p1", BASE, "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP),
+        _pkt(
+            "p2",
+            BASE + timedelta(seconds=10),
+            "10.0.0.3",
+            2000,
+            "10.0.0.4",
+            53,
+            TransportProtocol.UDP,
+        ),
+        _pkt(
+            "p3",
+            BASE + timedelta(seconds=10),
+            "10.0.0.4",
+            53,
+            "10.0.0.3",
+            2000,
+            TransportProtocol.UDP,
+        ),
+    ]
+    _seed(root, "cap-1", packets)
+    reconstruct_flows(root, "cap-1")
+
+    early_nodes = discover_nodes(root, "cap-1", as_of=BASE)
+    early_edges = discover_edges(root, "cap-1", early_nodes, as_of=BASE)
+    assert len(early_edges) == 1
+    assert early_edges[0].protocols == ["TCP"]
+
+    all_nodes = discover_nodes(root, "cap-1", as_of=BASE + timedelta(seconds=10))
+    all_edges = discover_edges(root, "cap-1", all_nodes, as_of=BASE + timedelta(seconds=10))
+    assert len(all_edges) == 2
+
+
+def test_discover_edges_as_of_confidence_grows_with_more_evidence_over_time(tmp_path: Path) -> None:
+    """Genuine recomputation, not post-hoc filtering: a bucket's confidence
+    at an earlier as_of (fewer contributing flows) never exceeds its
+    confidence once later flows have also been observed."""
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 9999, TransportProtocol.TCP),
+        _pkt("p1", BASE, "10.0.0.2", 9999, "10.0.0.1", 1000, TransportProtocol.TCP),
+        *[
+            _pkt(
+                f"q{i}",
+                BASE + timedelta(seconds=30 + i),
+                "10.0.0.1" if i % 2 == 0 else "10.0.0.2",
+                1001 if i % 2 == 0 else 9999,
+                "10.0.0.2" if i % 2 == 0 else "10.0.0.1",
+                9999 if i % 2 == 0 else 1001,
+                TransportProtocol.TCP,
+            )
+            for i in range(20)
+        ],
+    ]
+    _seed(root, "cap-1", packets)
+    reconstruct_flows(root, "cap-1")
+
+    early_nodes = discover_nodes(root, "cap-1", as_of=BASE)
+    early_edges = discover_edges(root, "cap-1", early_nodes, as_of=BASE)
+    assert len(early_edges) == 1
+    assert early_edges[0].observation_count == 1
+
+    late_nodes = discover_nodes(root, "cap-1", as_of=BASE + timedelta(seconds=60))
+    late_edges = discover_edges(root, "cap-1", late_nodes, as_of=BASE + timedelta(seconds=60))
+    assert len(late_edges) == 1
+    assert late_edges[0].observation_count == 2
+
+    assert late_edges[0].confidence >= early_edges[0].confidence
+
+    unbounded_nodes = discover_nodes(root, "cap-1")
+    unbounded_edges = discover_edges(root, "cap-1", unbounded_nodes)
+    assert unbounded_edges[0].confidence == late_edges[0].confidence
+
+
+def test_discover_edges_as_of_none_matches_unbounded_behavior(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    packets = [
+        _pkt("p0", BASE, "10.0.0.1", 1000, "10.0.0.2", 80, TransportProtocol.TCP),
+        _pkt("p1", BASE, "10.0.0.2", 80, "10.0.0.1", 1000, TransportProtocol.TCP),
+    ]
+    _, edges_default = _prepare(root, "cap-1", packets)
+    nodes = discover_nodes(root, "cap-1")
+    edges_explicit_none = discover_edges(root, "cap-1", nodes, as_of=None)
+
+    assert edges_default == edges_explicit_none

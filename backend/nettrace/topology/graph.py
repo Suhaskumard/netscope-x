@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from backend.app.models.topology import TopologyGraph
 from backend.nettrace.topology.discovery import discover_nodes
@@ -37,14 +38,32 @@ def build_topology_graph(
     graph_id: str,
     edge_confidence_packet_scale: float = _DEFAULT_PACKET_SCALE,
     edge_confidence_signal_strength: float = _DEFAULT_SIGNAL_STRENGTH,
+    as_of: Optional[datetime] = None,
 ) -> TopologyGraph:
     """Assembles the complete inferred `TopologyGraph` for a capture: every
     node `discover_nodes` finds, every edge `discover_edges` finds between
     them. Returns a graph with empty `nodes`/`edges` (never an error) if
-    the capture has no normalized packets/flows yet."""
-    nodes = discover_nodes(root, capture_id)
+    the capture has no normalized packets/flows yet.
+
+    `as_of` (spec Phase 43, FR-1.20, "represent the network as a
+    time-indexed graph G(t)"): when given, both node and edge discovery
+    are bounded to evidence observed at or before `as_of`, so this
+    function genuinely becomes G(t) rather than only ever reconstructing
+    the whole capture's aggregate graph. `generated_at` is still "when
+    this computation ran," not `as_of` -- `TopologyGraph` carries no
+    "this represents time t" field of its own by design; giving a
+    time-bounded graph a stable, versioned identity is `NetworkSnapshot`'s
+    job (spec Phase 44), not this one's. `None` (default) reproduces the
+    original, whole-capture behavior exactly.
+    """
+    nodes = discover_nodes(root, capture_id, as_of=as_of)
     edges = discover_edges(
-        root, capture_id, nodes, edge_confidence_packet_scale, edge_confidence_signal_strength
+        root,
+        capture_id,
+        nodes,
+        edge_confidence_packet_scale,
+        edge_confidence_signal_strength,
+        as_of=as_of,
     )
     return TopologyGraph(
         graph_id=graph_id,

@@ -5,23 +5,24 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 42 (FLOWMIND Evaluation) complete, unit-verified. New `experiments/metrics/
-anomaly_evaluation.py` (`evaluate_anomaly_detection`) scores real `Anomaly` output (Phase 40) against
-caller-supplied `LabeledAnomalyEvent` ground truth, computing real precision/recall/F1/
-false-negative-rate always, real detection latency across matched true positives, and a real
-false-positive-rate whenever the caller supplies `total_checks` (the total number of node×dimension
-detection attempts actually run — otherwise honestly `None`, never fabricated, since no countable
-negative-instance universe exists from detections alone). Matching is greedy per `(node_id,
-dimension)`, one label to at most one detection with `detected_at >= onset_at`. Mirrors Phase 32/37's
-established "plain dataclass, not `MetricResult`" precedent exactly — no experiment registry exists
-anywhere in this repo to legitimately populate `MetricResult.experiment_id`. `GET /metrics` stays
-untouched, already explicitly scoped to Phase 68 in its own docstring. No injected-anomaly dataset
-generator (RQ3's `dataset_anomaly`/`dataset_noisy`) exists yet — this phase only scores against
-whatever labels a caller supplies. See `docs/architecture/flowmind_evaluation.md` for the full design,
-worked example, and verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item
-still stands: controlled live capture is implemented and unit-verified but not yet verified against a
-real Docker lab (this session's environment has no Docker installation — see
-`docs/architecture/packet_capture.md` "Known limitations").
+Phase 43 (Temporal Graph Model) complete, unit-verified. `backend/nettrace/topology/
+{discovery,edges,graph}.py`'s `discover_nodes`/`discover_edges`/`build_topology_graph` (Phase
+29-32) each gained a backward-compatible `as_of: Optional[datetime] = None` parameter — when given,
+only packets/flows observed at or before `as_of` are considered, and confidence/evidence are
+genuinely recomputed from that narrower evidence set (not filtered after the fact), so
+`build_topology_graph(..., as_of=t)` is literally `G(t)`. `as_of=None` (default) reproduces the
+exact prior, whole-capture behavior. Deliberately narrow scope: no versioned snapshot identity or
+persistence (`NetworkSnapshot`, explicitly Phase 44's job per its own docstring) and no structural
+diffing (`GraphChangeEvent`, Phase 45's job) — Phase 43 is only the representation/query capability
+those later phases will build on. No new `backend/archaeology/` package created this phase (an
+intentional, explained departure — see `docs/architecture/temporal_graph_model.md`); it stays
+justified for Phase 44, when `NetworkSnapshot` persistence needs a genuine new home. `GET /topology`
+untouched — no `as_of` query parameter, since giving a time-bounded graph a stable identity is
+Phase 44's job, not this one's. See `docs/architecture/temporal_graph_model.md` for the full design,
+scope-boundary argument, worked example, and verification record. Phase 21 (High-Fidelity Packet
+Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
+not yet verified against a real Docker lab (this session's environment has no Docker installation —
+see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -732,6 +733,47 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   flowmind_evaluation.md` has full detail, including the matching algorithm, the
   `MetricResult`-vs-dataclass argument, and the worked example.
 
+- Phase 43 — Temporal Graph Model (`backend/nettrace/topology/{discovery,edges,graph}.py`, same
+  functions modified, not new ones; FR-1.20; the first phase of the new "Temporal Intelligence
+  (Network Archaeology)" section). `discover_nodes`/`discover_edges`/`build_topology_graph` each
+  gained a backward-compatible `as_of: Optional[datetime] = None` parameter: `discover_nodes`
+  filters packets to `timestamp <= as_of` before its existing first/last-observed aggregation;
+  `discover_edges` filters flows to `first_seen <= as_of` before bucketing (the identical inclusion
+  rule, so nodes and edges agree on "existed as of `as_of`"); `build_topology_graph` threads
+  `as_of` into both. Confidence/evidence are genuinely recomputed from the narrower evidence set,
+  not filtered after the fact -- rejected the cheaper "filter an already-built graph" alternative
+  because an edge's confidence is itself computed from all its contributing flows, so post-hoc
+  filtering would silently overstate certainty at time `t`; genuine recomputation lets confidence
+  legitimately grow between two `as_of` values (Phase 31's noisy-OR formula is monotonic in
+  evidence). `as_of=None` (default) reproduces the exact prior, whole-capture behavior --
+  `build_topology_graph(..., as_of=t)` is literally G(t). Deliberately narrow scope, confirmed
+  against `backend/app/models/snapshot.py`'s own docstring: `NetworkSnapshot` (versioned identity/
+  persistence) is explicitly Phase 44's job, `GraphChangeEvent` (structural diffing) is explicitly
+  Phase 45's job -- neither touched. No new `backend/archaeology/` package created (an intentional,
+  explained departure from the "first phase of a section gets its own package" pattern of Phase
+  21/33) -- it stays justified for Phase 44, when `NetworkSnapshot` persistence needs a genuine new
+  home with no fit in `nettrace/`. `GET /topology` untouched -- no `as_of` query parameter, since a
+  time-bounded graph has no stable identity yet without Phase 44's versioning. Verified: extended
+  `backend/tests/test_nettrace_topology_discovery.py` (8/8 -> 12/12: a node whose only packet is
+  after `as_of` excluded; `as_of` exactly equal to a packet's timestamp included, inclusive
+  boundary; `last_observed` correctly narrows; `as_of=None` matches the unbounded call
+  byte-for-byte); extended `backend/tests/test_nettrace_topology_edges.py` (20/20 -> 23/23: a flow
+  starting after `as_of` excluded, changing edge count/protocols; confidence at an earlier `as_of`
+  is `<=` confidence once later flows are visible, matching the fully-unbounded call exactly once
+  all flows included; `as_of=None` matches unbounded); new `backend/tests/
+  test_nettrace_topology_graph.py` (6/6, the first dedicated unit-test file for
+  `build_topology_graph` itself -- its Phase 32 coverage previously lived only in `test_api.py`'s
+  `GET /topology` section): before/between/after a two-episode synthetic capture produce
+  correctly-scoped graphs; node/edge counts grow monotonically across three `as_of` points;
+  omitting `as_of`, passing it explicitly as `None`, and passing a far-future `as_of` all agree
+  exactly; a missing capture returns an empty graph regardless of `as_of`; combined suite 348/348
+  (up from 335/335), no regressions; `scripts.validate_data_contracts` re-verified clean (38/38, no
+  schema changes); `scripts.check_ground_truth_boundary` re-verified clean; a real, manual
+  end-to-end run (no Docker needed) built a synthetic capture with two time-separated episodes and
+  confirmed the printed node/edge/confidence output across four `as_of` points exactly matched the
+  doc's worked example. `docs/architecture/temporal_graph_model.md` has full detail, including the
+  scope-boundary argument against Phase 44/45 and the recompute-vs-filter design decision.
+
 ## Blocked phases
 
 None.
@@ -1127,5 +1169,9 @@ None yet — no experiments have been run.
   `experiments/metrics/anomaly_evaluation.py`) over caller-supplied `Anomaly` output and labeled
   ground truth — it builds no dataset itself. `false_positive_rate` is honestly `None` unless the
   caller supplies `total_checks`; documented in `docs/architecture/flowmind_evaluation.md`.
-- Next: Phase 43 (Temporal Graph Model, FR-1.20). Represent the network as a time-indexed graph
-  G(t), not only a static snapshot. Not started; awaiting explicit request.
+- Temporal graph model (Phase 43) extended `discover_nodes`/`discover_edges`/
+  `build_topology_graph` in place with a backward-compatible `as_of` parameter, rather than
+  creating a new `backend/archaeology/` package — that package stays justified for Phase 44's
+  `NetworkSnapshot` persistence instead; documented in `docs/architecture/temporal_graph_model.md`.
+- Next: Phase 44 (Network Snapshot Engine, FR-1.21). Generate versioned network snapshots. Not
+  started; awaiting explicit request.

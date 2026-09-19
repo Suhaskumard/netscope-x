@@ -66,8 +66,9 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from backend.app.models.flow import Flow, TCPState
 from backend.app.models.topology import Edge, Node
@@ -157,12 +158,25 @@ def discover_edges(
     nodes: List[Node],
     edge_confidence_packet_scale: float = _DEFAULT_PACKET_SCALE,
     edge_confidence_signal_strength: float = _DEFAULT_SIGNAL_STRENGTH,
+    as_of: Optional[datetime] = None,
 ) -> List[Edge]:
     """Reads `flows_path(root, capture_id)` and aggregates flows sharing a
     node pair into one `Edge` each. `nodes` must be (an equivalent IP
     coverage of) `discover_nodes(root, capture_id)`'s own output for the
-    same capture. Returns `[]` for a missing/empty `flows.jsonl`, or a
-    capture with no TCP/UDP flows (e.g. ICMP-only) -- never an error.
+    same capture -- when `as_of` is given, `nodes` should be that same
+    `as_of`'s `discover_nodes` output, so both stay evidence-consistent.
+    Returns `[]` for a missing/empty `flows.jsonl`, or a capture with no
+    TCP/UDP flows (e.g. ICMP-only) -- never an error.
+
+    `as_of` (spec Phase 43, FR-1.20): when given, only flows with
+    `first_seen <= as_of` are considered -- the same inclusion rule
+    `discover_nodes` applies to packets, so an edge and its endpoints agree
+    on what "existed as of `as_of`" means. Confidence/evidence are
+    genuinely recomputed from this narrower flow set, not filtered
+    after the fact -- fewer contributing flows can only lower or match
+    confidence, never overstate it (Phase 31's noisy-OR formula is
+    monotonic in evidence). `None` (default) reproduces the original,
+    whole-capture behavior exactly.
     """
     ip_to_node_id: Dict[str, str] = {
         str(ip): node.node_id for node in nodes for ip in node.ip_addresses
@@ -172,6 +186,8 @@ def discover_edges(
     if not path.is_file():
         return []
     flows: List[Flow] = read_jsonl(path, Flow)
+    if as_of is not None:
+        flows = [f for f in flows if f.first_seen <= as_of]
 
     buckets: Dict[Tuple[str, str], List[Flow]] = defaultdict(list)
     for flow in flows:

@@ -25,8 +25,9 @@ actually need it. See `docs/architecture/node_discovery.md`.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from backend.app.models.packet import Packet
 from backend.app.models.topology import Node
@@ -34,10 +35,18 @@ from experiments.artifacts.io import read_jsonl
 from experiments.artifacts.paths import packets_path
 
 
-def discover_nodes(root: Path, capture_id: str) -> List[Node]:
+def discover_nodes(root: Path, capture_id: str, as_of: Optional[datetime] = None) -> List[Node]:
     """Reads `packets_path(root, capture_id)` and returns one `Node` per
     distinct IP address observed as a packet source or destination.
     Returns an empty list for an empty/missing capture -- never an error.
+
+    `as_of` (spec Phase 43, FR-1.20, "represent the network as a
+    time-indexed graph G(t)"): when given, only packets with
+    `timestamp <= as_of` are considered -- a node whose only evidence is
+    later than `as_of` simply isn't produced, and `first_observed`/
+    `last_observed` are computed over the same truncated evidence, never
+    the full capture's. `None` (default) reproduces the original,
+    whole-capture behavior exactly.
 
     Nodes are ordered by `first_observed` (ties broken by address) and
     given deterministic ids (`<capture_id>:node:<index>`) so re-running
@@ -48,6 +57,8 @@ def discover_nodes(root: Path, capture_id: str) -> List[Node]:
     if not path.is_file():
         return []
     packets: List[Packet] = read_jsonl(path, Packet)
+    if as_of is not None:
+        packets = [p for p in packets if p.timestamp <= as_of]
 
     first_observed: Dict[str, object] = {}
     last_observed: Dict[str, object] = {}
