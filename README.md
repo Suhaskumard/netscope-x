@@ -17,12 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 52 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 53 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`estimate_dependency_strength` now genuinely computes all five of FR-1.26's named signals —
-`estimate_temporal_precedence` folds a real time-lagged cross-correlation signal (over per-node flow
-activity) into `DependencyEdge.strength`/`temporal_precedence_score` — see
-`docs/architecture/temporal_precedence_analysis.md`. Next: Phase 53.
+`generate_causal_candidates` now promotes a `DependencyEdge` to a real `CausalCandidate` only when it
+has both sufficient strength AND genuine temporal-precedence evidence — strength (correlation)
+alone is never enough, structurally implementing "do not equate correlation with causation" — see
+`docs/architecture/causal_candidate_generation.md`. Next: Phase 54.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -456,12 +456,29 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   end-to-end dependency-strength test confirming a real, non-zero score flows through into
   `strength` — `backend/dependency/temporal_precedence.py`,
   `docs/architecture/temporal_precedence_analysis.md`.
+- **Causal candidate generation** (Phase 53): implements the design boundary already committed at
+  Phase 05 — `algorithm_selection.md` explicitly rejected full causal-graph discovery (the PC
+  algorithm) in favor of a "scored-candidate approach," so this phase is a filter/promotion step
+  over Phase 51/52's `DependencyEdge`s, not a new causal-inference algorithm. `generate_causal_candidates`
+  (new `backend/dependency/causal_candidates.py`) promotes a `DependencyEdge` to a `CausalCandidate`
+  only when it has BOTH sufficient `strength` AND a real, positive `temporal_precedence_score` —
+  strength alone, however high, is deliberately never enough, since it's built entirely from
+  correlation/communication-style signals, while temporal precedence specifically supports
+  directional, time-ordered evidence — the literal, structural implementation of "do not equate
+  correlation with causation." `CausalCandidate` is a plain dataclass (no new Phase 04 schema,
+  matching Phase 32/37/42/46's own precedent); every candidate's `rationale` names concrete evidence
+  values. `format_causal_candidate` unconditionally appends a new disclaimer stating this is a
+  candidate for further investigation, not a confirmed relationship. No persistence or API wiring —
+  `GET /causal/{dependency_id}` remains untouched, explicitly scoped to Phase 56. Proven by 10 real
+  tests including a real end-to-end run confirming the genuinely-leading pair becomes a candidate
+  while unrelated side-conversation edges do not — `backend/dependency/causal_candidates.py`,
+  `docs/architecture/causal_candidate_generation.md`.
 
 ### What doesn't exist yet
 
-Causal candidate generation, failure propagation, criticality metrics, causal evidence reports, the
+Failure propagation, criticality metrics, causal evidence reports, the
 digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
-Phase 53 and continue through the 69-phase plan. The API surface and
+Phase 54 and continue through the 69-phase plan. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -499,6 +516,7 @@ backend/dependency/
   communication.py  Phase 50 communication relationship derivation (Node + Edge lists -> List[CommunicationRelationship], no dependency scoring)
   strength.py  Phase 51 dependency strength estimation (CommunicationRelationship + Edge -> List[DependencyEdge], real via GET /dependencies); Phase 52 folds in real temporal_precedence_score
   temporal_precedence.py  Phase 52 temporal precedence analysis (per-node flow activity -> time-lagged cross-correlation score)
+  causal_candidates.py  Phase 53 causal candidate generation (DependencyEdge list -> List[CausalCandidate], strength + temporal precedence both required)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -523,7 +541,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (426 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (436 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

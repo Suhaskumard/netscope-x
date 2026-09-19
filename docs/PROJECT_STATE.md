@@ -5,38 +5,36 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 52 (Temporal Precedence Analysis) complete, tested. New `backend/dependency/
-temporal_precedence.py` (`estimate_temporal_precedence`) implements `algorithm_selection.md`
-section 6's already-committed algorithm -- time-lagged cross-correlation, folded into the same
-combined scoring function that produces `DependencyEdge.strength` -- finally closing the gap Phase
-51 deliberately left open (`temporal_precedence_score` was schema-default `0.0`, never set). What
-"changes" means here was a real design decision, not left ambiguous: per-node OVERALL flow activity
-(any counterpart, not just the specific pair's own flows -- using only the pair's own flows would
-make source/target series nearly identical, collapsing to trivial zero-lag correlation and
-conflating with directionality), time-bucketed by `Flow.first_seen`, rejected in favor of Phase
-45/47's structural `GraphChangeEvent`s (too sparse per node -- essentially one `NODE_ADDED` ever)
-and Phase 46's `BehavioralEvolutionEvent` (only available from a caller-supplied fingerprint list,
-no persisted history exists). Reuses Phase 33/34's `flows_touching_node` directly. Cross-correlates
-(stdlib `statistics.correlation`) source vs. lag-shifted target for a bounded set of positive lag
-offsets; scores `0.0` unless the best positive-lag correlation beats the zero-lag baseline AND is
-itself positive -- a merely-simultaneous relationship is deliberately not counted as "precedes."
-`backend/dependency/strength.py`'s `estimate_dependency_strength` (same function, modified in
-place, mirroring the Phase 31-extends-Phase-30 precedent) now reads `flows_path` once, calls this
-per pair, extends the noisy-OR formula with a fourth secondary term, and actually sets
-`temporal_precedence_score` on every constructed `DependencyEdge` -- the moment `strength` genuinely
-reflects all five of FR-1.26's named signals for the first time. Two new provisional `Settings`
-fields (`dependency_temporal_bucket_seconds=10.0`, `dependency_temporal_max_lag_buckets=5`); `GET
-/dependencies` threads both through. Deliberately does NOT build candidate causal-relationship
-generation (explicitly Phase 53's job per FR-1.27's own "Phase 52-53" span and
-`algorithm_selection.md`'s own scoping). See `docs/architecture/temporal_precedence_analysis.md` for
-the full design, worked example, and verification record; `docs/architecture/dependency_strength.md`
-updated with a pointer note. Also corrected a real, separate documentation gap found while starting
-this phase: `README.md` had been stuck at "Current phase: 48" despite Phases 49-51 being complete
-and committed (confirmed via `git log`) -- backfilled the missing bullets before adding this one, so
-README stays an accurate front door rather than actively misleading. Phase 21 (High-Fidelity Packet
-Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
-not yet verified against a real Docker lab (this session's environment has no Docker installation —
-see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 53 (Causal Candidate Generation) complete, tested. New `backend/dependency/
+causal_candidates.py` (`CausalCandidate`, `generate_causal_candidates`, `format_causal_candidate`)
+implements the design boundary already committed at Phase 05: `algorithm_selection.md` section 6
+explicitly rejected constraint-based causal discovery (the PC algorithm) in favor of a
+"scored-candidate approach" satisfying the spec's "generate candidate causal relationships... do
+not equate correlation with causation" wording without full causal-graph discovery -- this phase is
+a filter/promotion step over Phase 51/52's already-real `DependencyEdge` list, not a new
+causal-inference algorithm. The qualifying rule is the literal, structural implementation of "do
+not equate correlation with causation": a `DependencyEdge` is promoted only when it has BOTH
+sufficient `strength` (new provisional `Settings.causal_candidate_strength_threshold=0.5`) AND a
+real, positive `temporal_precedence_score` (Phase 52) -- `strength` alone, however high, is
+deliberately never sufficient by itself, since it's built entirely from
+correlation/communication-style signals (frequency, persistence, directionality, traffic
+characteristics), while temporal precedence is the one signal specifically supporting directional,
+time-ordered evidence, the logical prerequisite for a causal claim, not proof of one. `CausalCandidate`
+is a plain dataclass (no new Phase 04 schema), following the precedent already set by Phase
+32/37/42/46's own evaluation/filtering-style outputs; `generate_causal_candidates` is a pure
+function over caller-supplied `DependencyEdge`s (mirrors Phase 41/42's own "pure function
+downstream of already-computed data" style), deterministically ordered by strength descending,
+tie-broken by `dependency_id`. Every candidate's `rationale` names concrete evidence values, never a
+bare label. `format_causal_candidate` unconditionally appends a new `CAUSAL_CANDIDATE_DISCLAIMER`
+(worded for this context, distinct from Phase 48's own structural-change disclaimer), mirroring
+Phase 48's "structural, not confidence-gated" disclaimer pattern. No persistence, no API wiring --
+`GET /causal/{dependency_id}` stays untouched, explicitly scoped to Phase 56 in its own docstring;
+`CausalEvidenceReport` remains unpopulated, also explicitly Phase 56's job. See
+`docs/architecture/causal_candidate_generation.md` for the full design, worked example, and
+verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands:
+controlled live capture is implemented and unit-verified but not yet verified against a real Docker
+lab (this session's environment has no Docker installation — see
+`docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -1114,6 +1112,48 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   full detail, including the worked example; `docs/architecture/dependency_strength.md` updated with
   a pointer note.
 
+- Phase 53 — Causal Candidate Generation (new `backend/dependency/causal_candidates.py`; one new
+  `Settings` field; FR-1.27 second half). Implements the design boundary already committed at Phase
+  05: `algorithm_selection.md` section 6 explicitly evaluated and rejected constraint-based causal
+  discovery (the PC algorithm) in favor of a "scored-candidate approach... without requiring full
+  causal-graph discovery" -- this phase is a filter/promotion step over Phase 51/52's already-real
+  `DependencyEdge` list, not a new causal-inference algorithm. `GET /causal/{dependency_id}` stays
+  untouched, its own docstring already scoped to "spec Phase 56"; RQ5's own experiment design
+  confirms the same split (Phase 53 produces candidates, Phase 56 wraps an accepted one in the full
+  `CausalEvidenceReport` format). Qualifying rule is the literal, structural implementation of "do
+  not equate correlation with causation": a `DependencyEdge` is promoted only when it has BOTH
+  sufficient `strength` (new provisional `causal_candidate_strength_threshold=0.5`) AND a real,
+  positive `temporal_precedence_score` -- `strength` alone, however high, is deliberately never
+  sufficient by itself, since it's built entirely from correlation/communication-style signals
+  (frequency, persistence, directionality, traffic characteristics), while temporal precedence
+  specifically supports directional, time-ordered evidence, the logical prerequisite for a causal
+  claim, not proof of one. `CausalCandidate` is a plain frozen dataclass (no new Phase 04 schema),
+  following the precedent already set by Phase 32/37/42/46's own evaluation/filtering-style
+  outputs; `generate_causal_candidates` is a pure function over caller-supplied `DependencyEdge`s,
+  deterministically ordered by strength descending, tie-broken by `dependency_id`. Every candidate's
+  `rationale` names concrete evidence values (e.g. `"strength 0.850 meets threshold 0.500"`), never
+  a bare label. `format_causal_candidate` unconditionally appends a new
+  `CAUSAL_CANDIDATE_DISCLAIMER` (worded for this context, distinct from Phase 48's own
+  structural-change disclaimer), mirroring Phase 48's "structural, not confidence-gated" disclaimer
+  pattern extended to this new artifact type. No persistence, no API wiring; `CausalEvidenceReport`
+  remains unpopulated, explicitly Phase 56's job. Verified: new `backend/tests/
+  test_dependency_causal_candidates.py` (10/10: a qualifying dependency becomes a candidate; the
+  key case -- high strength but zero temporal precedence -- does not qualify, however high the
+  strength; low strength with real temporal precedence also does not qualify; multiple qualifying
+  edges deterministically ordered by strength descending, tie-broken by `dependency_id`; every
+  candidate's rationale is non-empty and references real values; empty input returns `[]`; a custom
+  threshold changes qualification; `format_causal_candidate` always includes the disclaimer and full
+  content; a real end-to-end run through `estimate_dependency_strength`, not hand-built
+  `DependencyEdge` fixtures, confirms the genuinely-leading pair becomes a real candidate while its
+  side-conversation edges do not); combined suite 436/436 (up from 426/426), no regressions;
+  `scripts.validate_data_contracts` re-verified clean (38/38, no schema changes this phase);
+  `scripts.check_ground_truth_boundary` re-verified clean; a real, manual end-to-end run (no Docker
+  needed) built the same multi-node lagged-activity capture, ran `estimate_dependency_strength` then
+  `generate_causal_candidates`, and confirmed the printed output (3 dependency edges reduced to 1
+  genuine candidate) exactly matched the doc's worked example. `docs/architecture/
+  causal_candidate_generation.md` has full detail, including the qualifying-rule argument and the
+  worked example.
+
 ## Blocked phases
 
 None.
@@ -1571,7 +1611,11 @@ None yet — no experiments have been run.
   cross-correlated at a bounded set of positive lag offsets, provisional/uncalibrated like every
   other Phase 51/68-pending constant; documented in
   `docs/architecture/temporal_precedence_analysis.md`.
-- Next: Phase 53 (Causal Candidate Generation, FR-1.27 second half). Generate candidate causal
-  relationships from the now-complete dependency-strength signals (frequency, persistence,
-  directionality, temporal precedence, traffic characteristics), without equating correlation with
-  causation. Not started; awaiting explicit request.
+- Causal candidate generation (Phase 53) requires BOTH sufficient `strength` AND a real, positive
+  `temporal_precedence_score` to promote a `DependencyEdge` to a `CausalCandidate` -- strength alone
+  is deliberately never sufficient, since FR-1.26's other four signals are all correlation/
+  communication evidence, not temporal-ordering evidence; documented in
+  `docs/architecture/causal_candidate_generation.md`.
+- Next: Phase 54 (Failure Propagation Graph, FR-1.28). Represent failure propagation as a
+  multi-order impact graph (primary → secondary → tertiary impact). Not started; awaiting explicit
+  request.

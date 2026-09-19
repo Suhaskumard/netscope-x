@@ -158,6 +158,20 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Phase 53 -- causal candidate generation (ties to NFR-4, FR-1.27).
+    causal_candidate_strength_threshold: float = Field(
+        default=0.5,
+        ge=0,
+        le=1,
+        description=(
+            "Minimum DependencyEdge.strength (in addition to a real, positive "
+            "temporal_precedence_score -- both required, spec Phase 53's 'do not equate "
+            "correlation with causation') for a dependency to be promoted to a "
+            "CausalCandidate. A provisional default pending real calibration (spec Phase "
+            "68), not a claimed-accurate value."
+        ),
+    )
+
     # Phase 34 -- multi-window behavior modeling (ties to NFR-4, FR-1.12).
     behavior_window_short_seconds: float = Field(
         default=10.0,
