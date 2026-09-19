@@ -1,4 +1,5 @@
-"""Phase 36 service role inference (Naive Bayes classifier) unit tests (pure, no Docker)."""
+"""Phase 36-37 service role inference + uncertainty-aware classification
+(Naive Bayes classifier + temperature scaling) unit tests (pure, no Docker)."""
 
 from __future__ import annotations
 
@@ -11,7 +12,14 @@ from backend.app.models.behavior import BehavioralFingerprint, ObservationWindow
 from backend.app.models.flow import Flow, FlowFeatures
 from backend.app.models.packet import TransportProtocol
 from backend.app.models.topology import Node
-from backend.flowmind.classification.role_classifier import classify_node_role, fit_role_model
+from backend.flowmind.classification.role_classifier import (
+    _log_posteriors,
+    _negative_log_likelihood,
+    _softmax,
+    classify_node_role,
+    fit_role_model,
+    fit_temperature,
+)
 from backend.flowmind.fingerprints.node_fingerprint import assemble_node_fingerprint
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -188,3 +196,81 @@ def test_real_pipeline_types_via_assemble_node_fingerprint(tmp_path: Path) -> No
 
     assert classify_node_role(model, dns_fp).best_role == ServiceRole.DNS
     assert classify_node_role(model, db_fp).best_role == ServiceRole.DATABASE
+
+
+# --- Phase 37: temperature scaling ---
+
+
+def _labeled_calibration_set():
+    return [
+        (_dns_like("dns-1"), ServiceRole.DNS),
+        (_dns_like("dns-2", destinations=2), ServiceRole.DNS),
+        (_dns_like("dns-3"), ServiceRole.DNS),
+        (_database_like("db-1"), ServiceRole.DATABASE),
+        (_database_like("db-2", destinations=2), ServiceRole.DATABASE),
+        (_database_like("db-3"), ServiceRole.DATABASE),
+    ]
+
+
+def test_fit_temperature_raises_on_empty_labeled_data() -> None:
+    labeled = _labeled_calibration_set()
+    model = fit_role_model(labeled)
+    with pytest.raises(ValueError):
+        fit_temperature(model, [])
+
+
+def test_fit_temperature_never_worse_than_unscaled() -> None:
+    labeled = _labeled_calibration_set()
+    model = fit_role_model(labeled)
+
+    fitted_t = fit_temperature(model, labeled)
+
+    nll_fitted = _negative_log_likelihood(model, labeled, fitted_t)
+    nll_unscaled = _negative_log_likelihood(model, labeled, 1.0)
+
+    assert nll_fitted <= nll_unscaled + 1e-9
+
+
+def test_temperature_scaling_flattens_and_sharpens_the_distribution() -> None:
+    # Tested directly against _softmax with moderately-separated, hand-picked
+    # log-posteriors -- real Naive Bayes output on cleanly-separated synthetic
+    # classes tends to saturate to exactly 1.0/0.0 (float precision), which
+    # would leave no numerical headroom to demonstrate sharpening further.
+    # This isolates the temperature-scaling math itself, decoupled from how
+    # confident any particular classifier happens to be.
+    log_posteriors = {
+        ServiceRole.DNS: -1.0,
+        ServiceRole.DATABASE: -2.0,
+        ServiceRole.UNKNOWN: -4.0,
+    }
+
+    unscaled = _softmax(log_posteriors, temperature=1.0)
+    flattened = _softmax(log_posteriors, temperature=5.0)
+    sharpened = _softmax(log_posteriors, temperature=0.2)
+
+    unscaled_max = max(unscaled.values())
+    flattened_max = max(flattened.values())
+    sharpened_max = max(sharpened.values())
+
+    assert flattened_max < unscaled_max < sharpened_max
+
+
+def test_classification_with_nondefault_temperature_is_still_a_valid_roleclassification() -> None:
+    labeled = _labeled_calibration_set()
+    model = fit_role_model(labeled)
+
+    result = classify_node_role(model, _database_like("db-query"), temperature=3.0)
+
+    total = sum(result.role_probabilities.values())
+    assert abs(total - 1.0) < 1e-6
+    assert all(0.0 <= p <= 1.0 for p in result.role_probabilities.values())
+
+
+def test_log_posteriors_are_finite_and_cover_all_roles() -> None:
+    labeled = _labeled_calibration_set()
+    model = fit_role_model(labeled)
+
+    log_posteriors = _log_posteriors(model, _dns_like("dns-query"))
+
+    assert set(log_posteriors.keys()) == set(model.roles)
+    assert all(value == value for value in log_posteriors.values())  # no NaN

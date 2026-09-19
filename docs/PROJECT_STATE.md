@@ -5,31 +5,31 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 36 (Service Role Inference) complete, unit-verified. `fit_role_model`/`classify_node_role`
-(`backend/flowmind/classification/role_classifier.py`) implement exactly the algorithm
-`docs/architecture/algorithm_selection.md` §2 already selected back in Phase 05: a Naive-Bayes-style
-probabilistic classifier over engineered `BehavioralFingerprint` features. Per-role Gaussian
-likelihoods (mean/variance, variance-floored against divide-by-zero) for continuous features
-(`distinct_destinations`, `mean_flow_duration_seconds`, `outbound_byte_ratio`, and `port_count =
-len(distinct_ports)` as an honest proxy for "port set entropy," since the schema carries no per-port
-frequency data) and Laplace-smoothed Bernoulli likelihoods for binary features (`is_persistent_talker`,
-protocol-presence over `{TCP, UDP, ICMP, OTHER}`, and well-known-port presence reusing Phase 26's
-exact 5-port `fingerprint.py` table, not a new vocabulary), combined via Bayes' rule and a
-numerically-stable softmax into a real, genuinely-computed `RoleClassification` posterior. §2's own
-selection commits to training on "a held-out labeled split of lab-generated data" -- this session has
-no Docker, so no real lab traffic can be captured/labeled; `fit_role_model` takes already-labeled data
-as a plain parameter (never reads `simulator.ground_truth` itself) and is verified this session only
-against synthetic labeled fixtures, the same convention every other phase's tests already use for
-`Flow`/`Packet` data. No model trained on real data is shipped, and `GET /behaviors/{node_id}` stays a
-501 stub -- wiring it would mean either a fabricated role or presenting a synthetic-only "trained"
-model as real, both forbidden. FR-1.14's "calibrated confidence distribution" requirement is only
-partially met: the posterior is real and correctly-shaped, but *calibration* (predicted confidence
-matching observed correctness frequency) requires ground-truth-scored evaluation, explicitly Phase
-37's job per RQ2's own framing -- the same Phase 30→31→32/68 edge-confidence precedent. See
-`docs/architecture/service_role_inference.md` for the full design and verification record. Phase 21
-(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
-and unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 37 (Uncertainty-Aware Classification) complete, unit-verified. Splits along the same
+inference-side/evaluation-side line as the Phase 30/31 (fitting) vs. Phase 32 (evaluation-only)
+precedent. **Half A** (`backend/flowmind/classification/role_classifier.py`, extended): `fit_temperature
+(model, labeled, bounds=(0.05,20.0), grid_size=200) -> float` fits a single scalar temperature on
+held-out labeled data by minimizing negative log-likelihood of the true role under
+`softmax(log_posteriors / T)` -- a real, fitted calibration mechanism (not an invented rescaling,
+mirroring Phase 31's "no principled basis to weight things arbitrarily" reasoning), via a
+self-contained two-pass log-spaced grid search (no new `scipy` dependency, NFR-9). `classify_node_role`
+gained an optional `temperature=1.0` parameter (default reproduces Phase 36's exact original behavior
+-- re-verified, all 7 original tests unchanged). Internals refactored to expose `_log_posteriors`/
+`_softmax` for this purpose. **Half B** (new `experiments/metrics/role_calibration.py`,
+evaluation-only): `evaluate_role_calibration(classifications, true_roles, num_bins=10) ->
+RoleCalibrationEvaluation` computes real accuracy, standard multiclass Brier score, and standard
+expected calibration error from `RoleClassification` outputs against true-role labels -- a plain
+dataclass, not `MetricResult` (whose `experiment_id` still has no registry to anchor to, and whose
+`calibration_error` field's own docstring already scopes it to "the Phase 68 evaluation matrix," not
+this phase) -- mirroring Phase 32's `TopologyComparisonResult` precedent exactly. Never reachable from
+any API route. Both halves verified this session only against synthetic labeled fixtures -- no
+Docker means no real lab data exists to fit a real temperature or measure real calibration error
+against, the same constraint Phase 36 already carried. `GET /behaviors/{node_id}` remains a 501 stub,
+unchanged. See `docs/architecture/uncertainty_aware_classification.md` for the full design and
+verification record. Phase 21 (High-Fidelity Packet Capture)'s one open item still stands: controlled
+live capture is implemented and unit-verified but not yet verified against a real Docker lab (this
+session's environment has no Docker installation — see `docs/architecture/packet_capture.md` "Known
+limitations").
 
 ## Process note
 
@@ -567,6 +567,33 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   re-verified clean. `docs/architecture/service_role_inference.md` has full detail, including the
   feature-engineering mapping and the Phase 36 vs. 37 calibration-boundary argument.
 
+- Phase 37 — Uncertainty-Aware Classification (`backend/flowmind/classification/role_classifier.py`,
+  extended; new `experiments/metrics/role_calibration.py`; FR-1.14). Half A (inference-side):
+  `fit_temperature` fits a single scalar temperature via a self-contained two-pass log-spaced grid
+  search minimizing NLL on held-out labeled data (no new `scipy` dependency); `classify_node_role`
+  gained an optional `temperature=1.0` parameter, default unchanged from Phase 36. `_log_posteriors`/
+  `_softmax` extracted from the prior inline implementation (behavior-preserving -- Phase 36's 7
+  original tests re-verified unchanged). Half B (evaluation-only): `evaluate_role_calibration`
+  computes real accuracy/Brier score/expected calibration error from `RoleClassification` vs.
+  true-role labels, returned as a plain `RoleCalibrationEvaluation` dataclass -- not `MetricResult`,
+  mirroring Phase 32's precedent (`MetricResult.experiment_id` still has no registry;
+  `MetricResult.calibration_error`'s own docstring already scopes it to Phase 68). Never reachable
+  from any API route. No Docker this session means no real temperature was fit or real calibration
+  measured against real lab data -- both verified only against synthetic labeled fixtures. `GET
+  /behaviors/{node_id}` remains a 501 stub, unchanged. Verified: `backend/tests/
+  test_flowmind_role_classifier.py` grew to 12/12 (7 original + 5 new: empty-input `ValueError` for
+  `fit_temperature`; fitting never worse than unscaled NLL; temperature scaling's flatten/sharpen
+  property verified directly against `_softmax` with hand-picked log-posteriors, since real
+  classifier output on cleanly-separated synthetic classes saturates to exact 1.0/0.0 at float
+  precision; non-default-temperature output still schema-valid; log-posteriors finite and covering
+  all roles); new `experiments/tests/test_role_calibration.py` (5/5: confident-correct predictions
+  score well; confident-but-wrong predictions score strictly worse on all three metrics; empty input
+  and mismatched lengths both raise `ValueError`; a hand-computed 4-sample accuracy/Brier score match
+  exactly); combined suite 289/289 (up from 279/279), no regressions; `scripts.
+  validate_data_contracts` re-verified clean (38/38, no schema changes); `scripts.
+  check_ground_truth_boundary` re-verified clean. `docs/architecture/
+  uncertainty_aware_classification.md` has full detail.
+
 ## Blocked phases
 
 None.
@@ -929,7 +956,12 @@ None yet — no experiments have been run.
   synthetic labeled fixtures this session (no Docker), and `GET /behaviors/{node_id}` remains a 501
   stub as a direct consequence; documented in `docs/architecture/service_role_inference.md`. Producing
   a genuine labeled training set from the lab is left to a future phase with real Docker/lab access.
-- Next: Phase 37 (Uncertainty-Aware Classification). Expected to validate/calibrate Phase 36's real
-  but uncalibrated posterior against ground truth (RQ2's calibration-error metric) — likely also
-  requires the real lab-trained model Phase 36 couldn't produce this session — not yet scoped beyond
-  FR-1.14/RQ2's calibration language. Not started; awaiting explicit request.
+- Uncertainty-aware classification (Phase 37) fitted no real temperature and measured no real
+  calibration error against real Docker-lab ground truth — both verified only against synthetic
+  labeled fixtures this session (no Docker); `GET /behaviors/{node_id}` remains a 501 stub as a direct
+  consequence, unchanged from Phase 36; documented in
+  `docs/architecture/uncertainty_aware_classification.md`. Real validation is left to a future phase
+  with real Docker/lab access.
+- Next: Phase 38 (Behavioral Baseline). Expected to build a normal-behavior baseline from historical
+  observations, per FR-1.15 — not yet scoped beyond that one-line mention. Not started; awaiting
+  explicit request.

@@ -34,10 +34,19 @@ and `GET /behaviors/{node_id}` stays unwired. See
 `docs/architecture/service_role_inference.md`.
 
 This produces a real, genuinely-computed posterior -- never a fabricated
-or hard label -- but "calibrated" in FR-1.14's sense (predicted
-confidence matching observed correctness frequency) requires ground-
-truth-scored evaluation, which is explicitly Phase 37's job, not
-performed here.
+or hard label. Phase 37 (`fit_temperature`, plus `classify_node_role`'s
+`temperature` parameter) adds real temperature scaling: a single scalar
+`T`, fit on held-out labeled data by minimizing negative log-likelihood,
+that rescales the posterior (`softmax(log_posteriors / T)`) before
+normalization -- flattening an overconfident distribution or sharpening
+an underconfident one. This is a genuine, fitted calibration mechanism,
+not a hand-picked rescaling. It does NOT by itself prove the result is
+calibrated in FR-1.14/RQ2's sense (predicted confidence matching observed
+correctness frequency across many real classifications) -- that requires
+ground-truth-scored evaluation, which is `experiments/metrics/
+role_calibration.py`'s job (evaluation-only, never reachable from here),
+and real validation against Docker-lab data remains out of scope this
+session (no Docker). See `docs/architecture/uncertainty_aware_classification.md`.
 """
 
 from __future__ import annotations
@@ -155,19 +164,12 @@ def fit_role_model(
     )
 
 
-def classify_node_role(
-    model: RoleModel,
-    fingerprint: BehavioralFingerprint,
-    computed_at: Optional[datetime] = None,
-) -> RoleClassification:
-    """Computes a real posterior over `model.roles` for `fingerprint` via
-    Bayes' rule (log-prior + summed per-feature log-likelihoods, Gaussian
-    for continuous features and Bernoulli for binary features), normalized
-    by a numerically-stable softmax. Returns a genuine `RoleClassification`
-    -- its own Phase 04 validator (sums to ~1.0, each value in [0,1]) is
-    the real acceptance test for this function's output, not re-implemented
-    here.
-    """
+def _log_posteriors(model: RoleModel, fingerprint: BehavioralFingerprint) -> Dict[ServiceRole, float]:
+    """Real, unnormalized log-posterior per role via Bayes' rule: log-prior
+    plus summed per-feature log-likelihoods (Gaussian for continuous
+    features, Bernoulli for binary features). Exposed separately from
+    `classify_node_role` so Phase 37's temperature scaling can rescale
+    these before normalization, without recomputing the Bayes math."""
     continuous = _continuous_features(fingerprint)
     binary = _binary_features(fingerprint)
 
@@ -182,14 +184,109 @@ def classify_node_role(
             p = model.binary_probability[role][name]
             log_p += math.log(p) if value else math.log(1 - p)
         log_posteriors[role] = log_p
+    return log_posteriors
 
-    max_log = max(log_posteriors.values())
-    unnormalized = {role: math.exp(lp - max_log) for role, lp in log_posteriors.items()}
+
+def _softmax(log_values: Dict[ServiceRole, float], temperature: float = 1.0) -> Dict[ServiceRole, float]:
+    """Numerically-stable softmax, optionally temperature-scaled
+    (`softmax(log_values / temperature)`, spec Phase 37): `temperature > 1`
+    flattens the distribution toward uniform (less confident);
+    `temperature < 1` sharpens it (more confident); `temperature == 1` is
+    the original, unscaled posterior."""
+    scaled = {role: lp / temperature for role, lp in log_values.items()}
+    max_log = max(scaled.values())
+    unnormalized = {role: math.exp(lp - max_log) for role, lp in scaled.items()}
     total = sum(unnormalized.values())
-    role_probabilities = {role: value / total for role, value in unnormalized.items()}
+    return {role: value / total for role, value in unnormalized.items()}
+
+
+def classify_node_role(
+    model: RoleModel,
+    fingerprint: BehavioralFingerprint,
+    computed_at: Optional[datetime] = None,
+    temperature: float = 1.0,
+) -> RoleClassification:
+    """Computes a real posterior over `model.roles` for `fingerprint` via
+    Bayes' rule, normalized by a numerically-stable (optionally
+    temperature-scaled, spec Phase 37) softmax. `temperature=1.0` (the
+    default) reproduces Phase 36's original, unscaled behavior exactly.
+    Returns a genuine `RoleClassification` -- its own Phase 04 validator
+    (sums to ~1.0, each value in [0,1]) is the real acceptance test for
+    this function's output, not re-implemented here.
+    """
+    log_posteriors = _log_posteriors(model, fingerprint)
+    role_probabilities = _softmax(log_posteriors, temperature)
 
     return RoleClassification(
         node_id=fingerprint.node_id,
         computed_at=computed_at or datetime.now(timezone.utc),
         role_probabilities=role_probabilities,
     )
+
+
+def _negative_log_likelihood(
+    model: RoleModel,
+    labeled: List[Tuple[BehavioralFingerprint, ServiceRole]],
+    temperature: float,
+) -> float:
+    total = 0.0
+    for fingerprint, true_role in labeled:
+        probabilities = _softmax(_log_posteriors(model, fingerprint), temperature)
+        # Floored, never zero: an unseen-in-training role would otherwise make
+        # a single held-out example's likelihood exactly 0 (log(0) = -inf),
+        # which would make grid search reject every candidate temperature.
+        total += -math.log(max(probabilities.get(true_role, 0.0), 1e-12))
+    return total
+
+
+def _grid_search_minimize(
+    objective, low: float, high: float, grid_size: int
+) -> Tuple[float, float]:
+    """Evaluates `objective` at `grid_size` log-spaced points in [low, high]
+    and returns the (x, value) pair achieving the minimum. A small,
+    self-contained substitute for `scipy.optimize` -- this is a
+    one-dimensional, well-behaved search that doesn't justify the added
+    dependency weight (NFR-9)."""
+    log_low, log_high = math.log(low), math.log(high)
+    best_x, best_value = low, objective(low)
+    for i in range(grid_size):
+        x = math.exp(log_low + (log_high - log_low) * i / (grid_size - 1))
+        value = objective(x)
+        if value < best_value:
+            best_x, best_value = x, value
+    return best_x, best_value
+
+
+def fit_temperature(
+    model: RoleModel,
+    labeled: List[Tuple[BehavioralFingerprint, ServiceRole]],
+    bounds: Tuple[float, float] = (0.05, 20.0),
+    grid_size: int = 200,
+) -> float:
+    """Fits a single scalar temperature (spec Phase 37) on held-out labeled
+    data by minimizing the negative log-likelihood of the true role under
+    the temperature-scaled posterior -- a real, fitted correction, not an
+    arbitrary rescaling (the same "no principled basis to weight things
+    arbitrarily" reasoning already established for Phase 31's edge-
+    confidence signals). Raises `ValueError` on empty input, mirroring
+    `fit_role_model`: a temperature cannot be fit from nothing.
+
+    Two-pass log-spaced grid search: a coarse pass over the full `bounds`,
+    then a refined pass narrowed around the coarse optimum -- deterministic
+    and dependency-free (see `_grid_search_minimize`).
+    """
+    if not labeled:
+        raise ValueError("fit_temperature requires at least one labeled example")
+
+    def objective(temperature: float) -> float:
+        return _negative_log_likelihood(model, labeled, temperature)
+
+    low, high = bounds
+    coarse_t, _ = _grid_search_minimize(objective, low, high, grid_size)
+
+    refined_low = max(low, coarse_t * 0.5)
+    refined_high = min(high, coarse_t * 2.0)
+    if refined_low >= refined_high:
+        return coarse_t
+    refined_t, _ = _grid_search_minimize(objective, refined_low, refined_high, grid_size)
+    return refined_t
