@@ -1,11 +1,12 @@
-"""GET /dependencies. Backing implementation: spec Phase 51 (Dependency Strength).
+"""GET /dependencies. Backing implementation: spec Phase 51 (Dependency Strength), extended
+Phase 52 (Temporal Precedence Analysis).
 
 Deliberately distinct from mere communication (spec Phase 50; RQ5) -- this endpoint returns
 inferred `DependencyEdge` records, never plain communication-observation records. Estimates
 `strength`/`directionality_score` from frequency, persistence, directionality, and traffic
 characteristics over Phase 50's `CommunicationRelationship`s (`estimate_dependency_strength`,
-`backend/dependency/strength.py`); `temporal_precedence_score` stays at its schema default `0.0`
-until Phase 52.
+`backend/dependency/strength.py`); `temporal_precedence_score` is now genuinely computed too
+(Phase 52's `estimate_temporal_precedence`), completing all five of FR-1.26's named signals.
 
 Same "missing means empty" convention `GET /history`/Phase 50 already use for this layer: an
 unrecognized `capture_id` returns an empty, still-200 paginated result, not a 404 -- there is no
@@ -38,6 +39,8 @@ def list_dependencies(
         dependency_frequency_scale=settings.dependency_frequency_scale,
         dependency_persistence_scale=settings.dependency_persistence_scale,
         dependency_signal_strength=settings.dependency_signal_strength,
+        dependency_temporal_bucket_seconds=settings.dependency_temporal_bucket_seconds,
+        dependency_temporal_max_lag_buckets=settings.dependency_temporal_max_lag_buckets,
     )
 
     page_items = dependencies[page.offset : page.offset + page.limit]

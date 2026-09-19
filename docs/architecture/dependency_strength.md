@@ -127,5 +127,9 @@ Dependency strength estimation (spec Phase 51, FR-1.26) is implemented and teste
 /dependencies` is now real, producing `DependencyEdge`s whose `strength`/`directionality_score` are
 computed from frequency, persistence, directionality, and traffic characteristics over Phase 50's
 `CommunicationRelationship`s and Phase 31's already-inferred `Edge` evidence — no new signal
-invented, no temporal-precedence claim made. Temporal precedence (Phase 52-53) is the next
-unimplemented layer.
+invented, no temporal-precedence claim made. **Update (Phase 52):** temporal precedence is no
+longer unimplemented — `estimate_dependency_strength` now also calls Phase 52's
+`estimate_temporal_precedence` (`backend/dependency/temporal_precedence.py`) and folds it into the
+noisy-OR formula as a fourth secondary term, so `strength`/`temporal_precedence_score` together now
+reflect all five of FR-1.26's named signals. See `docs/architecture/temporal_precedence_analysis.md`
+for the full design.

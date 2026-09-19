@@ -17,11 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 48 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 52 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`GraphChangeEvent` now carries real `affected_flow_ids`, and `format_change_attribution` renders
-every change with its evidence, timestamp, affected node/edge, affected flows, and a structural,
-unconditional non-causal disclaimer — see `docs/architecture/change_attribution.md`. Next: Phase 49.
+`estimate_dependency_strength` now genuinely computes all five of FR-1.26's named signals —
+`estimate_temporal_precedence` folds a real time-lagged cross-correlation signal (over per-node flow
+activity) into `DependencyEdge.strength`/`temporal_precedence_score` — see
+`docs/architecture/temporal_precedence_analysis.md`. Next: Phase 53.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -439,12 +440,28 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   per-node-pair flow buckets rather than re-deriving them. Proven by 7 real tests plus 3 new
   `GET /dependencies` route tests — `backend/dependency/strength.py`,
   `docs/architecture/dependency_strength.md`.
+- **Temporal precedence analysis** (Phase 52): closes Phase 51's deliberately-left gap —
+  `estimate_temporal_precedence` (new `backend/dependency/temporal_precedence.py`) implements
+  `algorithm_selection.md`'s already-committed time-lagged cross-correlation algorithm over per-node
+  OVERALL flow activity (any counterpart, not just the specific pair — using only the pair's own
+  flows would collapse source/target series to near-identical, trivially-zero-lag-correlated data,
+  conflating with directionality). Considered and rejected Phase 45/47's `GraphChangeEvent`s (too
+  sparse per node) and Phase 46's `BehavioralEvolutionEvent` (no persisted history exists) as the
+  primary signal. Scores `0.0` unless the best positive-lag correlation beats the zero-lag baseline
+  and is itself positive — a merely-simultaneous relationship is deliberately not counted as
+  "precedes." `estimate_dependency_strength` (Phase 51, extended in place) now folds this into a
+  fourth noisy-OR term and genuinely sets `temporal_precedence_score` — `DependencyEdge.strength`
+  finally reflects all five of FR-1.26's named signals. Deliberately does not build candidate
+  causal-relationship generation, explicitly Phase 53's job. Proven by 6 new tests plus a new
+  end-to-end dependency-strength test confirming a real, non-zero score flows through into
+  `strength` — `backend/dependency/temporal_precedence.py`,
+  `docs/architecture/temporal_precedence_analysis.md`.
 
 ### What doesn't exist yet
 
-Temporal precedence, failure propagation, criticality metrics, causal evidence reports, the digital
-twin, simulation, and counterfactual engines have not been implemented yet — those begin at Phase 52
-and continue through the 69-phase plan. The API surface and
+Causal candidate generation, failure propagation, criticality metrics, causal evidence reports, the
+digital twin, simulation, and counterfactual engines have not been implemented yet — those begin at
+Phase 53 and continue through the 69-phase plan. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -480,7 +497,8 @@ backend/archaeology/
   attribution.py  Phase 48 change attribution (GraphChangeEvent -> human-readable report with evidence, timestamp, affected flows/nodes, non-causal disclaimer)
 backend/dependency/
   communication.py  Phase 50 communication relationship derivation (Node + Edge lists -> List[CommunicationRelationship], no dependency scoring)
-  strength.py  Phase 51 dependency strength estimation (CommunicationRelationship + Edge -> List[DependencyEdge], real via GET /dependencies; temporal_precedence_score deferred to Phase 52)
+  strength.py  Phase 51 dependency strength estimation (CommunicationRelationship + Edge -> List[DependencyEdge], real via GET /dependencies); Phase 52 folds in real temporal_precedence_score
+  temporal_precedence.py  Phase 52 temporal precedence analysis (per-node flow activity -> time-lagged cross-correlation score)
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
@@ -505,7 +523,7 @@ scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (P
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (400 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (426 tests)
 docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
 docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
 python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it

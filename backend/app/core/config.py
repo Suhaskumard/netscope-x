@@ -136,6 +136,28 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Phase 52 -- temporal precedence analysis (ties to NFR-4, FR-1.27).
+    dependency_temporal_bucket_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description=(
+            "Fixed time-bucket width for time-lagged cross-correlation of per-node flow "
+            "activity (spec Phase 52, FR-1.27), mirroring Phase 34's short-window default. "
+            "A provisional default pending real calibration (spec Phase 68), not a "
+            "claimed-accurate value."
+        ),
+    )
+    dependency_temporal_max_lag_buckets: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Bounded number of positive lag offsets searched for the best time-lagged "
+            "cross-correlation (spec Phase 52, FR-1.27; algorithm_selection.md section 6's "
+            "own complexity note: 'a bounded set of lag offsets'). A provisional default "
+            "pending real calibration (spec Phase 68), not a claimed-accurate value."
+        ),
+    )
+
     # Phase 34 -- multi-window behavior modeling (ties to NFR-4, FR-1.12).
     behavior_window_short_seconds: float = Field(
         default=10.0,

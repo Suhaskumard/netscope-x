@@ -5,32 +5,38 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 51 (Dependency Strength) complete, tested. New `backend/dependency/strength.py`
-(`estimate_dependency_strength`) estimates `DependencyEdge.strength`/`directionality_score` from
-frequency, persistence, directionality, and traffic characteristics -- four of FR-1.26's five named
-signals; temporal relationships is deliberately excluded (`docs/architecture/algorithm_selection.md`
-section 6 tags it "spec Phase 52", and `DependencyEdge.temporal_precedence_score` stays at its
-schema default `0.0`, never set here). Every signal reuses already-real evidence: frequency/
-persistence from Phase 50's `derive_communication_relationships`, unmodified; directionality from
-Phase 30-31's `_bidirectionality(forward_byte_ratio)`, inverted (`directionality_score = 1 -
-_bidirectionality(mean_ratio)`, since that helper measures balanced-ness, the opposite of "how
-one-directional"); traffic characteristics from `Edge.confidence` (Phase 31) directly, not
-re-derived. Combination mirrors Phase 31's `_confidence` noisy-OR formula shape exactly (one
-primary saturating frequency term, three secondary signals scaled by one shared
-`dependency_signal_strength` constant), via three new provisional `Settings` fields
-(`dependency_frequency_scale`, `dependency_persistence_scale`, `dependency_signal_strength`,
-mirroring `edge_confidence_*`'s own "provisional default pending Phase 68 calibration" wording). One
-small, behavior-preserving refactor was needed first: `discover_edges`'s inline flow-bucketing loop
-was extracted into `bucket_flows_by_node_pair` (`backend/nettrace/topology/edges.py`) so this phase
-could reuse the identical per-node-pair buckets for directionality, verified unchanged by re-running
-the full edge/topology/API suite before adding new code. `GET /dependencies` is now real (unlike
-Phase 50, whose route stayed untouched by design) -- same "missing means empty" convention Phase 49/
-50 established, no 404 on an unrecognized `capture_id`. See `docs/architecture/dependency_strength.md`
-for the full design, the noisy-OR formula, the index-alignment invariant between `discover_edges`
-and `derive_communication_relationships` output, worked example, and verification record. Phase 21
-(High-Fidelity Packet Capture)'s one open item still stands: controlled live capture is implemented
-and unit-verified but not yet verified against a real Docker lab (this session's environment has no
-Docker installation — see `docs/architecture/packet_capture.md` "Known limitations").
+Phase 52 (Temporal Precedence Analysis) complete, tested. New `backend/dependency/
+temporal_precedence.py` (`estimate_temporal_precedence`) implements `algorithm_selection.md`
+section 6's already-committed algorithm -- time-lagged cross-correlation, folded into the same
+combined scoring function that produces `DependencyEdge.strength` -- finally closing the gap Phase
+51 deliberately left open (`temporal_precedence_score` was schema-default `0.0`, never set). What
+"changes" means here was a real design decision, not left ambiguous: per-node OVERALL flow activity
+(any counterpart, not just the specific pair's own flows -- using only the pair's own flows would
+make source/target series nearly identical, collapsing to trivial zero-lag correlation and
+conflating with directionality), time-bucketed by `Flow.first_seen`, rejected in favor of Phase
+45/47's structural `GraphChangeEvent`s (too sparse per node -- essentially one `NODE_ADDED` ever)
+and Phase 46's `BehavioralEvolutionEvent` (only available from a caller-supplied fingerprint list,
+no persisted history exists). Reuses Phase 33/34's `flows_touching_node` directly. Cross-correlates
+(stdlib `statistics.correlation`) source vs. lag-shifted target for a bounded set of positive lag
+offsets; scores `0.0` unless the best positive-lag correlation beats the zero-lag baseline AND is
+itself positive -- a merely-simultaneous relationship is deliberately not counted as "precedes."
+`backend/dependency/strength.py`'s `estimate_dependency_strength` (same function, modified in
+place, mirroring the Phase 31-extends-Phase-30 precedent) now reads `flows_path` once, calls this
+per pair, extends the noisy-OR formula with a fourth secondary term, and actually sets
+`temporal_precedence_score` on every constructed `DependencyEdge` -- the moment `strength` genuinely
+reflects all five of FR-1.26's named signals for the first time. Two new provisional `Settings`
+fields (`dependency_temporal_bucket_seconds=10.0`, `dependency_temporal_max_lag_buckets=5`); `GET
+/dependencies` threads both through. Deliberately does NOT build candidate causal-relationship
+generation (explicitly Phase 53's job per FR-1.27's own "Phase 52-53" span and
+`algorithm_selection.md`'s own scoping). See `docs/architecture/temporal_precedence_analysis.md` for
+the full design, worked example, and verification record; `docs/architecture/dependency_strength.md`
+updated with a pointer note. Also corrected a real, separate documentation gap found while starting
+this phase: `README.md` had been stuck at "Current phase: 48" despite Phases 49-51 being complete
+and committed (confirmed via `git log`) -- backfilled the missing bullets before adding this one, so
+README stays an accurate front door rather than actively misleading. Phase 21 (High-Fidelity Packet
+Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
+not yet verified against a real Docker lab (this session's environment has no Docker installation —
+see `docs/architecture/packet_capture.md` "Known limitations").
 
 ## Process note
 
@@ -1052,6 +1058,62 @@ what exists); this file remains the detailed, continuously-updated machine-reada
   re-verified clean (no schema changes this phase). `docs/architecture/dependency_strength.md` has
   full detail, including the noisy-OR formula and the index-alignment invariant.
 
+- Phase 52 — Temporal Precedence Analysis (new `backend/dependency/temporal_precedence.py`;
+  `backend/dependency/strength.py` extended in place, same function; two new `Settings` fields;
+  FR-1.27 first half). Implements `algorithm_selection.md` section 6's already-committed algorithm
+  -- time-lagged cross-correlation, part of the same combined scoring function already producing
+  `DependencyEdge.strength` -- closing the gap Phase 51 deliberately left open
+  (`temporal_precedence_score` was schema-default `0.0`, never set). Real design decision on what
+  "changes" means: per-node OVERALL flow activity (any counterpart, time-bucketed by
+  `Flow.first_seen`), not just the specific pair's own flows (which would make source/target series
+  nearly identical -- every flow between A and B touches both at the same timestamp -- collapsing to
+  trivial zero-lag correlation and conflating with the already-separate directionality signal), and
+  not Phase 45/47's `GraphChangeEvent`s (too sparse per node -- essentially one `NODE_ADDED` ever,
+  cumulative topology with no expiry) or Phase 46's `BehavioralEvolutionEvent` (only available from
+  a caller-supplied fingerprint list, no persisted history exists, which would break
+  `estimate_dependency_strength`'s automatic/self-sufficient calling convention). Reuses Phase
+  33/34's `flows_touching_node` directly (new cross-package import, dependency/ -> flowmind/, a
+  deliberate, justified reuse of an already-generic utility). `estimate_temporal_precedence`
+  cross-correlates (stdlib `statistics.correlation`, same module `node_baseline.py` already uses for
+  median/MAD) source vs. lag-shifted target over a bounded set of positive lag offsets (per section
+  6's O(T) complexity note); scores `0.0` unless the best positive-lag correlation beats the zero-lag
+  baseline AND is itself positive -- a merely-simultaneous relationship is deliberately not counted
+  as "precedes." `estimate_dependency_strength` now reads `flows_path` once (reused across every
+  pair in its loop, not re-read per pair), calls the new function per `(source_node, target_node)`
+  pair, extends the noisy-OR `survival` product with a fourth secondary term identical in shape to
+  the existing three, and actually sets `temporal_precedence_score` on every constructed
+  `DependencyEdge` -- the moment `strength` genuinely reflects all five of FR-1.26's named signals
+  for the first time (frequency, persistence, directionality, temporal relationships, traffic
+  characteristics). Two new provisional `Settings` fields (`dependency_temporal_bucket_seconds=10.0`,
+  mirroring Phase 34's short-window precedent; `dependency_temporal_max_lag_buckets=5`), same
+  "pending Phase 68 calibration" wording as every other numeric constant. `GET /dependencies` threads
+  both through, same pattern as Phase 51's own three settings. Deliberately does NOT build candidate
+  causal-relationship generation -- explicitly Phase 53's job per FR-1.27's own "Phase 52-53" span
+  and `algorithm_selection.md`'s own scoping (its option (c) rejection note cites the Phase 53
+  wording specifically). Verified: new `backend/tests/test_dependency_temporal_precedence.py` (6/6: a
+  genuine positive lag over irregularly-spaced bursts -- avoiding periodicity aliasing, where a
+  periodic pattern would also show spurious correlation at other lags sharing the period -- is
+  detected with a high score; a purely simultaneous zero-lag pattern scores `0.0`; unrelated/sparse
+  activity scores low; reversed source/target roles score meaningfully lower than the true
+  direction; a zero-activity counterpart never crashes; empty input returns `0.0`);
+  `backend/tests/test_dependency_strength.py` grew 7/7 -> 8/8 (the existing hand-computed formula
+  test now explicitly includes the fourth noisy-OR term, a documented no-op for that minimal
+  fixture since `temporal_precedence_score` is honestly `0.0` there too -- no room for a
+  positive-lag window; a new end-to-end test with a genuinely lagged multi-node scenario, using
+  third/fourth "side conversation" nodes to give source/target genuinely distinguishable activity
+  series, confirms a real non-zero `temporal_precedence_score` and that `strength`'s
+  hand-recomputed value matches the extended formula exactly); `test_api.py`'s existing `GET
+  /dependencies` tests needed no changes -- their minimal fixture still honestly scores
+  `temporal_precedence_score == 0.0`, correctly, for the same "no room for a positive lag" reason;
+  combined suite 426/426 (up from 419/419), no regressions; `scripts.validate_data_contracts`
+  re-verified clean (38/38, no schema changes -- `DependencyEdge`'s already-reserved field is simply
+  populated for real now); `scripts.check_ground_truth_boundary` re-verified clean. Also corrected a
+  real, separate documentation gap found while starting this phase: `README.md` had been stuck at
+  "Current phase: 48" despite Phases 49-51 being complete and committed -- backfilled the missing
+  bullets before adding this phase's own. `docs/architecture/temporal_precedence_analysis.md` has
+  full detail, including the worked example; `docs/architecture/dependency_strength.md` updated with
+  a pointer note.
+
 ## Blocked phases
 
 None.
@@ -1504,8 +1566,12 @@ None yet — no experiments have been run.
   construction; measuring it is Phase 68's job. `strength` can compute to exactly `1.0` under
   floating-point underflow for extreme frequency/persistence values relative to their scales (the
   schema's `le=1` already allows this); documented in `docs/architecture/dependency_strength.md`.
-- Next: Phase 52-53 (Temporal Precedence / Causal Candidate Generation, FR-1.27). Analyze temporal
-  precedence between component changes via time-lagged cross-correlation, generating causal
-  candidates without equating correlation with causation; populates
-  `DependencyEdge.temporal_precedence_score`, left at `0.0` since Phase 04. Not started; awaiting
-  explicit request.
+- Temporal precedence analysis (Phase 52) uses per-node overall flow activity (not the specific
+  pair's own flows, which would collapse to trivial zero-lag correlation), time-bucketed and
+  cross-correlated at a bounded set of positive lag offsets, provisional/uncalibrated like every
+  other Phase 51/68-pending constant; documented in
+  `docs/architecture/temporal_precedence_analysis.md`.
+- Next: Phase 53 (Causal Candidate Generation, FR-1.27 second half). Generate candidate causal
+  relationships from the now-complete dependency-strength signals (frequency, persistence,
+  directionality, temporal precedence, traffic characteristics), without equating correlation with
+  causation. Not started; awaiting explicit request.
