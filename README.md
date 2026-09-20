@@ -43,12 +43,13 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 65 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 66 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-All six counterfactual verbs now actually execute against a real topology, producing a genuinely
-isolated alternate graph — including ADD_ROUTE's synthesis of a new hypothetical edge with a
-documented, honestly-neutral confidence value, distinct from ground truth's declared-certain
-edges — see `docs/architecture/counterfactual_graph_engine.md`. Next: Phase 66.
+Counterfactual outcomes are now compared against the baseline across all six FR-1.37 axes —
+paths, connectivity, latency, affected services, bottlenecks, and propagation — with propagation
+split into an always-real structural signal and an optional causal one so structural inference is
+never misrepresented as causal evidence, see `docs/architecture/counterfactual_comparison.md`.
+Next: Phase 67.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -687,6 +688,24 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   Proven by 13 real tests, including a real end-to-end run over a topology discovered from
   synthetic packets — `backend/simulation/counterfactual_engine.py`,
   `docs/architecture/counterfactual_graph_engine.md`.
+- **Counterfactual outcome comparison** (Phase 66, FR-1.37): new `backend/simulation/
+  counterfactual_comparison.py` (`compare_counterfactual_outcome`) composes Phase 54/55/60/61's
+  already-tested machinery across all six named axes — no modification to any of them.
+  Paths/latency reuse `compute_route_change` over Phase 61's own bounded pair convention, with a
+  translation adapter mapping `INCREASE_LATENCY`/`REDUCE_BANDWIDTH` onto Phase 60's tested
+  weighting formula (an out-of-range magnitude raises, `INCREASE_TRAFFIC` honestly shows zero
+  extra cost — no `FailureType` analog exists). Connectivity is a direct before/after diff
+  (correctly "unchanged" for soft actions). Affected services generalizes Phase 61's
+  reason-itemization to four reasons, `"+"`-joined. Bottlenecks reimplements Phase 62's
+  articulation-point diff inline. Propagation — the harder design call — is two separate,
+  never-merged fields: a structural BFS hop-distance cascade (always real) and an optional causal
+  `propagate_failure` call (only when candidates are supplied), since fusing them would
+  misrepresent structural inference as causal evidence. A second new module,
+  `experiments/metrics/counterfactual_validation.py` (`evaluate_counterfactual_prediction`),
+  mirrors Phase 63's RQ6 validator for RQ7, adding a `lab_realizable` gate that honestly reports
+  every metric `None` for a non-realizable counterfactual, per RQ7's own requirement. No new
+  schema, no API route. Proven by 18 real tests. — `backend/simulation/counterfactual_comparison.py`,
+  `experiments/metrics/counterfactual_validation.py`, `docs/architecture/counterfactual_comparison.md`.
 
 ### What doesn't exist yet
 
@@ -695,13 +714,15 @@ failures injected into an isolated copy of its topology, that topology's paths/c
 analyzed under failure, a single connected pipeline ties failure injection, dependency propagation,
 routing impact, and itemized service impact together, that pipeline's output is aggregated into
 resilience indicators, a prediction can be scored against a real or synthetic actual outcome, the
-counterfactual scenario language can fully express all six "what if" verbs, and a counterfactual
-can now actually execute against an isolated alternate graph that never mutates the baseline
-(Phase 57-65), but comparing a counterfactual's predicted outcome against a real or baseline
-result (Phase 66-69) has not been implemented yet. The API surface and data contracts are
-real and tested; most of the research intelligence they will eventually serve is not built yet.
-Nothing in this repository currently fabricates results — every phase's completion report
-documents exactly what was and wasn't verified by actual execution.
+counterfactual scenario language can fully express all six "what if" verbs, a counterfactual can
+execute against an isolated alternate graph that never mutates the baseline, and its outcome is now
+compared against the baseline across paths/connectivity/latency/affected services/bottlenecks/
+propagation, with a predicted-vs-actual validator for real-world comparison (Phase 57-66), but
+generating experiment recommendations from this structural evidence and the ablation/ evaluation
+matrix (Phase 67-69) has not been implemented yet. The API surface and data contracts are real and
+tested; most of the research intelligence they will eventually serve is not built yet. Nothing in
+this repository currently fabricates results — every phase's completion report documents exactly
+what was and wasn't verified by actual execution.
 
 ## Repository layout
 
@@ -750,9 +771,10 @@ backend/simulation/
   failure_propagation_pipeline.py  Phase 61 connected failure->propagation->routing->service-impact pipeline (TopologyGraph + FailureScenario + CausalCandidate list [+ RoleClassification map] -> FailurePipelineResult), no API route yet
   resilience_indicators.py  Phase 62 resilience indicators (TopologyGraph + FailurePipelineResult -> ResilienceIndicators: connectivity/reachable-node ratios, affected-service count, path-degradation score, emergent bottlenecks, alternative-path availability), no API route yet
   counterfactual_engine.py  Phase 65 counterfactual graph engine (TopologyGraph + CounterfactualScenario -> CounterfactualExecutionResult: isolated graph copy + removed/degraded/added edge ids), no API route yet
+  counterfactual_comparison.py  Phase 66 counterfactual outcome comparison (TopologyGraph + CounterfactualExecutionResult [+ CausalCandidate list] -> CounterfactualComparisonResult: paths/connectivity/latency/affected services/bottlenecks/propagation), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
-  metrics/    Phase 32/37/42/63 evaluation-only ground-truth/calibration/anomaly-detection/failure-prediction scoring (never reachable from backend/)
+  metrics/    Phase 32/37/42/63/66 evaluation-only ground-truth/calibration/anomaly-detection/failure-prediction/counterfactual-prediction scoring (never reachable from backend/)
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
   docker/         Phase 11-15 multi-tier network laboratory

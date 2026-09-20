@@ -1962,6 +1962,51 @@ None yet — no experiments have been run.
   packets); combined suite 555/555 (up from 542/542), no regressions; `scripts.
   validate_data_contracts` re-verified clean (55/55, no schema changes); `scripts.
   check_ground_truth_boundary` re-verified clean.
-- Next: Phase 66 (compare baseline vs. counterfactual outcomes across paths, connectivity,
-  latency, affected services, bottlenecks, and propagation, FR-1.37). Not started; awaiting
-  explicit request.
+- Counterfactual outcome comparison (Phase 66, FR-1.37) composes Phase 54/55/60/61's own already-
+  tested machinery across all six named axes -- no modification to `path_engine.py`,
+  `counterfactual_engine.py`, `failure_propagation_pipeline.py`, `resilience_indicators.py`,
+  `criticality.py`, `failure_propagation.py`, or any `backend/app/models/*.py` file. New
+  `backend/simulation/counterfactual_comparison.py` (`compare_counterfactual_outcome`):
+  **paths/latency** reuse `compute_route_change` over the same bounded former-neighbor/edge-
+  endpoint pair set Phase 61 established, with a translation adapter (`_maybe_adapter_injection`)
+  mapping `INCREASE_LATENCY`/`REDUCE_BANDWIDTH` onto Phase 60's own tested `FailureScenario`
+  weighting formula (an out-of-range magnitude raises `ValidationError`, not silently clamped;
+  `INCREASE_TRAFFIC` has no `FailureType` analog and honestly shows zero extra cost) rather than
+  duplicating that formula; **connectivity** is a direct `compute_connectivity` before/after diff
+  (correctly "unchanged" for the three soft actions, which never touch graph structure);
+  **affected services** generalizes Phase 61's reason-itemization from two reasons to four
+  (removed/newly_unreachable/route_changed/propagation, `"+"`-joined); **bottlenecks** reimplements
+  Phase 62's own articulation-point pre/post diff inline (a private helper there). **Propagation**
+  -- the harder of two open design questions -- is computed as two separate, never-merged fields:
+  `structural_propagation_impacts` (always real, a BFS hop-distance cascade from the change site,
+  restricted to newly-unreachable nodes, labeled structural not causal) and
+  `causal_propagation_impacts` (only when the caller supplies `CausalCandidate`s AND the scenario
+  has a `target_node_id`, calling Phase 54's real `propagate_failure` unmodified, mirroring Phase
+  61's own gating condition) -- since `CounterfactualScenario` carries no causal-evidence feed at
+  all, fusing the two would misrepresent structural inference as causal evidence (spec Sec21).
+  Second new module, `experiments/metrics/counterfactual_validation.py`
+  (`evaluate_counterfactual_prediction`), mirrors Phase 63's RQ6 validator narrowed to 3 of 4
+  metrics plus one optional resilience component, adding RQ7's own required lab-realizability
+  gate (`ActualCounterfactualOutcome.lab_realizable=False` reports every metric honestly `None`,
+  never a fabricated score, per RQ7's "report as unvalidated" requirement). No new schema, no API
+  route -- `POST /counterfactual` stays untouched; `MetricContext.COUNTERFACTUAL` stays reserved,
+  deferred to Phase 68. Documented in `docs/architecture/counterfactual_comparison.md`. Verified:
+  new `backend/tests/test_counterfactual_comparison.py` (12/12: a diamond `REMOVE_NODE` creates a
+  real new bottleneck and route collapse; a chain `REMOVE_NODE` genuinely splits connectivity with
+  a real one-hop structural propagation impact and `"+"`-joined reasons; `REMOVE_EDGE` shows a
+  real nonzero cost delta with unchanged connectivity; `INCREASE_LATENCY`'s adapter produces the
+  exact `+1.0`-per-edge delta Phase 60's own test already established; an out-of-range
+  `REDUCE_BANDWIDTH` magnitude raises; `INCREASE_TRAFFIC` shows zero delta; `ADD_ROUTE` shows a
+  real new route with no propagation; the propagation axis verified both without and with real
+  candidates, the latter matching a direct `propagate_failure` call exactly; a
+  `baseline_graph_id` mismatch raises; mutation safety; a real end-to-end run) and new
+  `experiments/tests/test_counterfactual_validation.py` (6/6: non-lab-realizable reports every
+  metric `None`; a perfect-match outcome derived from a real predicted result scores 1.0
+  throughout; a deliberate mismatch degrades only the relevant metric; empty-vs-empty affected
+  nodes score perfect agreement; an unsupplied optional field is honestly skipped; a pair absent
+  from the actual outcome is excluded from the denominator); combined suite 573/573 (up from
+  555/555), no regressions; `scripts.validate_data_contracts` re-verified clean (55/55, no schema
+  changes); `scripts.check_ground_truth_boundary` re-verified clean.
+- Next: Phase 67 (generate experiment recommendations from measurable structural evidence, e.g.,
+  high-criticality node -> suggest removal experiment, with stated reasoning, FR-1.39). Not
+  started; awaiting explicit request.
