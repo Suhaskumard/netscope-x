@@ -43,13 +43,12 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 66 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 67 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Counterfactual outcomes are now compared against the baseline across all six FR-1.37 axes —
-paths, connectivity, latency, affected services, bottlenecks, and propagation — with propagation
-split into an always-real structural signal and an optional causal one so structural inference is
-never misrepresented as causal evidence, see `docs/architecture/counterfactual_comparison.md`.
-Next: Phase 67.
+The system now generates real experiment recommendations from measured structural evidence —
+articulation points suggest a removal experiment, non-articulation high-betweenness nodes suggest
+a service-degradation experiment, each with cited evidence and an honest disclaimer — see
+`docs/architecture/experiment_recommendations.md`. Next: Phase 68.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -706,6 +705,21 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   every metric `None` for a non-realizable counterfactual, per RQ7's own requirement. No new
   schema, no API route. Proven by 18 real tests. — `backend/simulation/counterfactual_comparison.py`,
   `experiments/metrics/counterfactual_validation.py`, `docs/architecture/counterfactual_comparison.md`.
+- **Experiment recommendation engine** (Phase 67, FR-1.39): new `backend/dependency/
+  experiment_recommendations.py` (`generate_experiment_recommendations`) generalizes the spec's
+  one literal example (articulation point → removal experiment) into two categories, both derived
+  purely from Phase 55's already-real criticality output — no new algorithm. Every
+  `is_articulation_point` node suggests a `NODE_FAILURE` scenario, ranked by real
+  `path_dependency_impact` severity; every non-articulation-point node whose betweenness exceeds
+  the graph's own mean (a self-relative threshold, not an arbitrary constant) suggests a
+  `SERVICE_DEGRADATION` scenario instead of `LATENCY_INJECTION`, since the latter's magnitude
+  would have to be fabricated with no basis. `Experiment` (`backend/app/models/experiment.py`) is
+  confirmed unsuited for a not-yet-run recommendation (every identifying field required, no
+  default) — this module returns its own plain dataclass instead. Every recommendation cites real
+  measured values and ends with an unconditional disclaimer pointing back at Phase 59 (real
+  injection) and Phase 63 (validation). No new schema, no API route. Proven by 7 real tests,
+  including a real end-to-end run over a topology discovered from synthetic packets —
+  `backend/dependency/experiment_recommendations.py`, `docs/architecture/experiment_recommendations.md`.
 
 ### What doesn't exist yet
 
@@ -715,14 +729,14 @@ analyzed under failure, a single connected pipeline ties failure injection, depe
 routing impact, and itemized service impact together, that pipeline's output is aggregated into
 resilience indicators, a prediction can be scored against a real or synthetic actual outcome, the
 counterfactual scenario language can fully express all six "what if" verbs, a counterfactual can
-execute against an isolated alternate graph that never mutates the baseline, and its outcome is now
-compared against the baseline across paths/connectivity/latency/affected services/bottlenecks/
-propagation, with a predicted-vs-actual validator for real-world comparison (Phase 57-66), but
-generating experiment recommendations from this structural evidence and the ablation/ evaluation
-matrix (Phase 67-69) has not been implemented yet. The API surface and data contracts are real and
-tested; most of the research intelligence they will eventually serve is not built yet. Nothing in
-this repository currently fabricates results — every phase's completion report documents exactly
-what was and wasn't verified by actual execution.
+execute against an isolated alternate graph that never mutates the baseline, its outcome is
+compared against the baseline across all six named axes with a predicted-vs-actual validator, and
+real experiment recommendations are now generated from measured structural evidence (Phase 57-67),
+but the full experimental matrix and the four minimum ablation studies (Phase 68-69) have not been
+implemented yet. The API surface and data contracts are real and tested; most of the research
+intelligence they will eventually serve is not built yet. Nothing in this repository currently
+fabricates results — every phase's completion report documents exactly what was and wasn't
+verified by actual execution.
 
 ## Repository layout
 
@@ -762,6 +776,7 @@ backend/dependency/
   criticality.py  Phase 55 criticality analysis (TopologyGraph -> GraphCriticalityReport: degree/betweenness/articulation points/path dependency/connectivity)
   causal_evidence.py  Phase 56 causal evidence reports (DependencyEdge/PropagationImpact -> CausalEvidenceReport), real via GET /causal/{dependency_id}
   errors.py  Phase 56 DependencyNotFoundError (404 for an unknown dependency_id)
+  experiment_recommendations.py  Phase 67 experiment recommendation engine (TopologyGraph -> List[ExperimentRecommendation]: structural-SPOF/routing-chokepoint suggestions with cited evidence), no API route yet
 backend/digital_twin/
   twin.py  Phase 57 digital twin model (NetworkSnapshot + capture -> DigitalTwin: topology, behavior, history, dependencies), no API route yet
   sync.py  Phase 58 digital twin synchronization (DigitalTwin + new NetworkSnapshot -> TwinSyncResult: rebuilt twin + structural/behavior change events), no API route yet

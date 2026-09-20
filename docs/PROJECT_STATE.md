@@ -2007,6 +2007,36 @@ None yet — no experiments have been run.
   from the actual outcome is excluded from the denominator); combined suite 573/573 (up from
   555/555), no regressions; `scripts.validate_data_contracts` re-verified clean (55/55, no schema
   changes); `scripts.check_ground_truth_boundary` re-verified clean.
-- Next: Phase 67 (generate experiment recommendations from measurable structural evidence, e.g.,
-  high-criticality node -> suggest removal experiment, with stated reasoning, FR-1.39). Not
-  started; awaiting explicit request.
+- Experiment recommendation engine (Phase 67, FR-1.39) generalizes the spec's one literal example
+  (articulation point -> removal experiment) into two well-justified categories, both derived
+  purely from Phase 55's already-real `compute_graph_criticality` output, no new algorithm. New
+  `backend/dependency/experiment_recommendations.py` (`generate_experiment_recommendations`):
+  **structural single point of failure** -- every `is_articulation_point` node, suggesting
+  `NODE_FAILURE`, ranked by real `path_dependency_impact` severity (how many nodes would actually
+  be stranded); **routing chokepoint** -- every non-articulation-point node whose
+  `betweenness_centrality` exceeds the graph's own mean (a self-relative threshold, not an
+  arbitrary constant), suggesting `SERVICE_DEGRADATION` rather than `LATENCY_INJECTION` since the
+  latter's `latency_ms` would have to be fabricated with no basis. `Experiment`
+  (`backend/app/models/experiment.py`) is confirmed unsuited for a not-yet-run recommendation
+  (`random_seed`/`code_version`/etc. all required, no default) -- this module returns its own
+  plain `ExperimentRecommendation` dataclass instead. Every recommendation cites real measured
+  values in its reasoning and ends with an unconditional disclaimer pointing back at Phase 59
+  (real injection) and Phase 63 (validation) -- a recommendation is structural evidence, not a
+  validated prediction. Lives in `backend/dependency/`, not `backend/simulation/`, since its only
+  real input/output ties are to Phase 55/`FailureScenario`, not any simulation pipeline result
+  type. No new schema, no API route -- `GET`/`POST /experiments` stays untouched. Documented in
+  `docs/architecture/experiment_recommendations.md`. Verified: new `backend/tests/
+  test_experiment_recommendations.py` (7/7: a triangle-chain topology's two real articulation
+  points recommended and correctly severity-ranked; a K_{2,3} bipartite topology's two
+  non-articulation-point hubs recommended as chokepoints with zero structural-SPOF
+  recommendations; a symmetric 4-cycle produces zero recommendations of either category;
+  recommendations are fully deterministic; the exact real `path_dependency_impact` value appears
+  verbatim in reasoning; every recommendation ends with the disclaimer; a real end-to-end run over
+  a topology discovered from synthetic packets); combined suite 580/580 (up from 573/573), no
+  regressions; `scripts.validate_data_contracts` re-verified clean (55/55, no schema changes);
+  `scripts.check_ground_truth_boundary` re-verified clean.
+- Next: Phase 68 (full experimental matrix -- topology complexity x observation-completeness
+  sweep -- with reproducible, quantitatively evaluated results across topology reconstruction,
+  role inference, anomaly detection, temporal analysis, causal analysis, PathForge,
+  counterfactuals, and the four minimum ablation studies, FR-1.40). Not started; awaiting explicit
+  request.
