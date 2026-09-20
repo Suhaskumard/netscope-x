@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
+from backend.app.api.schemas import CAPTURE_ID_PATTERN
 from backend.app.core.config import get_settings
 from backend.app.models import TopologyGraph
 from backend.nettrace.capture.errors import CaptureNotFoundError
@@ -35,7 +36,9 @@ router = APIRouter(prefix="/topology", tags=["topology"])
 
 @router.get("", response_model=TopologyGraph)
 def get_topology(
-    capture_id: str = Query(..., description="Capture session to reconstruct topology for."),
+    capture_id: str = Query(
+        ..., description="Capture session to reconstruct topology for.", pattern=CAPTURE_ID_PATTERN
+    ),
 ) -> TopologyGraph:
     settings = get_settings()
     if not pcap_path(settings.artifact_root, capture_id).is_file():

@@ -14,6 +14,15 @@ from pydantic import BaseModel, Field
 
 T = TypeVar("T")
 
+# SEC-4 (spec §15/§16): capture_id is used verbatim as a filesystem path
+# segment (experiments/artifacts/paths.py: `root / "captures" / capture_id`).
+# Restricting it to this charset before it ever reaches path-building code
+# rules out `..`/`/`/`\` path traversal, while still accepting the uuid4
+# hex format `POST /capture` actually generates. FastAPI enforces this via
+# Query(pattern=...), so a violation surfaces as the existing 422
+# validation_error envelope -- no new error type needed.
+CAPTURE_ID_PATTERN = r"^[A-Za-z0-9_-]+$"
+
 
 class ErrorResponse(BaseModel):
     """The one error shape every 4xx/5xx response in this API uses.

@@ -22,7 +22,7 @@ and the network lab).
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + pinned backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (620 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (625 tests)
 python -m scripts.validate_data_contracts     # Pydantic schema round-trip checks
 python -m scripts.check_ground_truth_boundary # static import-boundary guard (spec §4)
 ```
@@ -43,13 +43,23 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 68 of 69 complete** (Phase 21's controlled live capture remains
-implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-A real, 54-cell experimental matrix (6 topology levels × 5 observation-completeness levels, plus 4
-ablation studies per level) now runs the full pipeline against synthetic (non-Docker) captures and
-scores 6 of 7 `MetricContext`s for real, with `GET /experiments`/`GET /metrics` serving the real,
-persisted results — see `docs/architecture/experimental_matrix.md` for the scope decisions and real
-findings (including a genuine, traced null result for `causal_analysis`). Next: Phase 69.
+**Phase 69 of 69 complete — final hardening, acceptance testing, and documentation pass.** This is a
+verification/report phase, not new computation: every FR/NFR/PERF/REL/SEC/REPRO requirement in
+`docs/requirements/system_requirements.md` was checked against real code and real tests, producing
+`docs/acceptance_testing.md`. Two real gaps were found and fixed (not new features — closing gaps in
+already-scoped requirements): REL-12 (an unavailable capture interface previously crashed with a raw
+`OSError`, now a structured `InterfaceUnavailableError`) and SEC-4 (`capture_id` was accepted
+unconstrained on 5 read routes and used verbatim as a filesystem path segment — a real path-traversal
+risk, now closed with a `Query(pattern=...)` charset constraint). A cleanup pass removed 2 real unused
+imports; no `TODO`/`FIXME`/stray debug print was found in production code. The full documentation set
+the spec names now exists: `docs/ARCHITECTURE.md`, `docs/API.md`, `docs/DEVELOPMENT.md`,
+`docs/TESTING.md`, `docs/EXPERIMENTS.md`, `docs/LIMITATIONS.md`, `docs/DEPLOYMENT.md`. Two real,
+unresolved gaps this phase did **not** attempt to close (out of scope for a verification pass) are
+named plainly rather than hidden: FR-1.42 (no frontend feature UI has ever been built — the scaffold
+from Phase 06 is still all that exists) and 5 of 12 API route groups remaining unwired to their real,
+tested backing modules. See `docs/acceptance_testing.md` for the full requirement-by-requirement
+breakdown and `docs/LIMITATIONS.md` for everything this or any prior phase could not verify in this
+Docker/browser-less environment.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -751,6 +761,28 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   `experiments/{matrix_runner,observation_sampling,synthetic_traffic}.py`,
   `experiments/metrics/{causal_evaluation,temporal_evaluation}.py`,
   `docs/architecture/experimental_matrix.md`.
+- **Final hardening, acceptance testing & release** (Phase 69, the final phase): a verification/report
+  pass against every requirement in `docs/requirements/system_requirements.md` —
+  `docs/acceptance_testing.md` records real status per FR/NFR/PERF/REL/SEC/REPRO, citing the actual
+  implementing module and test. Found and fixed two real, narrowly-scoped gaps (not new features):
+  REL-12 (`simulator/capture/live.py`'s `sniff()` call let a raw `OSError` crash the caller when an
+  authorized interface couldn't actually be opened; now wrapped in a new
+  `InterfaceUnavailableError`, `backend/nettrace/capture/errors.py`) and SEC-4 (`GET /flows`,
+  `/topology`, `/dependencies`, `/history`, `/causal/{id}` accepted `capture_id` as an unconstrained
+  string used verbatim as a filesystem path segment — a real path-traversal risk, closed with a new
+  `CAPTURE_ID_PATTERN` `Query(pattern=...)` constraint, `backend/app/api/schemas.py`). A `pyflakes`
+  cleanup pass removed 2 real unused imports (`backend/app/models/failure.py`,
+  `experiments/matrix_runner.py`); a repo-wide grep found no stray `TODO`/`FIXME`/debug `print()` in
+  production code. Assembled the full spec-named documentation set: `docs/ARCHITECTURE.md`,
+  `docs/API.md`, `docs/DEVELOPMENT.md`, `docs/TESTING.md`, `docs/EXPERIMENTS.md`,
+  `docs/LIMITATIONS.md`, `docs/DEPLOYMENT.md`. Did not attempt real-browser/Docker-lab testing (not
+  available in this environment — see `docs/LIMITATIONS.md`), did not fabricate PERF-1..7 benchmarks
+  or REL-11 large-dataset results, did not wire the 5 remaining `NotYetImplemented` API routes, and
+  did not build any part of the still-entirely-unbuilt FR-1.42 frontend — each named as a real,
+  open gap rather than silently dropped. Proven by 625/625 tests passing (5 new this phase) and both
+  `scripts.validate_data_contracts`/`scripts.check_ground_truth_boundary` re-verified clean —
+  `docs/acceptance_testing.md`, `docs/LIMITATIONS.md`, `docs/{ARCHITECTURE,API,DEVELOPMENT,TESTING,
+  EXPERIMENTS,DEPLOYMENT}.md`.
 
 ### What doesn't exist yet
 
@@ -762,13 +794,16 @@ resilience indicators, a prediction can be scored against a real or synthetic ac
 counterfactual scenario language can fully express all six "what if" verbs, a counterfactual can
 execute against an isolated alternate graph that never mutates the baseline, its outcome is
 compared against the baseline across all six named axes with a predicted-vs-actual validator, real
-experiment recommendations are generated from measured structural evidence, and a real 54-cell
-experimental matrix with 4 ablation studies now runs across 6 of 7 evaluation contexts (Phase
-57-68), but anomaly-injection-based evaluation, PERF-1..8 performance benchmarking, provisional
-constant recalibration, and final acceptance testing (Phase 69) have not been implemented yet. The
-API surface and data contracts are real and tested; most of the research intelligence they will
-eventually serve is not built yet. Nothing in this repository currently fabricates results — every
-phase's completion report documents exactly what was and wasn't verified by actual execution.
+experiment recommendations are generated from measured structural evidence, a real 54-cell
+experimental matrix with 4 ablation studies runs across 6 of 7 evaluation contexts (Phase 57-68), and
+every requirement has now been verified or honestly reported as not (Phase 69) — but the frontend
+(FR-1.42, all 9 required screens) has never been built beyond its Phase 06 placeholder scaffold, 5 of
+12 API route groups remain unwired to real, already-tested backing modules
+(`GET /anomalies`/`/behaviors/{node_id}`, `POST /simulation`/`/counterfactual`/`/experiments`),
+PERF-1..8 performance benchmarking and provisional-constant recalibration have never been run, and
+REL-11 (large-dataset degradation) and real Docker-lab/browser testing remain unverified in every
+session to date. Nothing in this repository currently fabricates results — every phase's completion
+report documents exactly what was and wasn't verified by actual execution.
 
 ## Repository layout
 
@@ -835,8 +870,11 @@ simulator/
 docs/
   research/       Phase 01-02 problem definition & research questions
   requirements/   Phase 03 system requirements
-  architecture/   Phase 04-05, 09-40 design docs
+  architecture/   Phase 04-05, 09-68 per-module design docs
   development/    Phase 06 environment notes
+  acceptance_testing.md   Phase 69 requirement-by-requirement verification report
+  ARCHITECTURE.md, API.md, DEVELOPMENT.md, TESTING.md, EXPERIMENTS.md,
+  LIMITATIONS.md, DEPLOYMENT.md   Phase 69 system-level documentation set
   PROJECT_STATE.md   authoritative, continuously-updated project state
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
               observatory validation scripts

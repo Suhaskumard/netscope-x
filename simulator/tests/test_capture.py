@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.nettrace.capture.errors import UnauthorizedInterfaceError
+from backend.nettrace.capture.errors import InterfaceUnavailableError, UnauthorizedInterfaceError
 from simulator.capture.live import capture
 
 
@@ -32,3 +32,22 @@ def test_capture_rejects_unauthorized_interface_without_sniffing(tmp_path: Path)
 def test_capture_rejects_arbitrary_unauthorized_interface_name(tmp_path: Path) -> None:
     with pytest.raises(UnauthorizedInterfaceError):
         capture("not-a-real-interface", duration_seconds=0.1, out_path=tmp_path / "unreached.pcap")
+
+
+def test_capture_raises_structured_error_when_authorized_interface_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """REL-12: an authorized interface that the OS cannot open (e.g. does not
+    exist inside the container, or was brought down) must fail with a
+    structured InterfaceUnavailableError, not propagate a raw OSError/crash.
+    """
+
+    def _raise_os_error(**_kwargs: object) -> None:
+        raise OSError("No such device")
+
+    monkeypatch.setattr("scapy.sendrecv.sniff", _raise_os_error)
+
+    out_path = tmp_path / "unreached.pcap"
+    with pytest.raises(InterfaceUnavailableError):
+        capture("eth0", duration_seconds=0.1, out_path=out_path)
+    assert not out_path.exists()

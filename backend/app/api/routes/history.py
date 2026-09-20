@@ -18,7 +18,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 
-from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
+from backend.app.api.schemas import CAPTURE_ID_PATTERN, PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
 from backend.app.models import GraphChangeEvent
 from backend.archaeology.timeline import build_topology_event_timeline
@@ -28,7 +28,9 @@ router = APIRouter(prefix="/history", tags=["history"])
 
 @router.get("", response_model=PaginatedResponse[GraphChangeEvent])
 def query_history(
-    capture_id: str = Query(..., description="Capture session to investigate."),
+    capture_id: str = Query(
+        ..., description="Capture session to investigate.", pattern=CAPTURE_ID_PATTERN
+    ),
     start: datetime = Query(..., description="Start of the investigation window."),
     end: datetime = Query(..., description="End of the investigation window."),
     page: PageParams = Depends(get_page_params),

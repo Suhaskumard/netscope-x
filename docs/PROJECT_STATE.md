@@ -5,36 +5,30 @@ defined in the master spec (`NETSCOPE (1).pdf`). Update it after every phase.
 
 ## Current phase
 
-Phase 56 (Causal Evidence Report) complete, tested. New `backend/dependency/causal_evidence.py`
-(`build_dependency_evidence_report`, `build_propagation_evidence_report`) is the first real use of
-`CausalEvidenceReport` (Phase 04). Two relationship kinds per FR-1.30's own "dependency OR
-propagation" wording: dependency reports word `relationship` differently depending on whether the
-edge was promoted to a `CausalCandidate` (Phase 53) -- "causal candidate" vs. weaker "mere
-communicate" language, never overclaiming beyond what Phase 53 established; `confidence` reuses
-`strength` directly; `counter_evidence` carries only genuine, per-edge signals (zero/low temporal
-precedence, low directionality, non-candidate status) and can be legitimately empty for a strong
-candidate (verified directly, not just implied); `limitations` always carries two structural
-caveats (the health-check-poller confounding risk already named in `algorithm_selection.md` section
-6, and the provisional/uncalibrated-thresholds note) regardless of the specific edge's numbers.
-Propagation reports look up the specific `CausalCandidate` that caused a `SECONDARY`/`TERTIARY`
-impact (raising `ValueError` for a `PRIMARY` impact -- the given input, not an inferred
-relationship -- or if no matching candidate is found), reuse the impact's own real evidence and the
-candidate's real strength, always have empty `counter_evidence` (a promoted candidate already
-cleared both of Phase 53's gates) and one additional propagation-specific limitation. A real scope
-difference from Phases 53-55: `GET /causal/{dependency_id}` is wired for real this phase (its own
-docstring already named Phase 56 as its backing implementation, the same pattern Phase 51 followed
-for `GET /dependencies`) -- with a deliberate, documented deviation from the bare path shown in
-that docstring: an explicit `capture_id` query parameter (matching every sibling route, rather than
-fragile-parsing `capture_id` out of `dependency_id`'s internal `f"{capture_id}:dependency:
-{index}"` string format). A new `DependencyNotFoundError` (`backend/dependency/errors.py`) maps to
-404, mirroring `GET /flows`/`GET /topology`'s single-resource-by-id convention (not `GET
-/dependencies`/`GET /history`'s empty-list-means-200 convention, which is specific to paginated
-list routes). `build_propagation_evidence_report` stays unwired -- no route exists for it in the
-fixed Phase 09 API surface. See `docs/architecture/causal_evidence_report.md` for the full design,
-the API-wiring reasoning, worked example, and verification record. Phase 21 (High-Fidelity Packet
-Capture)'s one open item still stands: controlled live capture is implemented and unit-verified but
-not yet verified against a real Docker lab (this session's environment has no Docker installation —
-see `docs/architecture/packet_capture.md` "Known limitations").
+**All 69 phases complete.** Phase 69 (Final Hardening, Acceptance Testing & Release) is done: a
+verification/report pass against every requirement in `docs/requirements/system_requirements.md`,
+producing `docs/acceptance_testing.md` (requirement-by-requirement status with citations to real
+implementing modules/tests) and the full spec-named documentation set (`docs/ARCHITECTURE.md`,
+`docs/API.md`, `docs/DEVELOPMENT.md`, `docs/TESTING.md`, `docs/EXPERIMENTS.md`,
+`docs/LIMITATIONS.md`, `docs/DEPLOYMENT.md`). Found and fixed two real, narrow gaps while verifying
+(not new features): REL-12 (`simulator/capture/live.py`'s `sniff()` call let a raw `OSError` crash
+the caller for an unavailable authorized interface; now a structured `InterfaceUnavailableError`)
+and SEC-4 (`GET /flows`/`/topology`/`/dependencies`/`/history`/`/causal/{id}` accepted `capture_id`
+unconstrained, used verbatim as a filesystem path segment — a real path-traversal risk, closed via a
+new `CAPTURE_ID_PATTERN` `Query(pattern=...)` constraint). A `pyflakes` pass removed 2 real unused
+imports; no stray `TODO`/`FIXME`/debug print found in production code. Full details, including two
+gaps this phase deliberately did *not* close (FR-1.42's entirely-unbuilt frontend, and 5 of 12 API
+routes left unwired to real backing modules) and why, are in `docs/acceptance_testing.md`'s "What
+this phase deliberately did not do" section and `docs/LIMITATIONS.md`. Full test suite: 625/625
+passing (5 new this phase); `scripts.validate_data_contracts` and `scripts.check_ground_truth_boundary`
+both re-verified clean. See the detailed Phase 69 entry at the end of "Pending work" below for the
+complete narrative, in the same style every phase's own completion note uses.
+
+*(Note on this file's own structure, found while writing the above: this "Current phase" section had
+not been updated since Phase 56 — Phases 57-68's narratives were appended instead under "## Pending
+work" below, which is where the actual continuous phase-by-phase log lives despite the heading name.
+Left as-is rather than restructured, since reorganizing this file's headings is outside Phase 69's
+verification/documentation scope and risks losing history in the process.)*
 
 ## Process note
 
@@ -2055,5 +2049,73 @@ None yet — no experiments have been run.
   finding about this phase's own synthetic-data limitation, not a Phase 50-53 defect. PERF-1..8
   benchmarking and provisional-constant recalibration are explicitly deferred (FR-1.40 asks to
   measure, not tune); documented in `docs/architecture/experimental_matrix.md`.
-- Next: Phase 69 (Acceptance Testing). Verify every FR against its acceptance criteria; a
-  verification/report pass, not new computation. Not started; awaiting explicit request.
+- **Final hardening, acceptance testing & release** (Phase 69, the final phase). Per its own scope in
+  `docs/requirements/system_requirements.md`, this is a verification/report pass against every
+  FR/NFR/PERF/REL/SEC/REPRO requirement, not new computation -- the deliverable is
+  `docs/acceptance_testing.md`, built by reading the actual implementing module and test file behind
+  each requirement, not by restating the requirement text. Result: 32/42 FRs fully verified, 8
+  verified-partial (real implementation + real tests, but a named narrower scope than the literal
+  requirement -- mostly the 5 unwired API routes below), 2 not satisfied (FR-1.41's route-wiring gap,
+  counted at the requirement level once; FR-1.42's frontend); 8/9 NFRs verified; 7/8 PERFs
+  legitimately not satisfied (FR-1.40's own Phase 68 note already deferred PERF-1..8 benchmarking);
+  10/12 RELs verified, 1 fixed this phase (REL-12), 1 not executable here (REL-11, large-dataset
+  degradation, tied to the same PERF deferral); 6/8 SECs verified, 1 fixed this phase (SEC-4), 1
+  deliberately deferred since Phase 03 (SEC-8) and 1 real unfixed gap (SEC-5, no resource limits); 4/5
+  REPROs verified. Two real code changes came out of verification, both closing a gap in an
+  already-scoped requirement rather than adding a feature: (1) REL-12 --
+  `simulator/capture/live.py`'s `sniff()` call let a raw `OSError` propagate as a crash when an
+  authorized interface couldn't actually be opened (interface missing/down); now wrapped in a new
+  `InterfaceUnavailableError` (`backend/nettrace/capture/errors.py`), with a new
+  `simulator/tests/test_capture.py` case using `monkeypatch` on `scapy.sendrecv.sniff` to simulate the
+  OS failure without touching a real socket. (2) SEC-4 -- `GET /flows`, `/topology`, `/dependencies`,
+  `/history`, and `/causal/{dependency_id}` all accepted `capture_id` as an unconstrained `Query(str)`
+  that `experiments/artifacts/paths.py` then uses verbatim as a filesystem path segment
+  (`root / "captures" / capture_id`) -- a real path-traversal vector (`capture_id=../../../../etc/passwd`).
+  Checked `dependency_id` (the other user-supplied identifier, on `GET /causal/{dependency_id}`) too
+  and found it safe -- only ever used for an in-memory equality match, never path construction. Fixed
+  by adding `CAPTURE_ID_PATTERN = r"^[A-Za-z0-9_-]+$"` (`backend/app/api/schemas.py`) as a FastAPI
+  `Query(pattern=...)` constraint on all five routes -- a violation now surfaces as the existing 422
+  `validation_error` envelope, no new error type needed since real `capture_id` values are always
+  `uuid4` hex. New parametrized test:
+  `backend/tests/test_api.py::test_path_traversal_capture_id_rejected_before_touching_disk` across all
+  four query-param routes. A `python -m pyflakes backend/ experiments/ simulator/` cleanup pass (no
+  linter was configured in this repo before now, and none is added -- just run ad hoc) found and fixed
+  2 real unused imports in production code: `datetime` in `backend/app/models/failure.py`, and `uuid`
+  plus the unused `redundant` topology-generator import in `experiments/matrix_runner.py` (its
+  `TOPOLOGY_LEVELS` dict only ever used `simple_chain`/`star`/`multi_tier`/`multi_path`/
+  `dynamic_service_network`, confirmed by reading the full dict, not just grepping the import). A
+  repo-wide grep for `TODO`/`FIXME`/`XXX` and stray non-CLI `print(` calls in `backend/`/
+  `experiments/`/`simulator/` production code found nothing to clean up. Also verified: no
+  `shell=True` or `os.system` anywhere in the codebase (SEC-2, the only production `subprocess` use is
+  `simulator/ground_truth/cli.py`'s list-argument `docker ps`/`docker inspect` calls); no committed
+  secrets (SEC-7, `secret_key`'s insecure-placeholder default is a documented, production-guarded
+  constant, not a real secret); FR-1.36's `CounterfactualAction` enum genuinely has all 6 spec-named
+  verbs (`REMOVE_NODE`/`REMOVE_EDGE`/`INCREASE_LATENCY`/`REDUCE_BANDWIDTH`/`INCREASE_TRAFFIC`/
+  `ADD_ROUTE`). Two real gaps found and deliberately *not* closed this phase, both named plainly in
+  `docs/acceptance_testing.md`/`docs/LIMITATIONS.md` rather than hidden: (1) `frontend/` remains the
+  Phase 06 placeholder scaffold through all 69 phases -- FR-1.42's 9 required screens were never
+  built, by no phase's explicit decision, just never picked up; wiring a real UI was correctly judged
+  out of scope for a hardening/verification phase. (2) 5 of 12 API route groups
+  (`GET /anomalies`/`/behaviors/{node_id}`, `POST /simulation`/`/counterfactual`/`/experiments`) still
+  raise `NotYetImplemented` even though their backing computation (anomaly detection, role
+  classification, failure injection, counterfactual execution) is real and independently unit-tested
+  -- wiring five routes together is a meaningful chunk of integration/design work in its own right
+  (the same amount of judgment every prior single-route-wiring phase, e.g. Phase 51/56, applied one
+  route at a time), not a verification-pass change. Neither PERF-1..7 benchmark numbers nor REL-11
+  large-dataset results were fabricated to fill those gaps; both remain honestly unmeasured. Also
+  produced the full spec-named documentation set this phase's own §"PHASE 69" section requires:
+  `docs/ARCHITECTURE.md` (system-level pipeline overview linking every per-module
+  `docs/architecture/*.md`), `docs/API.md` (full endpoint reference incl. the 5 unwired routes and the
+  full error-code table), `docs/DEVELOPMENT.md` (assembled from `docs/development/environment.md` as
+  that file's own Phase 06 note anticipated), `docs/TESTING.md`, `docs/EXPERIMENTS.md` (running
+  Phase 68's matrix), `docs/LIMITATIONS.md` (every limitation from Phases 21+ consolidated in one
+  place, cross-referenced), and `docs/DEPLOYMENT.md`. Real Docker-lab/Chrome-browser testing (spec
+  §18, part of this phase's nominal scope) could not be executed in this session (no Docker, no
+  Chrome/Playwright available) -- reported as a limitation in both `docs/acceptance_testing.md` and
+  `docs/LIMITATIONS.md`, consistent with the same honest treatment this exact constraint has received
+  since Phase 21, never faked. Verified: full suite `pytest backend/tests experiments/tests
+  simulator/tests` -- 625/625 passed (up from 620/620; +1 `simulator/tests/test_capture.py` REL-12
+  case, +4 `backend/tests/test_api.py` parametrized SEC-4 cases), no regressions;
+  `scripts.validate_data_contracts` re-verified clean (55/55, no schema changes);
+  `scripts.check_ground_truth_boundary` re-verified clean. This closes the master spec's 69-phase
+  execution plan.

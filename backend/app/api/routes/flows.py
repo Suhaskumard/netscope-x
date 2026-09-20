@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
+from backend.app.api.schemas import CAPTURE_ID_PATTERN, PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
 from backend.app.models import Flow
 from backend.nettrace.capture.errors import CaptureNotFoundError
@@ -24,7 +24,9 @@ router = APIRouter(prefix="/flows", tags=["flows"])
 
 @router.get("", response_model=PaginatedResponse[Flow])
 def list_flows(
-    capture_id: str = Query(..., description="Capture session to list flows for."),
+    capture_id: str = Query(
+        ..., description="Capture session to list flows for.", pattern=CAPTURE_ID_PATTERN
+    ),
     page: PageParams = Depends(get_page_params),
 ) -> PaginatedResponse[Flow]:
     settings = get_settings()

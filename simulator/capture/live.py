@@ -22,7 +22,7 @@ import argparse
 from pathlib import Path
 
 from backend.nettrace.capture.authorized_interfaces import is_authorized_interface
-from backend.nettrace.capture.errors import UnauthorizedInterfaceError
+from backend.nettrace.capture.errors import InterfaceUnavailableError, UnauthorizedInterfaceError
 
 
 def capture(interface: str, duration_seconds: float, out_path: Path, packet_count: int = 0) -> int:
@@ -31,7 +31,8 @@ def capture(interface: str, duration_seconds: float, out_path: Path, packet_coun
     as a real pcap. Returns the number of packets captured.
 
     Raises UnauthorizedInterfaceError before touching the network if
-    `interface` is not in the authorized allowlist.
+    `interface` is not in the authorized allowlist, or InterfaceUnavailableError
+    if the interface is authorized but the OS cannot open it (spec REL-12).
     """
     if not is_authorized_interface(interface):
         raise UnauthorizedInterfaceError(
@@ -41,7 +42,12 @@ def capture(interface: str, duration_seconds: float, out_path: Path, packet_coun
     from scapy.all import wrpcap
     from scapy.sendrecv import sniff
 
-    packets = sniff(iface=interface, timeout=duration_seconds, count=packet_count or 0)
+    try:
+        packets = sniff(iface=interface, timeout=duration_seconds, count=packet_count or 0)
+    except OSError as exc:
+        raise InterfaceUnavailableError(
+            f"authorized interface {interface!r} could not be opened for capture: {exc}"
+        ) from exc
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wrpcap(str(out_path), packets)
     return len(packets)

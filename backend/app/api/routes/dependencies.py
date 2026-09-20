@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
+from backend.app.api.schemas import CAPTURE_ID_PATTERN, PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
 from backend.app.models import DependencyEdge
 from backend.dependency.strength import estimate_dependency_strength
@@ -27,7 +27,9 @@ router = APIRouter(prefix="/dependencies", tags=["dependencies"])
 
 @router.get("", response_model=PaginatedResponse[DependencyEdge])
 def list_dependencies(
-    capture_id: str = Query(..., description="Capture session to list dependencies for."),
+    capture_id: str = Query(
+        ..., description="Capture session to list dependencies for.", pattern=CAPTURE_ID_PATTERN
+    ),
     page: PageParams = Depends(get_page_params),
 ) -> PaginatedResponse[DependencyEdge]:
     settings = get_settings()

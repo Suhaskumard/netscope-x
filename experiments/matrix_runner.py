@@ -93,7 +93,6 @@ preserved losslessly in `Experiment.results`, never discarded.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -140,7 +139,6 @@ from simulator.scenarios.topologies import (
     dynamic_service_network,
     multi_path,
     multi_tier,
-    redundant,
     simple_chain,
     star,
 )

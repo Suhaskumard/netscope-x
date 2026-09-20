@@ -138,6 +138,19 @@ def test_missing_required_query_param_returns_consistent_422_envelope() -> None:
     assert response.json()["error"] == "validation_error"
 
 
+@pytest.mark.parametrize(
+    "path",
+    ["/api/v1/flows", "/api/v1/topology", "/api/v1/dependencies", "/api/v1/history"],
+)
+def test_path_traversal_capture_id_rejected_before_touching_disk(path: str) -> None:
+    """SEC-4: capture_id is used verbatim as a filesystem path segment
+    (experiments/artifacts/paths.py). A `..`-laden value must be rejected by
+    request validation (422), never reach path-building code."""
+    response = client.get(path, params={"capture_id": "../../../../etc/passwd"})
+    _assert_error_envelope(response, 422)
+    assert response.json()["error"] == "validation_error"
+
+
 def test_openapi_schema_documents_all_required_paths() -> None:
     schema = client.get("/openapi.json").json()
     required = {

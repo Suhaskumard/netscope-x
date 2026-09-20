@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
+from backend.app.api.schemas import CAPTURE_ID_PATTERN
 from backend.app.core.config import get_settings
 from backend.app.models import CausalEvidenceReport
 from backend.dependency.causal_candidates import generate_causal_candidates
@@ -36,7 +37,9 @@ router = APIRouter(prefix="/causal", tags=["causal"])
 @router.get("/{dependency_id}", response_model=CausalEvidenceReport)
 def get_causal_evidence(
     dependency_id: str,
-    capture_id: str = Query(..., description="Capture session dependency_id belongs to."),
+    capture_id: str = Query(
+        ..., description="Capture session dependency_id belongs to.", pattern=CAPTURE_ID_PATTERN
+    ),
 ) -> CausalEvidenceReport:
     settings = get_settings()
     dependencies = estimate_dependency_strength(

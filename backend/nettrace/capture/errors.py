@@ -27,3 +27,11 @@ class CaptureNotFoundError(Exception):
     """Raised when a capture_id has no ingested raw.pcap yet -- e.g. GET
     /flows (spec Phase 23) for a capture_id nothing was ever POSTed to
     /capture for."""
+
+
+class InterfaceUnavailableError(Exception):
+    """Raised when an authorized interface passes the allowlist check (spec
+    §5) but the OS itself cannot open it for capture -- e.g. the interface
+    does not exist inside the lab container, or was brought down mid-capture
+    (spec §15 REL-12: "Unavailable network interfaces during a live-capture
+    request" must fail gracefully, not crash with a raw OSError)."""
