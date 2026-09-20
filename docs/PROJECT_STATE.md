@@ -1798,6 +1798,17 @@ None yet — no experiments have been run.
   or a node (all incident edges); raises `ValueError` if neither target is given, since the schema
   itself doesn't enforce one for these two types. No API route yet -- `POST /simulation` stays
   scoped through Phase 61; documented in `docs/architecture/failure_injection.md`.
-- Next: Phase 60 (Dynamic Path Engine, FR-1.33). Compute shortest paths, alternate paths, path
-  costs, route changes, and disconnected components on the (possibly failure-modified) graph. Not
-  started; awaiting explicit request.
+- Dynamic path engine (Phase 60) implements the algorithms already selected at Phase 05 --
+  Dijkstra/Yen's/BFS via NetworkX, no reimplementation -- with edge cost a genuinely probabilistic
+  `-log(confidence)`, extended by `-log(1 - ratio)` for `PACKET_LOSS`/`BANDWIDTH_REDUCTION` and a
+  scaled `latency_ms` for `LATENCY_INJECTION` on Phase 59's `degraded_edge_ids`;
+  `SERVICE_DEGRADATION` adds no cost since `FailureScenario` carries no quantitative field for it.
+  A missing source/target node returns `None` rather than raising -- deliberately different from
+  Phase 59's fail-fast target validation, since the most important real case here is a route query
+  for a node a `NODE_FAILURE` just removed. "Route changes" is interpreted (not literal spec text)
+  as comparing a baseline graph's shortest path against a current/failure-modified graph's for the
+  same pair. No pipeline composition with Phase 54's `propagate_failure`, no resilience indicators,
+  no API route; documented in `docs/architecture/dynamic_path_engine.md`.
+- Next: Phase 61 (Failure Propagation Simulator, FR-1.34). Simulate
+  failure -> dependency propagation -> routing impact -> service impact as a connected pipeline,
+  not isolated stages. Not started; awaiting explicit request.

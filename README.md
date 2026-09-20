@@ -17,12 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 59 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 60 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`apply_failure_scenario` now applies any of the six `FailureScenario` types (node/edge failure,
-latency injection, packet loss, bandwidth reduction, service degradation) to a `TopologyGraph`,
-producing an isolated, honestly-scoped result — see `docs/architecture/failure_injection.md`. Next:
-Phase 60.
+The dynamic path engine now computes shortest paths, bounded alternate paths (Yen's algorithm),
+connectivity/disconnected components, and route-change comparisons over any (possibly
+failure-modified) `TopologyGraph`, with edge cost honestly derived from confidence and Phase 59's
+failure-injection outputs — see `docs/architecture/dynamic_path_engine.md`. Next: Phase 61.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -559,16 +559,32 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   route yet — `POST /simulation` stays scoped through Phase 61. Proven by 11 real tests, including a
   real end-to-end run over a topology discovered from synthetic packets —
   `backend/simulation/failure_injection.py`, `docs/architecture/failure_injection.md`.
+- **Dynamic path engine** (Phase 60): `compute_shortest_path`/`compute_alternate_paths`/
+  `compute_connectivity`/`compute_route_change` (new `backend/simulation/path_engine.py`) implement
+  the algorithms already selected at Phase 05 — Dijkstra (via `nx.shortest_path`), Yen's algorithm
+  bounded K (via `nx.shortest_simple_paths`), BFS/union-find (via `nx.connected_components`). Edge
+  cost is a genuinely probabilistic `-log(confidence)`, with `PACKET_LOSS`/`BANDWIDTH_REDUCTION`
+  adding `-log(1 - ratio)` and `LATENCY_INJECTION` adding a scaled `latency_ms` for edges Phase 59
+  marked `degraded_edge_ids` — `SERVICE_DEGRADATION` adds no cost (no quantitative field exists for
+  it, an honest limitation, not invented). A missing source/target node returns `None` rather than
+  raising — the important real case is a route query for a node a `NODE_FAILURE` just removed.
+  "Route changes" (undefined by the spec beyond its own phrase) is interpreted as comparing a
+  baseline graph's shortest path against a current/failure-modified graph's for the same pair. No
+  pipeline composition, no resilience indicators, no API route — all explicitly later phases' jobs.
+  Proven by 15 real tests, including a real end-to-end run confirming an `EDGE_FAILURE` on a
+  topology's only connecting edge makes it correctly unreachable —
+  `backend/simulation/path_engine.py`, `docs/architecture/dynamic_path_engine.md`.
 
 ### What doesn't exist yet
 
-The digital twin *model* now exists, stays synchronized with new observations, and can have
-controlled failures injected into an isolated copy of its topology (Phase 57-59), but the dynamic
-path engine (Phase 60) and the simulation/counterfactual engines (Phase 61-69) have not been
-implemented yet. The API surface and data contracts are real and tested; most of the research
-intelligence they will eventually serve is not built yet. Nothing in this repository currently
-fabricates results — every phase's completion report documents exactly what was and wasn't verified
-by actual execution.
+The digital twin *model* now exists, stays synchronized with new observations, can have controlled
+failures injected into an isolated copy of its topology, and that topology's paths/connectivity can
+be analyzed under failure (Phase 57-60), but the connected
+failure→propagation→routing→service-impact pipeline (Phase 61) and the resilience/counterfactual
+engines (Phase 62-69) have not been implemented yet. The API surface and data contracts are real and
+tested; most of the research intelligence they will eventually serve is not built yet. Nothing in
+this repository currently fabricates results — every phase's completion report documents exactly
+what was and wasn't verified by actual execution.
 
 ## Repository layout
 
@@ -613,6 +629,7 @@ backend/digital_twin/
   sync.py  Phase 58 digital twin synchronization (DigitalTwin + new NetworkSnapshot -> TwinSyncResult: rebuilt twin + structural/behavior change events), no API route yet
 backend/simulation/
   failure_injection.py  Phase 59 controlled failure injection (TopologyGraph + FailureScenario -> FailureInjectionResult: isolated graph copy + removed/degraded edge ids), no API route yet
+  path_engine.py  Phase 60 dynamic path engine (TopologyGraph [+ FailureInjectionResult] -> PathResult/ConnectivityResult/RouteChange via Dijkstra/Yen's/BFS), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
