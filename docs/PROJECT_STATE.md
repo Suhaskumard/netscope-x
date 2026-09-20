@@ -1779,6 +1779,15 @@ None yet — no experiments have been run.
   `SimulationRun.twin_snapshot_id` (Phase 04). No new schema, no API route -- nothing in Phase 09's
   fixed endpoint surface names a twin resource yet; documented in
   `docs/architecture/digital_twin_model.md`.
-- Next: Phase 58 (Digital Twin Synchronization, FR-1.31 second half). Keep the digital twin
-  synchronized with new observations, including additions, removals, behavior changes, and
-  confidence changes. Not started; awaiting explicit request.
+- Digital twin synchronization (Phase 58) introduces no new diff logic -- `sync_digital_twin`
+  reuses Phase 45's `diff_snapshots` for additions/removals/confidence changes and Phase 46's
+  `track_node_behavioral_evolution` (called once per `(node_id, window)`, its own required
+  grouping) for behavior changes, then rebuilds the twin fresh via Phase 57's own
+  `build_digital_twin` rather than mutating it in place. A fingerprint's `(node_id, window)` not
+  resupplied this round is carried forward unchanged into the rebuilt twin; a newly observed node
+  with no prior fingerprint produces no behavior-change event (nothing to diff against yet) but is
+  still included. No new schema, no API route; documented in
+  `docs/architecture/digital_twin_synchronization.md`.
+- Next: Phase 59 (Controlled Failure Injection, FR-1.32). Support node failure, edge failure,
+  latency, packet loss, bandwidth reduction, and service degradation injection. Not started;
+  awaiting explicit request.

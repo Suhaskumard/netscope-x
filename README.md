@@ -17,11 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 57 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 58 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`build_digital_twin` now assembles a `DigitalTwin` combining topology, behavior, history, and
-dependencies from already-real machinery, anchored at a given `NetworkSnapshot` — see
-`docs/architecture/digital_twin_model.md`. Next: Phase 58.
+`sync_digital_twin` now keeps a `DigitalTwin` synchronized with new observations — real
+additions/removals/confidence changes (Phase 45's `diff_snapshots`) and behavior changes (Phase
+46's `track_node_behavioral_evolution`), alongside a freshly rebuilt twin — see
+`docs/architecture/digital_twin_synchronization.md`. Next: Phase 59.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -534,11 +535,23 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   12-endpoint surface names a twin resource yet. Proven by 9 real tests, including a real
   end-to-end run confirming every twin dependency's endpoints are genuine topology node ids —
   `backend/digital_twin/twin.py`, `docs/architecture/digital_twin_model.md`.
+- **Digital twin synchronization** (Phase 58): `sync_digital_twin` (new
+  `backend/digital_twin/sync.py`) advances a `DigitalTwin` to a new `NetworkSnapshot`, again an
+  assembly phase reusing already-real machinery rather than new diff logic — Phase 45's
+  `diff_snapshots` for additions/removals/confidence changes, and Phase 46's
+  `track_node_behavioral_evolution` (called once per `(node_id, window)`) for behavior changes. A
+  fingerprint not resupplied this round is carried forward unchanged into the rebuilt twin rather
+  than dropped; one that is resupplied for a node with no prior fingerprint produces no
+  behavior-change event (nothing to diff against yet) but is still included. Rebuilds the twin
+  fresh via Phase 57's own `build_digital_twin` rather than mutating the old one. No new schema, no
+  API route. Proven by 6 real tests, including a real end-to-end run confirming `sync_digital_twin`'s
+  outputs exactly match `diff_snapshots`/`track_node_behavioral_evolution` called standalone on the
+  same inputs — `backend/digital_twin/sync.py`, `docs/architecture/digital_twin_synchronization.md`.
 
 ### What doesn't exist yet
 
-The digital twin *model* now exists (Phase 57), but synchronization from new observations (Phase
-58), controlled failure injection (Phase 59), the dynamic path engine (Phase 60), and the
+The digital twin *model* now exists and stays synchronized with new observations (Phase 57-58), but
+controlled failure injection (Phase 59), the dynamic path engine (Phase 60), and the
 simulation/counterfactual engines (Phase 61-69) have not been implemented yet. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
@@ -584,6 +597,7 @@ backend/dependency/
   errors.py  Phase 56 DependencyNotFoundError (404 for an unknown dependency_id)
 backend/digital_twin/
   twin.py  Phase 57 digital twin model (NetworkSnapshot + capture -> DigitalTwin: topology, behavior, history, dependencies), no API route yet
+  sync.py  Phase 58 digital twin synchronization (DigitalTwin + new NetworkSnapshot -> TwinSyncResult: rebuilt twin + structural/behavior change events), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)

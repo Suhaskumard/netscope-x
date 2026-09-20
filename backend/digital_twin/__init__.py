@@ -6,8 +6,11 @@ This is the first code in a new spec section. Phase 57 (`twin.py`) builds
 the static assembly, reusing every already-real artifact from earlier
 phases (Phase 32's TopologyGraph, Phase 35's BehavioralFingerprint, Phase
 44/47's NetworkSnapshot/GraphChangeEvent, Phase 51-53's DependencyEdge) --
-no new inference. Synchronization from new observations (Phase 58),
-failure injection (Phase 59), the dynamic path engine (Phase 60), and
+no new inference. Phase 58 (`sync.py`) keeps a twin synchronized with new
+observations, reusing Phase 45's `diff_snapshots` (additions, removals,
+confidence changes) and Phase 46's `track_node_behavioral_evolution`
+(behavior changes) rather than inventing new diff logic. Failure
+injection (Phase 59), the dynamic path engine (Phase 60), and
 counterfactuals (Phase 64-66) are later phases' additions here.
 
 Like every other pipeline module, imports shared schemas from
