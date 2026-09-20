@@ -1833,6 +1833,43 @@ None yet — no experiments have been run.
   combined suite 517/517 (up from 508/508), no regressions; `scripts.validate_data_contracts`
   re-verified clean (38/38, no schema changes); `scripts.check_ground_truth_boundary` re-verified
   clean.
-- Next: Phase 62 (Resilience & Vulnerability Indicators, FR-1.35). Compute resilience indicators:
-  connectivity, reachable-node ratio, affected services, path degradation, bottleneck emergence,
-  alternative-path availability. Not started; awaiting explicit request.
+- Resilience indicators (Phase 62) compose no new logic -- `compute_resilience_indicators(graph,
+  result)` aggregates a Phase 61 `FailurePipelineResult` (plus the original pre-failure graph,
+  needed only for Phase 55's `compute_graph_criticality` pre/post diff) into the already-existing
+  `ResilienceIndicators` schema (reserved for this phase since Phase 04). `connectivity_ratio` is
+  the post-failure largest component's size relative to the pre-failure largest component's own
+  size (self-relative, so it measures what this failure did, not pre-existing fragmentation);
+  `reachable_node_ratio` is a deliberately different axis -- the fraction of every originally
+  present node that ends up in *any* post-failure component of size >= 2, not just the largest --
+  and the two ratios are proven to diverge on a bowtie/bridge-node fixture rather than merely
+  asserted distinct. `affected_service_count` is `len(result.service_impacts)` directly.
+  `path_degradation_score` sums `result.route_changes`' real cost deltas, with a route that fully
+  collapsed (`current_path is None`) contributing a fixed, documented
+  `_UNREACHABLE_PATH_PENALTY` rather than a silent `0` or an unserializable `float('inf')`.
+  `bottleneck_node_ids` is the *diff* of Phase 55 articulation points (pre-failure graph vs.
+  post-failure graph), read literally against the spec's own word "emergence" -- a pre-existing
+  structural single point of failure is not something this failure caused, so it's excluded.
+  `alternative_path_available` reuses Phase 61's own bounded `route_changes` pair set and checks
+  whether any still-reachable pair has a genuine second route via Phase 60's
+  `compute_alternate_paths` (k=2, >= 2 paths returned) -- a distinct signal from mere
+  reachability, honestly `False` (not fabricated `True`) when `route_changes` is empty. `POST
+  /simulation` stays untouched, unchanged from Phase 61's own decision. No new schema, no API
+  route; documented in `docs/architecture/resilience_indicators.md`. Verified: new
+  `backend/tests/test_resilience_indicators.py` (15/15: full-metrics sanity on a diamond node
+  failure; reduced connectivity on a chain node failure; the bowtie fixture proving
+  `connectivity_ratio` (0.4) and `reachable_node_ratio` (0.8) genuinely diverge;
+  `affected_service_count` matches `len(service_impacts)` directly; a fully-unreachable route
+  contributes the real penalty constant, not zero; still-reachable degraded routes sum their real
+  positive cost deltas, cross-checked independently via `compute_route_change`; a route with no
+  baseline path contributes `0.0`; a triangle-plus-chain edge failure shows a newly emergent
+  articulation point included and a pre-existing one excluded; a redundant diamond soft failure
+  reports a genuine alternate route available while a chain soft failure with no redundancy
+  reports none; an empty `route_changes` list reports `False`, not `True`; the function never
+  mutates its graph/result inputs; the returned fields round-trip through `ResilienceIndicators`'
+  own Pydantic validation; a real end-to-end run over a topology discovered from synthetic
+  packets); combined suite 532/532 (up from 517/517), no regressions; `scripts.
+  validate_data_contracts` re-verified clean (38/38, no schema changes); `scripts.
+  check_ground_truth_boundary` re-verified clean.
+- Next: Phase 63 (Digital Twin Validation, FR-1.38). Compare digital-twin/counterfactual
+  predictions against actual controlled experiment outcomes and shall not claim correctness
+  without this measurement. Not started; awaiting explicit request.

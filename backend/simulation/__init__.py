@@ -16,7 +16,17 @@ with Phase 54's `propagate_failure`
 (`backend.dependency.failure_propagation`) into one connected
 failure -> dependency propagation -> routing impact -> service impact
 pipeline, reimplementing none of the three's own logic -- pure
-orchestration, per FR-1.34.
+orchestration, per FR-1.34. Phase 62 (`resilience_indicators.py`,
+`compute_resilience_indicators`) aggregates a Phase 61
+`FailurePipelineResult` (plus the original pre-failure `TopologyGraph`,
+needed only for Phase 55's `compute_graph_criticality`
+(`backend.dependency.criticality`) pre/post articulation-point diff) into
+the already-existing `ResilienceIndicators` schema
+(`backend.app.models.failure`, reserved for this phase since Phase 04) --
+connectivity ratio, reachable-node ratio, affected-service count,
+path-degradation score, emergent bottleneck node ids, and alternative-path
+availability, per FR-1.35. Reimplements none of Phase 55/60/61's own
+logic -- pure aggregation.
 
 Never imports `simulator.ground_truth` (spec §4;
 `scripts/check_ground_truth_boundary.py` would reject it if it did).

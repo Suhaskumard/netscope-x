@@ -43,12 +43,12 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 61 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 62 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-The failure propagation simulator now composes failure injection, dependency propagation, routing
-impact, and itemized service impact into one connected pipeline over any (possibly
-failure-modified) `TopologyGraph` — see `docs/architecture/failure_propagation_simulator.md`. Next:
-Phase 62.
+Resilience indicators now aggregate a simulated failure's connectivity ratio, reachable-node ratio,
+affected-service count, path-degradation score, emergent bottleneck nodes, and alternative-path
+availability from the Phase 61 pipeline's own output — see
+`docs/architecture/resilience_indicators.md`. Next: Phase 63.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -617,17 +617,37 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   unscoped. Proven by 9 real tests, including a real end-to-end run over a topology discovered from
   synthetic packets — `backend/simulation/failure_propagation_pipeline.py`,
   `docs/architecture/failure_propagation_simulator.md`.
+- **Resilience indicators** (Phase 62): `compute_resilience_indicators` (new
+  `backend/simulation/resilience_indicators.py`) aggregates Phase 61's `FailurePipelineResult`
+  (plus the original pre-failure graph, needed only for Phase 55's `compute_graph_criticality`
+  pre/post diff) into the already-existing `ResilienceIndicators` schema — no new algorithm, no
+  new schema. `connectivity_ratio` is the post-failure largest component's size relative to the
+  pre-failure one (self-relative, so it measures this failure's own impact, not pre-existing
+  fragmentation); `reachable_node_ratio` is a deliberately different axis — the fraction of every
+  originally present node that ends up in *any* post-failure component of size ≥ 2, not just the
+  largest — proven to diverge from `connectivity_ratio` on a bowtie/bridge-node fixture, not
+  merely asserted distinct. `path_degradation_score` sums real route cost deltas from Phase 60,
+  with a fully collapsed route contributing a fixed penalty constant rather than a silent zero.
+  `bottleneck_node_ids` is the *diff* of Phase 55 articulation points before vs. after the
+  failure — read literally against the spec's own word "emergence," excluding pre-existing
+  structural weaknesses. `alternative_path_available` reuses Phase 61's own bounded route-change
+  pairs and checks for a genuine second route via Phase 60's `compute_alternate_paths`, honestly
+  `False` when no evidence was gathered. No API route yet — `POST /simulation` stays untouched.
+  Proven by 15 real tests, including a real end-to-end run over a topology discovered from
+  synthetic packets — `backend/simulation/resilience_indicators.py`,
+  `docs/architecture/resilience_indicators.md`.
 
 ### What doesn't exist yet
 
 The digital twin *model* now exists, stays synchronized with new observations, can have controlled
 failures injected into an isolated copy of its topology, that topology's paths/connectivity can be
-analyzed under failure, and a single connected pipeline now ties failure injection, dependency
-propagation, routing impact, and itemized service impact together (Phase 57-61), but aggregate
-resilience indicators and the counterfactual scenario engine (Phase 62-69) have not been implemented
-yet. The API surface and data contracts are real and tested; most of the research intelligence they
-will eventually serve is not built yet. Nothing in this repository currently fabricates results —
-every phase's completion report documents exactly what was and wasn't verified by actual execution.
+analyzed under failure, a single connected pipeline ties failure injection, dependency propagation,
+routing impact, and itemized service impact together, and that pipeline's output is now aggregated
+into resilience indicators (Phase 57-62), but the structured counterfactual scenario engine (Phase
+63-69) has not been implemented yet. The API surface and data contracts are real and tested; most of
+the research intelligence they will eventually serve is not built yet. Nothing in this repository
+currently fabricates results — every phase's completion report documents exactly what was and
+wasn't verified by actual execution.
 
 ## Repository layout
 
@@ -674,6 +694,7 @@ backend/simulation/
   failure_injection.py  Phase 59 controlled failure injection (TopologyGraph + FailureScenario -> FailureInjectionResult: isolated graph copy + removed/degraded edge ids), no API route yet
   path_engine.py  Phase 60 dynamic path engine (TopologyGraph [+ FailureInjectionResult] -> PathResult/ConnectivityResult/RouteChange via Dijkstra/Yen's/BFS), no API route yet
   failure_propagation_pipeline.py  Phase 61 connected failure->propagation->routing->service-impact pipeline (TopologyGraph + FailureScenario + CausalCandidate list [+ RoleClassification map] -> FailurePipelineResult), no API route yet
+  resilience_indicators.py  Phase 62 resilience indicators (TopologyGraph + FailurePipelineResult -> ResilienceIndicators: connectivity/reachable-node ratios, affected-service count, path-degradation score, emergent bottlenecks, alternative-path availability), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
