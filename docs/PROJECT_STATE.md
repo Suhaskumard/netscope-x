@@ -1932,5 +1932,36 @@ None yet — no experiments have been run.
   suite unchanged at 542/542 (no runtime code path touches this schema yet, and
   `backend/tests/test_api.py`'s existing counterfactual fixture already satisfied the new
   validator without modification); `scripts.check_ground_truth_boundary` re-verified clean.
-- Next: Phase 65 (execute counterfactuals on an isolated alternate graph state that never mutates
-  the real baseline, FR-1.36). Not started; awaiting explicit request.
+- Counterfactual graph engine (Phase 65, FR-1.36's second half) mirrors Phase 59's
+  `apply_failure_scenario` wherever directly analogous: new `backend/simulation/
+  counterfactual_engine.py` (`execute_counterfactual_scenario`) -- `REMOVE_NODE`/`REMOVE_EDGE`
+  structurally remove; `INCREASE_LATENCY`/`REDUCE_BANDWIDTH`/`INCREASE_TRAFFIC` only mark
+  `degraded_edge_ids`, no path-cost computation (explicitly Phase 66's job). Uses
+  `CounterfactualScenario`'s own `baseline_graph_id`/`isolated_graph_id` fields (reserved since
+  Phase 04) directly -- validates the former matches the input graph, uses the latter as the
+  isolated result's real `graph_id`, rather than synthesizing one the way Phase 59 had to.
+  `ADD_ROUTE` synthesizes a genuinely new hypothetical `Edge` -- no prior precedent for a
+  non-empirically-observed `Edge` except ground truth's *declared* edges
+  (`confidence=1.0`); this phase reuses that precedent's mechanism (fill every required field,
+  name the real justification in `evidence`) but not its confidence value, since a counterfactual
+  route is explicitly hypothetical/unvalidated (RQ7: "report the prediction as unvalidated rather
+  than implying it was tested") -- uses a documented, fixed, neutral
+  `_HYPOTHETICAL_ROUTE_CONFIDENCE = 0.5` instead, `observation_count=1` as the schema's structural
+  minimum (not a real observation count), `protocols=["unknown"]` as an honest placeholder, and
+  `first_observed=last_observed=scenario.created_at`. `magnitude` is deliberately not repurposed
+  as a confidence value (no documented meaning for `ADD_ROUTE`, would overload the field).
+  `ADD_ROUTE` additionally raises if the two endpoints are already connected, since RQ7 frames it
+  as "a purely hypothetical route that doesn't exist." No new schema, no API route -- `POST
+  /counterfactual` stays untouched; documented in
+  `docs/architecture/counterfactual_graph_engine.md`. Verified: new `backend/tests/
+  test_counterfactual_engine.py` (13/13: REMOVE_NODE/REMOVE_EDGE structural removal and unknown-
+  target rejection; all three soft actions correctly mark degraded edges with zero structural
+  change; ADD_ROUTE adds one correctly-valued hypothetical edge, rejects an already-connected
+  pair, rejects an unknown endpoint; a baseline_graph_id mismatch raises; the function never
+  mutates its input graph; a real end-to-end run over a topology discovered from synthetic
+  packets); combined suite 555/555 (up from 542/542), no regressions; `scripts.
+  validate_data_contracts` re-verified clean (55/55, no schema changes); `scripts.
+  check_ground_truth_boundary` re-verified clean.
+- Next: Phase 66 (compare baseline vs. counterfactual outcomes across paths, connectivity,
+  latency, affected services, bottlenecks, and propagation, FR-1.37). Not started; awaiting
+  explicit request.

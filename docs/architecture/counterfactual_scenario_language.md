@@ -73,8 +73,8 @@ missed opportunity to mirror it exactly.
 ## What this phase deliberately does NOT do
 
 - **No execution engine.** Applying a `CounterfactualScenario` to a real `TopologyGraph`, producing
-  an isolated alternate graph state, is Phase 65's job (FR-1.36's second half). No
-  `backend/simulation/counterfactual_*.py` module exists yet.
+  an isolated alternate graph state, was Phase 65's job (FR-1.36's second half) — now implemented,
+  see `docs/architecture/counterfactual_graph_engine.md`.
 - **No impact comparison.** Comparing a counterfactual's predicted outcome against a real
   controlled experiment (RQ7, FR-1.37/1.38) is Phase 66's job.
 - **No API wiring.** `POST /counterfactual` stays `NotYetImplemented`; its docstring's "known
@@ -136,5 +136,6 @@ CounterfactualScenario(scenario_id="cf6", action=ADD_ROUTE, baseline_graph_id="g
 The structured counterfactual scenario language (spec Phase 64, FR-1.36's first half) is complete:
 all six actions now have real, enforced field requirements, and `ADD_ROUTE` can be genuinely
 expressed for the first time via the new `source_node_id` field. Phase 65 (execution on an
-isolated alternate graph) and Phase 66 (impact comparison) remain ahead; `POST /counterfactual`
+isolated alternate graph) is now also complete, see `docs/architecture/counterfactual_graph_engine.md`.
+Phase 66 (impact comparison) remains ahead; `POST /counterfactual`
 remains a documented stub.
