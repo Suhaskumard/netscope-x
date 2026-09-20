@@ -15,6 +15,32 @@ experiments. See `docs/research/problem_definition.md` for the full problem stat
 This project is being built according to a 69-phase execution plan; this README reflects status as of
 the most recently completed phase and is updated after every phase.
 
+## Getting started
+
+**Prerequisites:** Python 3.12, Node 22, Docker (optional, for the containerized backend/frontend
+and the network lab).
+
+```bash
+bash scripts/setup.sh          # bootstraps .venv + pinned backend deps + frontend npm deps
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (508 tests)
+python -m scripts.validate_data_contracts     # Pydantic schema round-trip checks
+python -m scripts.check_ground_truth_boundary # static import-boundary guard (spec §4)
+```
+
+`scripts/setup.sh` creates `.venv`, installs `requirements-dev.txt`, runs a data-contract/smoke-test
+check, and installs `frontend/`'s npm dependencies — safe to re-run on an existing clone.
+
+To run the backend/frontend containers or the network lab:
+
+```bash
+docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
+docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
+python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
+```
+
+See `docs/development/environment.md` for what's actually been verified to work, and
+`docs/architecture/network_laboratory.md` for the lab's topology and how to exercise it.
+
 ## Project status
 
 **Current phase: 60 of 69 complete** (Phase 21's controlled live capture remains
@@ -649,19 +675,6 @@ docs/
 scripts/      setup, validation, ground-truth import-boundary (Phase 17), and (Phase 20)
               observatory validation scripts
 ```
-
-## Getting started
-
-```bash
-bash scripts/setup.sh          # bootstraps .venv + backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (467 tests)
-docker compose up --build      # backend (real /capture, placeholder everything else) + frontend dev containers
-docker compose -f simulator/docker/docker-compose.yml up -d   # the network lab
-python -m scripts.validate_observatory   # Phase 20 gate: verify the lab itself before using it
-```
-
-See `docs/development/environment.md` for what's actually been verified to work, and
-`docs/architecture/network_laboratory.md` for the lab's topology and how to exercise it.
 
 ## Master specification
 
