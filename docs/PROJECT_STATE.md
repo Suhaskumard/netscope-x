@@ -1769,6 +1769,16 @@ None yet — no experiments have been run.
   format; `counter_evidence` is genuinely per-edge and can be empty, while `limitations` always
   carries the structural confounding/threshold caveats regardless of the edge's own numbers;
   documented in `docs/architecture/causal_evidence_report.md`.
-- Next: Phase 57 (Digital Twin Model, FR-1.31). Build a computational digital twin combining
-  topology, behavior, history, dependencies, routing, and state. Not started; awaiting explicit
-  request.
+- Digital twin model (Phase 57) assembles a frozen `DigitalTwin` from already-real Phase
+  32/35/44/45/47/51-53 machinery, not new inference -- topology and history are fetched/filtered
+  fresh from the anchoring `NetworkSnapshot`'s own `captured_at`, dependencies are estimated
+  `as_of` that same timestamp, and behavioral fingerprints are caller-supplied (no persisted
+  fingerprint history exists to auto-fetch, same Phase 46 limitation). Routing and state are
+  deliberately not separate new fields -- routing is the topology graph's own edges (Phase 60's
+  job to add real path algorithms) and state is the anchoring snapshot itself, confirmed by
+  `SimulationRun.twin_snapshot_id` (Phase 04). No new schema, no API route -- nothing in Phase 09's
+  fixed endpoint surface names a twin resource yet; documented in
+  `docs/architecture/digital_twin_model.md`.
+- Next: Phase 58 (Digital Twin Synchronization, FR-1.31 second half). Keep the digital twin
+  synchronized with new observations, including additions, removals, behavior changes, and
+  confidence changes. Not started; awaiting explicit request.

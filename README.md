@@ -17,12 +17,11 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 56 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 57 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`GET /causal/{dependency_id}` is now real — every inferred dependency or propagation relationship
-gets a genuine `CausalEvidenceReport` (relationship, evidence, confidence, counter-evidence,
-limitations), never a bare causal claim — see `docs/architecture/causal_evidence_report.md`. Next:
-Phase 57.
+`build_digital_twin` now assembles a `DigitalTwin` combining topology, behavior, history, and
+dependencies from already-real machinery, anchored at a given `NetworkSnapshot` — see
+`docs/architecture/digital_twin_model.md`. Next: Phase 58.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -523,11 +522,24 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   tests, including a real end-to-end run through the full dependency-strength →
   causal-candidate → failure-propagation pipeline — `backend/dependency/{causal_evidence,errors}.py`,
   `docs/architecture/causal_evidence_report.md`.
+- **Digital twin model** (Phase 57): `build_digital_twin` (new `backend/digital_twin/twin.py`)
+  assembles a frozen `DigitalTwin` anchored at a given `NetworkSnapshot` — an assembly phase, not
+  new inference, reusing every already-real artifact from earlier phases: Phase 32's
+  `TopologyGraph` (via Phase 44's `read_snapshot_graph`), Phase 35's caller-supplied
+  `BehavioralFingerprint`s, Phase 47's event timeline filtered to `occurred_at <=
+  snapshot.captured_at`, and Phase 51-53's dependencies estimated `as_of=snapshot.captured_at`.
+  Routing is honestly represented by the topology graph's own edges (Phase 60's job to add real
+  path algorithms); state is the anchoring snapshot itself — confirmed by `SimulationRun`'s own
+  `twin_snapshot_id` field (Phase 04). No new schema, no API route — nothing in Phase 09's fixed
+  12-endpoint surface names a twin resource yet. Proven by 9 real tests, including a real
+  end-to-end run confirming every twin dependency's endpoints are genuine topology node ids —
+  `backend/digital_twin/twin.py`, `docs/architecture/digital_twin_model.md`.
 
 ### What doesn't exist yet
 
-The digital twin, simulation, and counterfactual engines have not been implemented yet — those
-begin at Phase 57 and continue through the 69-phase plan. The API surface and
+The digital twin *model* now exists (Phase 57), but synchronization from new observations (Phase
+58), controlled failure injection (Phase 59), the dynamic path engine (Phase 60), and the
+simulation/counterfactual engines (Phase 61-69) have not been implemented yet. The API surface and
 data contracts are real and tested; most of the research intelligence they will eventually serve is
 not built yet. Nothing in this repository currently fabricates results — every phase's completion
 report documents exactly what was and wasn't verified by actual execution.
@@ -570,6 +582,8 @@ backend/dependency/
   criticality.py  Phase 55 criticality analysis (TopologyGraph -> GraphCriticalityReport: degree/betweenness/articulation points/path dependency/connectivity)
   causal_evidence.py  Phase 56 causal evidence reports (DependencyEdge/PropagationImpact -> CausalEvidenceReport), real via GET /causal/{dependency_id}
   errors.py  Phase 56 DependencyNotFoundError (404 for an unknown dependency_id)
+backend/digital_twin/
+  twin.py  Phase 57 digital twin model (NetworkSnapshot + capture -> DigitalTwin: topology, behavior, history, dependencies), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
