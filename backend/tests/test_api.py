@@ -1,13 +1,15 @@
-"""Phase 09 API architecture tests, updated for Phases 21, 23, 32, 49, 51, and 56.
+"""Phase 09 API architecture tests, updated for Phases 21, 23, 32, 49, 51, 56, and 68.
 
-Verifies the 6 still-unimplemented endpoint groups (spec Phase 09) return
+Verifies the still-unimplemented endpoint groups (spec Phase 09) return
 a consistent 501 ErrorResponse envelope, that validation errors use the
 same envelope shape, and that the OpenAPI schema documents every required
 path. `POST /capture` (Phase 21), `GET /flows` (Phase 23),
 `GET /topology` (Phase 32), `GET /history` (Phase 49),
-`GET /dependencies` (Phase 51), and `GET /causal/{dependency_id}`
-(Phase 56) are no longer in the 501 list -- their real behavior is covered
-by the dedicated tests at the bottom of this file.
+`GET /dependencies` (Phase 51), `GET /causal/{dependency_id}` (Phase 56),
+and `GET /experiments`/`GET /metrics` (Phase 68) are no longer in the 501
+list -- their real behavior is covered by the dedicated tests at the
+bottom of this file. `POST /experiments` stays 501 -- see
+`backend/app/api/routes/experiments.py`'s own docstring.
 """
 
 from __future__ import annotations
@@ -75,7 +77,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
                 }
             ),
         ),
-        ("get", "/api/v1/experiments", dict()),
         (
             "post",
             "/api/v1/experiments",
@@ -91,7 +92,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
                 }
             ),
         ),
-        ("get", "/api/v1/metrics", dict()),
     ],
 )
 def test_endpoint_returns_structured_501(method: str, path: str, kwargs: dict) -> None:
@@ -558,3 +558,63 @@ def test_causal_returns_real_evidence_report_for_ingested_capture() -> None:
     assert 0.0 <= body["confidence"] <= 1.0
     assert len(body["limitations"]) >= 1
     assert body["report_id"] == f"{dependency_id}:causal_evidence"
+
+
+# --- Phase 68: GET /experiments, GET /metrics real behavior ---
+
+
+def test_experiments_empty_when_none_run_yet() -> None:
+    response = client.get("/api/v1/experiments")
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "limit": 50, "offset": 0, "total": 0}
+
+
+def test_metrics_empty_when_none_run_yet() -> None:
+    response = client.get("/api/v1/metrics")
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "limit": 50, "offset": 0, "total": 0}
+
+
+def test_experiments_and_metrics_return_a_real_persisted_matrix_cell() -> None:
+    from experiments.matrix_runner import persist_cell, run_matrix_cell
+
+    settings = get_settings()
+    cell = run_matrix_cell(settings.artifact_root, "small", 1.0, seed=1)
+    persist_cell(settings.artifact_root, cell)
+
+    experiments_body = client.get("/api/v1/experiments").json()
+    assert experiments_body["total"] == 1
+    assert experiments_body["items"][0]["experiment_id"] == cell.experiment.experiment_id
+
+    metrics_body = client.get("/api/v1/metrics").json()
+    assert metrics_body["total"] == len(cell.metrics)
+    assert all(m["experiment_id"] == cell.experiment.experiment_id for m in metrics_body["items"])
+
+
+def test_metrics_context_filter() -> None:
+    from experiments.matrix_runner import persist_cell, run_matrix_cell
+
+    settings = get_settings()
+    cell = run_matrix_cell(settings.artifact_root, "small", 1.0, seed=2)
+    persist_cell(settings.artifact_root, cell)
+
+    response = client.get("/api/v1/metrics", params={"context": "topology_reconstruction"})
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["context"] == "topology_reconstruction"
+
+
+def test_experiments_pagination() -> None:
+    from experiments.matrix_runner import persist_cell, run_matrix_cell
+
+    settings = get_settings()
+    for seed in (10, 11):
+        cell = run_matrix_cell(settings.artifact_root, "small", 1.0, seed=seed)
+        persist_cell(settings.artifact_root, cell)
+
+    full = client.get("/api/v1/experiments").json()
+    assert full["total"] == 2
+
+    paged = client.get("/api/v1/experiments", params={"limit": 1, "offset": 0}).json()
+    assert paged["total"] == 2
+    assert len(paged["items"]) == 1

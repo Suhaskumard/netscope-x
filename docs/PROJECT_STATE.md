@@ -2035,8 +2035,25 @@ None yet — no experiments have been run.
   a topology discovered from synthetic packets); combined suite 580/580 (up from 573/573), no
   regressions; `scripts.validate_data_contracts` re-verified clean (55/55, no schema changes);
   `scripts.check_ground_truth_boundary` re-verified clean.
-- Next: Phase 68 (full experimental matrix -- topology complexity x observation-completeness
-  sweep -- with reproducible, quantitatively evaluated results across topology reconstruction,
-  role inference, anomaly detection, temporal analysis, causal analysis, PathForge,
-  counterfactuals, and the four minimum ablation studies, FR-1.40). Not started; awaiting explicit
-  request.
+- Full experimental matrix (Phase 68) genuinely runs the real pipeline over synthetic, seeded
+  packet captures across 6 topology levels (resolving a real naming mismatch against Phase 18's
+  generator names) x 5 observation-completeness levels (new `experiments/observation_sampling.py`),
+  scoring 6 of 7 `MetricContext`s for real -- reusing Phase 32/37/63/66's existing evaluation
+  modules and adding two new ones (`causal_evaluation.py`, `temporal_evaluation.py`).
+  `anomaly_detection` stays unscored, unchanged since Phase 42's own documented decision not to
+  build an anomaly-injection dataset. RQ6/RQ7's "actual outcome" is independently recomputed from
+  the ground-truth graph itself (never reusing the inferred prediction's own graph, which would be
+  tautological) since no Docker is available. The four minimum ablation studies are each a real
+  parameter change at an existing extension point -- one verified result: `without_behavioral`
+  produces byte-for-byte identical PathForge/counterfactual accuracy to baseline, a genuine null
+  showing those functions never read `role_classifications` in any scored field. First real
+  construction anywhere of `Experiment`/`MetricResult`; `GET /experiments`/`GET /metrics` now real,
+  `POST /experiments` stays unwired (live-triggering computation via API is a different, riskier
+  concern). A real 54-cell matrix run completed in ~13s; `causal_analysis` measured `0.0` accuracy
+  across every cell, traced to the synthetic traffic generator producing no genuine time-lagged
+  cross-correlation structure for Phase 52's temporal-precedence gate -- an honestly-reported
+  finding about this phase's own synthetic-data limitation, not a Phase 50-53 defect. PERF-1..8
+  benchmarking and provisional-constant recalibration are explicitly deferred (FR-1.40 asks to
+  measure, not tune); documented in `docs/architecture/experimental_matrix.md`.
+- Next: Phase 69 (Acceptance Testing). Verify every FR against its acceptance criteria; a
+  verification/report pass, not new computation. Not started; awaiting explicit request.

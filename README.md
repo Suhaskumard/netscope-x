@@ -22,7 +22,7 @@ and the network lab).
 
 ```bash
 bash scripts/setup.sh          # bootstraps .venv + pinned backend deps + frontend npm deps
-pytest backend/tests experiments/tests simulator/tests   # run the full test suite (508 tests)
+pytest backend/tests experiments/tests simulator/tests   # run the full test suite (620 tests)
 python -m scripts.validate_data_contracts     # Pydantic schema round-trip checks
 python -m scripts.check_ground_truth_boundary # static import-boundary guard (spec §4)
 ```
@@ -43,12 +43,13 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 67 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 68 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-The system now generates real experiment recommendations from measured structural evidence —
-articulation points suggest a removal experiment, non-articulation high-betweenness nodes suggest
-a service-degradation experiment, each with cited evidence and an honest disclaimer — see
-`docs/architecture/experiment_recommendations.md`. Next: Phase 68.
+A real, 54-cell experimental matrix (6 topology levels × 5 observation-completeness levels, plus 4
+ablation studies per level) now runs the full pipeline against synthetic (non-Docker) captures and
+scores 6 of 7 `MetricContext`s for real, with `GET /experiments`/`GET /metrics` serving the real,
+persisted results — see `docs/architecture/experimental_matrix.md` for the scope decisions and real
+findings (including a genuine, traced null result for `causal_analysis`). Next: Phase 69.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -720,6 +721,36 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   injection) and Phase 63 (validation). No new schema, no API route. Proven by 7 real tests,
   including a real end-to-end run over a topology discovered from synthetic packets —
   `backend/dependency/experiment_recommendations.py`, `docs/architecture/experiment_recommendations.md`.
+- **Full experimental matrix** (Phase 68, FR-1.40): `experiments/matrix_runner.py`
+  (`run_matrix_cell`/`run_full_matrix`) genuinely runs the real pipeline over synthetic, seeded
+  packet captures across `TOPOLOGY_LEVELS` (`small`/`medium`/`large`/`multi_path`/`multi_service`/
+  `dynamic`, resolving a real naming mismatch against Phase 18's generator names) ×
+  `OBSERVATION_COMPLETENESS_LEVELS` (`1.0`/`0.9`/`0.75`/`0.5`/`0.25`, via new
+  `experiments/observation_sampling.py`), scoring 6 of 7 `MetricContext`s for real —
+  `topology_reconstruction`/`role_inference` (Phase 32/37's existing modules), two brand-new
+  evaluation modules (`causal_evaluation.py`, `temporal_evaluation.py`), and `pathforge`/
+  `counterfactual` (Phase 63/66's existing modules, scored against a real, independently-recomputed
+  ground-truth "actual outcome" since no Docker is available). `anomaly_detection` stays
+  unscored — no anomaly-injection dataset generator exists anywhere in this repo, unchanged since
+  Phase 42's own documented decision not to build one. The four minimum ablation studies
+  (`without_temporal`/`without_dependency_weighting`/`without_confidence_modeling`/
+  `without_behavioral`) are each a real parameter change or post-processing step at an existing
+  extension point, never a forked code path — one verified result: `without_behavioral` produces
+  byte-for-byte identical `pathforge`/`counterfactual` accuracy to baseline, a genuine null showing
+  those functions never read `role_classifications` in any scored field. New
+  `experiments/synthetic_traffic.py` generates deterministic packets for a declared scenario (no
+  existing generator works outside Docker) and its matching ground-truth graph. First real
+  construction anywhere of `Experiment`/`MetricResult` (Phase 04); `GET /experiments`/`GET /metrics`
+  are now real, reading persisted results back with pagination/context filtering — `POST
+  /experiments` stays unwired (live-triggering computation via API is a different, riskier concern).
+  A real, full 54-cell matrix run completed in ~13 seconds; `causal_analysis`'s real measured
+  accuracy was `0.0` across every cell, traced to the synthetic traffic generator producing no
+  genuine time-lagged cross-correlation structure for Phase 52's temporal-precedence gate — an
+  honestly-reported finding about this phase's own synthetic-data limitation, not a defect in
+  Phase 50-53. Proven by 61 new evaluation/runner tests plus 5 new API tests —
+  `experiments/{matrix_runner,observation_sampling,synthetic_traffic}.py`,
+  `experiments/metrics/{causal_evaluation,temporal_evaluation}.py`,
+  `docs/architecture/experimental_matrix.md`.
 
 ### What doesn't exist yet
 
@@ -730,13 +761,14 @@ routing impact, and itemized service impact together, that pipeline's output is 
 resilience indicators, a prediction can be scored against a real or synthetic actual outcome, the
 counterfactual scenario language can fully express all six "what if" verbs, a counterfactual can
 execute against an isolated alternate graph that never mutates the baseline, its outcome is
-compared against the baseline across all six named axes with a predicted-vs-actual validator, and
-real experiment recommendations are now generated from measured structural evidence (Phase 57-67),
-but the full experimental matrix and the four minimum ablation studies (Phase 68-69) have not been
-implemented yet. The API surface and data contracts are real and tested; most of the research
-intelligence they will eventually serve is not built yet. Nothing in this repository currently
-fabricates results — every phase's completion report documents exactly what was and wasn't
-verified by actual execution.
+compared against the baseline across all six named axes with a predicted-vs-actual validator, real
+experiment recommendations are generated from measured structural evidence, and a real 54-cell
+experimental matrix with 4 ablation studies now runs across 6 of 7 evaluation contexts (Phase
+57-68), but anomaly-injection-based evaluation, PERF-1..8 performance benchmarking, provisional
+constant recalibration, and final acceptance testing (Phase 69) have not been implemented yet. The
+API surface and data contracts are real and tested; most of the research intelligence they will
+eventually serve is not built yet. Nothing in this repository currently fabricates results — every
+phase's completion report documents exactly what was and wasn't verified by actual execution.
 
 ## Repository layout
 
@@ -789,7 +821,10 @@ backend/simulation/
   counterfactual_comparison.py  Phase 66 counterfactual outcome comparison (TopologyGraph + CounterfactualExecutionResult [+ CausalCandidate list] -> CounterfactualComparisonResult: paths/connectivity/latency/affected services/bottlenecks/propagation), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
-  metrics/    Phase 32/37/42/63/66 evaluation-only ground-truth/calibration/anomaly-detection/failure-prediction/counterfactual-prediction scoring (never reachable from backend/)
+  metrics/    Phase 32/37/42/63/66/68 evaluation-only ground-truth/calibration/anomaly-detection/failure-prediction/counterfactual-prediction/causal-analysis/temporal-analysis scoring (never reachable from backend/)
+  observation_sampling.py  Phase 68 deterministic packet sub-sampling (List[Packet] + completeness + seed -> List[Packet])
+  synthetic_traffic.py     Phase 68 minimal synthetic packet + ground-truth-graph generation for a declared Phase 18 scenario (no Docker required)
+  matrix_runner.py         Phase 68 full experimental matrix orchestrator + 4-ablation harness (-> real Experiment/MetricResult records), real via GET /experiments, GET /metrics
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
   docker/         Phase 11-15 multi-tier network laboratory
