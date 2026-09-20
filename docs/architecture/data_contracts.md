@@ -103,7 +103,16 @@ measured indicators. Serves FR-1.28, FR-1.32–FR-1.35.
 implements spec Phase 64's six-verb scenario language (REMOVE_NODE, REMOVE_EDGE, INCREASE_LATENCY,
 REDUCE_BANDWIDTH, INCREASE_TRAFFIC, ADD_ROUTE). `CounterfactualScenario` enforces
 `isolated_graph_id != baseline_graph_id` (spec Phase 65's "never mutate the original baseline",
-enforced structurally). Serves FR-1.31, FR-1.36–FR-1.38.
+enforced structurally) via `_isolated_differs_from_baseline`, and — as of Phase 64 — every action's
+own required fields via a second validator, `_action_requires_correct_fields` (e.g. REMOVE_NODE
+requires `target_node_id`; ADD_ROUTE requires both the new `source_node_id` field and
+`target_node_id` as its two distinct route endpoints, forbidding `target_edge_id` and a self-loop).
+Unlike `FailureScenario`'s own Phase 04→59 split (the schema validated 4/6 failure types, Phase 59
+patched the remaining two ambiguous types at execution time), Phase 64 is this schema's sole owner
+before Phase 65 consumes it, so it enforces every action's requirements — including the
+`REDUCE_BANDWIDTH` ambiguous-target case — in this one pass rather than deferring a gap. See
+`docs/architecture/counterfactual_scenario_language.md` for the full per-action table. Serves
+FR-1.31, FR-1.36–FR-1.38.
 
 ### 11. Experiment — `backend/app/models/experiment.py`
 Implements REPRO-1 directly: every reproducibility field from spec §20 is a required (not optional)

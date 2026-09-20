@@ -43,12 +43,12 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 63 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 64 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Digital twin validation now scores a simulated failure's prediction against a caller-supplied
-actual outcome on four axes (affected-node, path, connectivity, resilience-indicator accuracy) —
-honestly scoped, since no Docker this session means no real lab run to validate against yet, see
-`docs/architecture/digital_twin_validation.md`. Next: Phase 64.
+The structured counterfactual scenario language now has real per-action field validation for all
+six verbs (REMOVE node/edge, INCREASE latency/traffic, REDUCE bandwidth, ADD route), including a
+new field so ADD_ROUTE can finally express its two distinct endpoints — see
+`docs/architecture/counterfactual_scenario_language.md`. Next: Phase 65.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -653,6 +653,23 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   set by Phase 32/37/42. No new schema, no API route. Proven by 10 real tests. —
   `experiments/metrics/failure_propagation_validation.py`,
   `docs/architecture/digital_twin_validation.md`.
+- **Structured counterfactual scenario language** (Phase 64, FR-1.36's first half): a schema-only
+  phase, no new module. `CounterfactualScenario` (`backend/app/models/simulation.py`, Phase 04)
+  gains a new `source_node_id` field (mirrors `Edge.source_node_id`/`target_node_id`; `ADD_ROUTE`'s
+  new route's origin node, forbidden for every other action) and a second validator enforcing each
+  of the six `CounterfactualAction` verbs' own required fields — `REMOVE_NODE`/`REMOVE_EDGE` need
+  their single target; `INCREASE_LATENCY`/`INCREASE_TRAFFIC` need `target_node_id` + `magnitude`
+  (deliberately node-only, matching `FailureType.LATENCY_INJECTION`'s precedent for latency, and a
+  new node-only rationale for traffic); `REDUCE_BANDWIDTH` needs either target plus `magnitude`
+  (mirrors `FailureType.BANDWIDTH_REDUCTION`'s ambiguous-target pattern); `ADD_ROUTE` needs both
+  distinct endpoints and forbids `target_edge_id`/a self-loop, mirroring `Edge._no_self_loop`.
+  Unlike `FailureScenario`'s own Phase 04→59 split (schema covered 4/6 types, Phase 59 patched the
+  rest at execution time since it wasn't the schema-owning phase), Phase 64 owns this schema's
+  validation completely — nothing else touches it before Phase 65 — so every action's requirements
+  are enforced here in one pass, a deliberate improvement, not a missed mirror of that precedent.
+  No execution engine, no API wiring — `POST /counterfactual` stays `NotYetImplemented`. Proven by
+  17 new `scripts.validate_data_contracts` cases (55/55 total, up from 38/38) — 
+  `backend/app/models/simulation.py`, `docs/architecture/counterfactual_scenario_language.md`.
 
 ### What doesn't exist yet
 
@@ -660,12 +677,13 @@ The digital twin *model* now exists, stays synchronized with new observations, c
 failures injected into an isolated copy of its topology, that topology's paths/connectivity can be
 analyzed under failure, a single connected pipeline ties failure injection, dependency propagation,
 routing impact, and itemized service impact together, that pipeline's output is aggregated into
-resilience indicators, and a prediction can now be scored against a real or synthetic actual
-outcome (Phase 57-63), but the structured counterfactual scenario engine (Phase 64-69) has not
-been implemented yet. The API surface and data contracts are real and tested; most of
-the research intelligence they will eventually serve is not built yet. Nothing in this repository
-currently fabricates results — every phase's completion report documents exactly what was and
-wasn't verified by actual execution.
+resilience indicators, a prediction can be scored against a real or synthetic actual outcome, and
+the counterfactual scenario language can now fully express all six "what if" verbs (Phase 57-64),
+but executing a counterfactual on an isolated alternate graph and comparing its predicted outcome
+against reality (Phase 65-69) has not been implemented yet. The API surface and data contracts are
+real and tested; most of the research intelligence they will eventually serve is not built yet.
+Nothing in this repository currently fabricates results — every phase's completion report
+documents exactly what was and wasn't verified by actual execution.
 
 ## Repository layout
 

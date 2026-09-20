@@ -477,6 +477,200 @@ check_invalid(
         created_at=NOW,
     ),
 )
+check_invalid(
+    "CounterfactualScenario (invalid: REMOVE_NODE missing target_node_id)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf3",
+        action=CounterfactualAction.REMOVE_NODE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf3",
+        created_at=NOW,
+    ),
+)
+check_valid(
+    "CounterfactualScenario (valid: REMOVE_EDGE)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf4",
+        action=CounterfactualAction.REMOVE_EDGE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf4",
+        target_edge_id="e1",
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: REMOVE_EDGE missing target_edge_id)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf5",
+        action=CounterfactualAction.REMOVE_EDGE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf5",
+        created_at=NOW,
+    ),
+)
+check_valid(
+    "CounterfactualScenario (valid: INCREASE_LATENCY)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf6",
+        action=CounterfactualAction.INCREASE_LATENCY,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf6",
+        target_node_id="n2",
+        magnitude=50.0,
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: INCREASE_LATENCY missing magnitude)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf7",
+        action=CounterfactualAction.INCREASE_LATENCY,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf7",
+        target_node_id="n2",
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: INCREASE_LATENCY missing target_node_id)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf8",
+        action=CounterfactualAction.INCREASE_LATENCY,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf8",
+        magnitude=50.0,
+        created_at=NOW,
+    ),
+)
+check_valid(
+    "CounterfactualScenario (valid: REDUCE_BANDWIDTH via target_node_id)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf9",
+        action=CounterfactualAction.REDUCE_BANDWIDTH,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf9",
+        target_node_id="n2",
+        magnitude=0.5,
+        created_at=NOW,
+    ),
+)
+check_valid(
+    "CounterfactualScenario (valid: REDUCE_BANDWIDTH via target_edge_id)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf10",
+        action=CounterfactualAction.REDUCE_BANDWIDTH,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf10",
+        target_edge_id="e1",
+        magnitude=0.5,
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: REDUCE_BANDWIDTH neither target set)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf11",
+        action=CounterfactualAction.REDUCE_BANDWIDTH,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf11",
+        magnitude=0.5,
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: REDUCE_BANDWIDTH missing magnitude)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf12",
+        action=CounterfactualAction.REDUCE_BANDWIDTH,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf12",
+        target_node_id="n2",
+        created_at=NOW,
+    ),
+)
+check_valid(
+    "CounterfactualScenario (valid: INCREASE_TRAFFIC)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf13",
+        action=CounterfactualAction.INCREASE_TRAFFIC,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf13",
+        target_node_id="n2",
+        magnitude=2.0,
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: INCREASE_TRAFFIC missing magnitude)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf14",
+        action=CounterfactualAction.INCREASE_TRAFFIC,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf14",
+        target_node_id="n2",
+        created_at=NOW,
+    ),
+)
+check_valid(
+    "CounterfactualScenario (valid: ADD_ROUTE)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf15",
+        action=CounterfactualAction.ADD_ROUTE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf15",
+        source_node_id="n1",
+        target_node_id="n2",
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: ADD_ROUTE missing source_node_id)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf16",
+        action=CounterfactualAction.ADD_ROUTE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf16",
+        target_node_id="n2",
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: ADD_ROUTE with target_edge_id set)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf17",
+        action=CounterfactualAction.ADD_ROUTE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf17",
+        source_node_id="n1",
+        target_node_id="n2",
+        target_edge_id="e1",
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: ADD_ROUTE self-loop source == target)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf18",
+        action=CounterfactualAction.ADD_ROUTE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf18",
+        source_node_id="n1",
+        target_node_id="n1",
+        created_at=NOW,
+    ),
+)
+check_invalid(
+    "CounterfactualScenario (invalid: source_node_id set on non-ADD_ROUTE action)",
+    lambda: CounterfactualScenario(
+        scenario_id="cf19",
+        action=CounterfactualAction.REMOVE_NODE,
+        baseline_graph_id="g1",
+        isolated_graph_id="g1-cf19",
+        source_node_id="n1",
+        target_node_id="n2",
+        created_at=NOW,
+    ),
+)
 
 # ------------------------------------------------------------- experiment --
 check_valid(

@@ -1904,6 +1904,33 @@ None yet — no experiments have been run.
   silently scored); combined suite 542/542 (up from 532/532), no regressions; `scripts.
   validate_data_contracts` re-verified clean (38/38, no schema changes); `scripts.
   check_ground_truth_boundary` re-verified clean.
-- Next: Phase 64 (structured counterfactual scenario language, FR-1.36). Support REMOVE node,
-  REMOVE edge, INCREASE latency, REDUCE bandwidth, INCREASE traffic, ADD route as a structured
-  counterfactual scenario language. Not started; awaiting explicit request.
+- Structured counterfactual scenario language (Phase 64, FR-1.36's first half) is a schema-only
+  phase -- no new module. `backend/app/models/simulation.py`'s `CounterfactualScenario` (Phase 04)
+  gains one new field, `source_node_id` (mirrors `Edge.source_node_id`/`target_node_id`; `ADD_ROUTE`'s
+  new route's origin node, forbidden for every other action), and a second validator,
+  `_action_requires_correct_fields`, enforcing each of the six `CounterfactualAction` values' own
+  required fields: `REMOVE_NODE` needs `target_node_id`; `REMOVE_EDGE` needs `target_edge_id`;
+  `INCREASE_LATENCY` needs `target_node_id` + `magnitude` (deliberately node-only, matching
+  `FailureType.LATENCY_INJECTION`'s precedent); `REDUCE_BANDWIDTH` needs `target_node_id` OR
+  `target_edge_id` plus `magnitude` (mirrors `FailureType.BANDWIDTH_REDUCTION`'s ambiguous-target
+  pattern); `INCREASE_TRAFFIC` needs `target_node_id` + `magnitude` (a new concept, no
+  `FailureScenario` analog, node-only since traffic is sourced/destined at nodes); `ADD_ROUTE`
+  needs both `source_node_id` and `target_node_id` (distinct, no self-loop), forbids
+  `target_edge_id` (a route being added has no existing edge). Unlike `FailureScenario`'s own
+  Phase 04->59 split (schema covered 4/6 types, Phase 59 patched the remaining two ambiguous types
+  at execution time, since Phase 59 wasn't the schema-owning phase), Phase 64 owns
+  `CounterfactualScenario`'s validation completely -- nothing else touches this schema before
+  Phase 65 consumes it -- so every action's requirements, including the `REDUCE_BANDWIDTH`
+  ambiguous-target case, are enforced here in one pass, a deliberate improvement over repeating
+  that gap-and-patch history. `docs/architecture/data_contracts.md` updated in place to reflect
+  Phase 64's now-complete ownership. No execution engine, no API wiring -- `POST /counterfactual`
+  stays `NotYetImplemented`, both explicitly Phase 65/66's job; documented in
+  `docs/architecture/counterfactual_scenario_language.md`. Verified: `scripts.
+  validate_data_contracts` grew from 38/38 to 55/55 (17 new `CounterfactualScenario` cases: 8
+  valid, 9 invalid, covering every action's required-field combination, the `REDUCE_BANDWIDTH`
+  either-target case, and `ADD_ROUTE`'s two-endpoint/self-loop/forbidden-edge-id cases); combined
+  suite unchanged at 542/542 (no runtime code path touches this schema yet, and
+  `backend/tests/test_api.py`'s existing counterfactual fixture already satisfied the new
+  validator without modification); `scripts.check_ground_truth_boundary` re-verified clean.
+- Next: Phase 65 (execute counterfactuals on an isolated alternate graph state that never mutates
+  the real baseline, FR-1.36). Not started; awaiting explicit request.
