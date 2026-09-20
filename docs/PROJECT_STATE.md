@@ -2117,5 +2117,49 @@ None yet — no experiments have been run.
   simulator/tests` -- 625/625 passed (up from 620/620; +1 `simulator/tests/test_capture.py` REL-12
   case, +4 `backend/tests/test_api.py` parametrized SEC-4 cases), no regressions;
   `scripts.validate_data_contracts` re-verified clean (55/55, no schema changes);
-  `scripts.check_ground_truth_boundary` re-verified clean. This closes the master spec's 69-phase
-  execution plan.
+  `scripts.check_ground_truth_boundary` re-verified clean. This closes the master spec's original
+  69-phase execution plan.
+
+- The master spec (`NETSCOPE (1).pdf`) was extended by an addendum to 108 phases across 6 further
+  research-extension arcs (Arc A "Phase 68 Hardening and Calibration" through Arc F "Research
+  Validation and Publication"), appended as new pages after the original 69, with the phase-count
+  cap language explicitly superseded. The original 51 pages are untouched; a byte-identical backup
+  (`NETSCOPE (1) - original 69-phase.pdf`) was made before the edit.
+
+- Synthetic traffic temporal-lag redesign (Phase 70, master spec addendum) fixes a real gap Phase
+  68's own matrix run surfaced and documented: `causal_analysis` scored `0.0` in every cell because
+  the synthetic traffic generator gave Phase 52's `estimate_temporal_precedence` no genuine
+  cross-node lag structure. `experiments/synthetic_traffic.py::_compute_tiers` computes real BFS
+  hop-distance from a topology root; opt-in "lag pulse" traffic (`pulse_cycles`, disabled by default
+  -- `pulse_cycles=0` reproduces pre-Phase-70 output byte-for-byte) times each node's own intensity
+  pulse at `tier(node) * pulse_lag_seconds` after a shared cycle start, so two nodes at tiers
+  differing by `k` carry the same underlying intensity sequence shifted by exactly `k` buckets.
+  `experiments/matrix_runner.py` enables it for real matrix cells (`_PULSE_CYCLES=12`,
+  `_PULSE_PACKETS_PER_NODE=2`, `_PULSE_INTENSITY_RANGE=(1,5)`, empirically tuned against real
+  `estimate_temporal_precedence` output). Two real bugs were found and fixed while implementing
+  this, both worth remembering: (1) the detector buckets by flow count, not packet count -- packets
+  sharing one 5-tuple collapse into a single flow regardless of count, so intensity had to vary
+  distinct-flow count (a fresh source port per unit), not packets-per-flow; (2) per-packet
+  timestamp jitter let one side of a lagged pair independently tip across its own bucket boundary
+  while the other didn't, corrupting the intended lag -- fixed by making pulse timestamps
+  deterministic (every tier's nominal time differs from every other's by an exact multiple of the
+  bucket width, so both sides shift by the same fractional offset regardless of where the
+  bucketing `start` reference falls). Real, measured result: a full 54-cell matrix re-run (seed 42)
+  now shows 23 total predicted causal candidates and 11 correctly matched to ground truth (up from
+  0/0 everywhere before this phase); `multi_path` and `dynamic` reliably score a genuine positive
+  `causal_analysis` F1 across seeds, while `small`/`medium`/`multi_service` continue to score `0.0`
+  for a real, traced reason (star-shaped topologies' hub is every leaf's only neighbor, so its own
+  bucket-activity series aggregates all leaves' pulses at one shared timing, dominating any single
+  pair's lagged-correlation test) -- documented honestly in
+  `docs/architecture/experimental_matrix.md`'s "Phase 70" section, not glossed over. Verified: new
+  tests in `experiments/tests/test_synthetic_traffic.py` (6 new, including a real end-to-end check
+  that unmodified Phase 52 code finds a genuine positive-lag correlation) and
+  `experiments/tests/test_matrix_runner.py` (1 new, asserting a real positive `causal_analysis`
+  result at the matrix level); full suite `pytest backend/tests experiments/tests simulator/tests`
+  -- 631/631 passed (up from 625/625), no regressions; `scripts.validate_data_contracts` re-verified
+  clean (55/55, no schema changes); `scripts.check_ground_truth_boundary` re-verified clean.
+
+- Next: Phase 71 (Held-Out Role Inference Evaluation, master spec addendum). Replace Phase 68's
+  in-sample role-model evaluation (fit and score on the same fingerprints) with a genuine held-out
+  measurement (leave-one-node-out or wave-split cross-validation). Not started; awaiting explicit
+  request.

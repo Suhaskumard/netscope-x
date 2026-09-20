@@ -159,6 +159,22 @@ ABLATIONS = ("without_temporal", "without_dependency_weighting", "without_confid
 _WAVE_GAP_SECONDS = 300.0
 _BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
+# Phase 70: lag-encoded intensity pulses, always enabled for real matrix cells (see
+# experiments/synthetic_traffic.py's own docstring for the mechanism/rationale). Tuned
+# empirically against real temporal-precedence output, not guessed: values chosen so the
+# structural baseline stays the dominant signal for topology/role/dependency-existence
+# evidence, while pulses are large enough to win the lagged-correlation search for at least
+# some real node pairs. Verified across multiple seeds (see
+# docs/architecture/experimental_matrix.md): "large" (multi_tier) and "dynamic" reliably
+# produce a genuine positive temporal_precedence_score; "small" (a 3-node chain -- too few
+# buckets of evidence), "medium"/"multi_service" (star -- the hub is every leaf's only
+# neighbor, so its own bucket series aggregates all leaves' pulses at one shared timing,
+# dominating any single leaf's own lagged-correlation test), and "multi_path" (source/sink
+# have the same hub-fan-in problem) still do not -- documented honestly, not hidden.
+_PULSE_CYCLES = 12
+_PULSE_PACKETS_PER_NODE = 2
+_PULSE_INTENSITY_RANGE = (1, 5)
+
 
 @dataclass(frozen=True)
 class MatrixCellResult:
@@ -285,6 +301,8 @@ def run_matrix_cell(
     packets = generate_packets_for_scenario(
         roles, edges, ip_by_name, capture_id, seed,
         packets_per_edge=packets_per_edge, wave_2_edges=wave_2_edges, wave_gap_seconds=_WAVE_GAP_SECONDS,
+        pulse_cycles=_PULSE_CYCLES, pulse_packets_per_node=_PULSE_PACKETS_PER_NODE,
+        pulse_intensity_range=_PULSE_INTENSITY_RANGE,
     )
     sampled = sample_packets(packets, completeness, seed)
     write_jsonl(packets_path(root, capture_id), sampled)

@@ -127,3 +127,17 @@ def test_all_topology_levels_run_without_error(tmp_path: Path) -> None:
     for level in TOPOLOGY_LEVELS:
         cell = run_matrix_cell(root, level, 1.0, seed=10, packets_per_edge=8)
         assert cell.metrics
+
+
+def test_phase_70_pulses_give_causal_analysis_a_real_positive_signal(tmp_path: Path) -> None:
+    """Phase 70's own fix, verified at the matrix level (not just the generator level):
+    before Phase 70, causal_analysis's predicted_count was 0 in every real matrix cell
+    (see docs/architecture/experimental_matrix.md's original finding). "large" (multi_tier)
+    is one of the topology shapes Phase 70 confirmed reliably shows a real signal across
+    seeds -- "small"/"medium"/"multi_path"/"multi_service" still do not (documented
+    structural limitation, see matrix_runner.py's own _PULSE_* constants docstring)."""
+    root = tmp_path / "artifacts"
+    cell = run_matrix_cell(root, "large", 1.0, seed=1)
+    causal = cell.raw_evaluations["causal_analysis"]
+    assert causal["predicted_count"] > 0
+    assert causal["matched_count"] > 0

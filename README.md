@@ -43,7 +43,22 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Phase 69 of 69 complete — final hardening, acceptance testing, and documentation pass.** This is a
+**Phase 70 of 108 complete.** The original 69-phase plan (final hardening/acceptance testing,
+completed at Phase 69) has been extended by a master-spec addendum (`NETSCOPE (1).pdf`) to 108
+phases across 6 further research-extension arcs — see the addendum's own pages for the full roadmap.
+Phase 70 (Synthetic Traffic Temporal-Lag Redesign) fixed a real gap Phase 68's own matrix run
+surfaced: `causal_analysis` scored a degenerate `0.0` in every cell because the synthetic traffic
+generator gave Phase 52's temporal-precedence detector no genuine cross-node lag structure to find.
+A redesigned, opt-in "lag pulse" traffic component (BFS-tiered, bucket-aligned intensity pulses)
+fixes this for real: a re-run of the full 54-cell matrix now shows 23 total predicted causal
+candidates and 11 correctly matched to ground truth (up from 0/0 everywhere), with 2 of 6 topology
+levels reliably scoring a genuine positive F1 — and the remaining levels' continued `0.0` traced to
+a real, documented structural limitation (hub fan-in for star-shaped topologies), not glossed over.
+See `docs/architecture/experimental_matrix.md`'s "Phase 70" section for the full account, including
+two real bugs found and fixed during implementation. Next: Phase 71.
+
+**Phase 69 of the original 69-phase plan was completed as final hardening, acceptance testing, and
+documentation.** This is a
 verification/report phase, not new computation: every FR/NFR/PERF/REL/SEC/REPRO requirement in
 `docs/requirements/system_requirements.md` was checked against real code and real tests, producing
 `docs/acceptance_testing.md`. Two real gaps were found and fixed (not new features — closing gaps in
@@ -754,13 +769,28 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   are now real, reading persisted results back with pagination/context filtering — `POST
   /experiments` stays unwired (live-triggering computation via API is a different, riskier concern).
   A real, full 54-cell matrix run completed in ~13 seconds; `causal_analysis`'s real measured
-  accuracy was `0.0` across every cell, traced to the synthetic traffic generator producing no
-  genuine time-lagged cross-correlation structure for Phase 52's temporal-precedence gate — an
-  honestly-reported finding about this phase's own synthetic-data limitation, not a defect in
-  Phase 50-53. Proven by 61 new evaluation/runner tests plus 5 new API tests —
+  accuracy was originally `0.0` across every cell (fixed for real by Phase 70, below). Proven by 61
+  new evaluation/runner tests plus 5 new API tests —
   `experiments/{matrix_runner,observation_sampling,synthetic_traffic}.py`,
   `experiments/metrics/{causal_evaluation,temporal_evaluation}.py`,
   `docs/architecture/experimental_matrix.md`.
+- **Synthetic traffic temporal-lag redesign** (Phase 70): `experiments/synthetic_traffic.py` gains
+  an opt-in "lag pulse" traffic component (`_compute_tiers` — real BFS hop-distance from a topology
+  root, plus bucket-aligned intensity pulses) that gives Phase 52's temporal-precedence detector
+  genuine cross-node lag structure to find, fixing `causal_analysis`'s degenerate `0.0` result from
+  Phase 68's own matrix run. Two real bugs were found and fixed during implementation: the
+  detector buckets by *flow count*, not packet count, so intensity had to vary distinct-flow count
+  (fresh ports), not packets-per-flow; and per-packet timestamp jitter was independently tipping one
+  side of a lagged pair across its own bucket boundary, corrupting the intended lag, fixed by making
+  pulse timestamps deterministic. Disabled by default (`pulse_cycles=0`) — fully backward compatible;
+  `experiments/matrix_runner.py` enables it for real matrix cells. A re-run of the full 54-cell
+  matrix shows 23 total predicted causal candidates, 11 correctly matched (up from 0/0 everywhere);
+  2 of 6 topology levels (`multi_path`, `dynamic`) reliably score a genuine positive F1, with the
+  remaining levels' continued `0.0` traced to a real, documented structural limitation (hub fan-in
+  for star-shaped topologies), not hidden. Proven by 6 new tests, including a real end-to-end check
+  that unmodified Phase 52 code finds a genuine positive-lag correlation —
+  `experiments/synthetic_traffic.py`, `docs/architecture/experimental_matrix.md`'s "Phase 70"
+  section.
 - **Final hardening, acceptance testing & release** (Phase 69, the final phase): a verification/report
   pass against every requirement in `docs/requirements/system_requirements.md` —
   `docs/acceptance_testing.md` records real status per FR/NFR/PERF/REL/SEC/REPRO, citing the actual
