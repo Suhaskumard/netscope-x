@@ -1788,6 +1788,16 @@ None yet — no experiments have been run.
   with no prior fingerprint produces no behavior-change event (nothing to diff against yet) but is
   still included. No new schema, no API route; documented in
   `docs/architecture/digital_twin_synchronization.md`.
-- Next: Phase 59 (Controlled Failure Injection, FR-1.32). Support node failure, edge failure,
-  latency, packet loss, bandwidth reduction, and service degradation injection. Not started;
-  awaiting explicit request.
+- Controlled failure injection (Phase 59) adds no new schema -- `FailureScenario`/`FailureType`
+  (Phase 04) already modeled FR-1.32's six items exactly; `apply_failure_scenario` applies one to a
+  `TopologyGraph`, producing an isolated copy. Node/edge failure structurally remove the target and
+  its incident edges; the four soft failure types leave the graph structurally unchanged and mark
+  affected edges (`degraded_edge_ids`) instead -- path-cost weighting from those marks is
+  deliberately left to Phase 60, and composing injection with Phase 54's `propagate_failure` into a
+  pipeline is deliberately left to Phase 61. `PACKET_LOSS`/`BANDWIDTH_REDUCTION` can target an edge
+  or a node (all incident edges); raises `ValueError` if neither target is given, since the schema
+  itself doesn't enforce one for these two types. No API route yet -- `POST /simulation` stays
+  scoped through Phase 61; documented in `docs/architecture/failure_injection.md`.
+- Next: Phase 60 (Dynamic Path Engine, FR-1.33). Compute shortest paths, alternate paths, path
+  costs, route changes, and disconnected components on the (possibly failure-modified) graph. Not
+  started; awaiting explicit request.

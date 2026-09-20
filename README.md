@@ -17,12 +17,12 @@ the most recently completed phase and is updated after every phase.
 
 ## Project status
 
-**Current phase: 58 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 59 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-`sync_digital_twin` now keeps a `DigitalTwin` synchronized with new observations — real
-additions/removals/confidence changes (Phase 45's `diff_snapshots`) and behavior changes (Phase
-46's `track_node_behavioral_evolution`), alongside a freshly rebuilt twin — see
-`docs/architecture/digital_twin_synchronization.md`. Next: Phase 59.
+`apply_failure_scenario` now applies any of the six `FailureScenario` types (node/edge failure,
+latency injection, packet loss, bandwidth reduction, service degradation) to a `TopologyGraph`,
+producing an isolated, honestly-scoped result — see `docs/architecture/failure_injection.md`. Next:
+Phase 60.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -547,15 +547,28 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   API route. Proven by 6 real tests, including a real end-to-end run confirming `sync_digital_twin`'s
   outputs exactly match `diff_snapshots`/`track_node_behavioral_evolution` called standalone on the
   same inputs — `backend/digital_twin/sync.py`, `docs/architecture/digital_twin_synchronization.md`.
+- **Controlled failure injection** (Phase 59): `apply_failure_scenario` (new
+  `backend/simulation/failure_injection.py`) applies a `FailureScenario` (Phase 04's already-real
+  `FailureType`/`FailureScenario` schemas — no new schema added) to a `TopologyGraph`. Node/edge
+  failure structurally remove the target and its incident edges (edge failure) into an isolated
+  graph copy; latency injection, packet loss, bandwidth reduction, and service degradation leave
+  the graph structurally unchanged and instead mark the affected edges (`degraded_edge_ids`) for
+  Phase 60's path-cost engine to weight — no path-cost computation happens here. Packet
+  loss/bandwidth reduction can target an edge directly or a node (all its incident edges); raises
+  `ValueError` if neither target is given, or if a target doesn't exist in the graph. No API
+  route yet — `POST /simulation` stays scoped through Phase 61. Proven by 11 real tests, including a
+  real end-to-end run over a topology discovered from synthetic packets —
+  `backend/simulation/failure_injection.py`, `docs/architecture/failure_injection.md`.
 
 ### What doesn't exist yet
 
-The digital twin *model* now exists and stays synchronized with new observations (Phase 57-58), but
-controlled failure injection (Phase 59), the dynamic path engine (Phase 60), and the
-simulation/counterfactual engines (Phase 61-69) have not been implemented yet. The API surface and
-data contracts are real and tested; most of the research intelligence they will eventually serve is
-not built yet. Nothing in this repository currently fabricates results — every phase's completion
-report documents exactly what was and wasn't verified by actual execution.
+The digital twin *model* now exists, stays synchronized with new observations, and can have
+controlled failures injected into an isolated copy of its topology (Phase 57-59), but the dynamic
+path engine (Phase 60) and the simulation/counterfactual engines (Phase 61-69) have not been
+implemented yet. The API surface and data contracts are real and tested; most of the research
+intelligence they will eventually serve is not built yet. Nothing in this repository currently
+fabricates results — every phase's completion report documents exactly what was and wasn't verified
+by actual execution.
 
 ## Repository layout
 
@@ -598,6 +611,8 @@ backend/dependency/
 backend/digital_twin/
   twin.py  Phase 57 digital twin model (NetworkSnapshot + capture -> DigitalTwin: topology, behavior, history, dependencies), no API route yet
   sync.py  Phase 58 digital twin synchronization (DigitalTwin + new NetworkSnapshot -> TwinSyncResult: rebuilt twin + structural/behavior change events), no API route yet
+backend/simulation/
+  failure_injection.py  Phase 59 controlled failure injection (TopologyGraph + FailureScenario -> FailureInjectionResult: isolated graph copy + removed/degraded edge ids), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
