@@ -1809,6 +1809,30 @@ None yet — no experiments have been run.
   as comparing a baseline graph's shortest path against a current/failure-modified graph's for the
   same pair. No pipeline composition with Phase 54's `propagate_failure`, no resilience indicators,
   no API route; documented in `docs/architecture/dynamic_path_engine.md`.
-- Next: Phase 61 (Failure Propagation Simulator, FR-1.34). Simulate
-  failure -> dependency propagation -> routing impact -> service impact as a connected pipeline,
-  not isolated stages. Not started; awaiting explicit request.
+- Failure propagation simulator (Phase 61) composes Phase 59's `apply_failure_scenario`, Phase 54's
+  `propagate_failure`, and Phase 60's `compute_connectivity`/`compute_route_change` into one
+  `run_failure_propagation_pipeline` -- no new algorithm, no new schema. Propagation only runs when
+  the scenario has a `target_node_id`; an edge-only failure honestly reports an empty propagation
+  stage rather than inventing a synthetic origin, since neither endpoint of a failed edge has real
+  causal-direction evidence backing it. Routing impact is whole-graph connectivity before/after plus
+  route-change comparisons bounded to the failure site's own former direct neighbors (or, for an
+  edge failure, its own two endpoints) -- not all-pairs. Service impact is the itemized union of
+  propagation-affected and newly-unreachable nodes, each optionally annotated with a caller-supplied
+  `RoleClassification` or an honest `None` -- deliberately left un-aggregated, since aggregate
+  resilience metrics are Phase 62's `ResilienceIndicators` job. `POST /simulation` stays
+  `NotYetImplemented` -- `SimulationRun` has no results field and no artifact-path convention
+  reserves one, so wiring it would require an unscoped schema/persistence decision; documented in
+  `docs/architecture/failure_propagation_simulator.md`. Verified: new
+  `backend/tests/test_failure_propagation_pipeline.py` (9/9: node-failure propagation + bounded
+  route changes + service impacts; edge failure has no propagation impacts; zero causal candidates
+  still reports the primary impact; a chain-graph node failure reports the correct
+  newly-unreachable node; a node that is both a propagation target and newly unreachable reports
+  `reason="propagation+routing"`; a supplied role-classification map passes through verbatim; the
+  pipeline never mutates its input graph; route changes stay bounded to former neighbors, not an
+  all-pairs explosion; a real end-to-end run over a topology discovered from synthetic packets);
+  combined suite 517/517 (up from 508/508), no regressions; `scripts.validate_data_contracts`
+  re-verified clean (38/38, no schema changes); `scripts.check_ground_truth_boundary` re-verified
+  clean.
+- Next: Phase 62 (Resilience & Vulnerability Indicators, FR-1.35). Compute resilience indicators:
+  connectivity, reachable-node ratio, affected services, path degradation, bottleneck emergence,
+  alternative-path availability. Not started; awaiting explicit request.

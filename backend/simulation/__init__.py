@@ -5,16 +5,18 @@ Simulator").
 
 Phase 59 (`failure_injection.py`) applies a `FailureScenario`
 (`backend.app.models.failure`, Phase 04) to a `TopologyGraph`, producing
-an isolated, possibly-modified copy -- no path-cost computation (Phase
-60's job) and no composition with Phase 54's `propagate_failure` into a
-full pipeline (Phase 61's job) happen there. Phase 60 (`path_engine.py`)
-provides that path-cost computation: shortest paths, alternate paths
-(Yen's algorithm), route-change comparison, and connectivity analysis
-over a (possibly failure-modified) `TopologyGraph`, deriving edge weight
-from confidence and Phase 59's `degraded_edge_ids`/`FailureScenario`
-magnitude fields. Composition into the full
-failure -> propagation -> routing -> service-impact pipeline remains
-Phase 61's job.
+an isolated, possibly-modified copy. Phase 60 (`path_engine.py`) provides
+path-cost computation: shortest paths, alternate paths (Yen's algorithm),
+route-change comparison, and connectivity analysis over a (possibly
+failure-modified) `TopologyGraph`, deriving edge weight from confidence
+and Phase 59's `degraded_edge_ids`/`FailureScenario` magnitude fields.
+Phase 61 (`failure_propagation_pipeline.py`, `run_failure_propagation_
+pipeline`/`FailurePipelineResult`/`ServiceImpact`) composes both of those
+with Phase 54's `propagate_failure`
+(`backend.dependency.failure_propagation`) into one connected
+failure -> dependency propagation -> routing impact -> service impact
+pipeline, reimplementing none of the three's own logic -- pure
+orchestration, per FR-1.34.
 
 Never imports `simulator.ground_truth` (spec §4;
 `scripts/check_ground_truth_boundary.py` would reject it if it did).

@@ -43,12 +43,12 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 60 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 61 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-The dynamic path engine now computes shortest paths, bounded alternate paths (Yen's algorithm),
-connectivity/disconnected components, and route-change comparisons over any (possibly
-failure-modified) `TopologyGraph`, with edge cost honestly derived from confidence and Phase 59's
-failure-injection outputs — see `docs/architecture/dynamic_path_engine.md`. Next: Phase 61.
+The failure propagation simulator now composes failure injection, dependency propagation, routing
+impact, and itemized service impact into one connected pipeline over any (possibly
+failure-modified) `TopologyGraph` — see `docs/architecture/failure_propagation_simulator.md`. Next:
+Phase 62.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -600,17 +600,34 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   Proven by 15 real tests, including a real end-to-end run confirming an `EDGE_FAILURE` on a
   topology's only connecting edge makes it correctly unreachable —
   `backend/simulation/path_engine.py`, `docs/architecture/dynamic_path_engine.md`.
+- **Failure propagation simulator** (Phase 61): `run_failure_propagation_pipeline` (new
+  `backend/simulation/failure_propagation_pipeline.py`) composes Phase 59's
+  `apply_failure_scenario`, Phase 54's `propagate_failure`, and Phase 60's
+  `compute_connectivity`/`compute_route_change` into one connected
+  failure→propagation→routing→service-impact pipeline — no new algorithm, no new schema.
+  Propagation only runs when the scenario has a `target_node_id`; an edge-only failure honestly
+  reports an empty propagation stage (neither endpoint has real causal-direction evidence backing
+  it) rather than inventing a synthetic origin. Routing impact is whole-graph connectivity
+  before/after plus route-change comparisons bounded to the failure site's own former direct
+  neighbors, not an all-pairs explosion. Service impact is the itemized union of
+  propagation-affected and newly-unreachable nodes, each optionally annotated with a
+  caller-supplied `RoleClassification` or an honest `None` — deliberately un-aggregated, since
+  aggregate resilience metrics are Phase 62's job. No API route yet — `POST /simulation` stays
+  `NotYetImplemented`, now documented as library-complete with API wiring/persistence deliberately
+  unscoped. Proven by 9 real tests, including a real end-to-end run over a topology discovered from
+  synthetic packets — `backend/simulation/failure_propagation_pipeline.py`,
+  `docs/architecture/failure_propagation_simulator.md`.
 
 ### What doesn't exist yet
 
 The digital twin *model* now exists, stays synchronized with new observations, can have controlled
-failures injected into an isolated copy of its topology, and that topology's paths/connectivity can
-be analyzed under failure (Phase 57-60), but the connected
-failure→propagation→routing→service-impact pipeline (Phase 61) and the resilience/counterfactual
-engines (Phase 62-69) have not been implemented yet. The API surface and data contracts are real and
-tested; most of the research intelligence they will eventually serve is not built yet. Nothing in
-this repository currently fabricates results — every phase's completion report documents exactly
-what was and wasn't verified by actual execution.
+failures injected into an isolated copy of its topology, that topology's paths/connectivity can be
+analyzed under failure, and a single connected pipeline now ties failure injection, dependency
+propagation, routing impact, and itemized service impact together (Phase 57-61), but aggregate
+resilience indicators and the counterfactual scenario engine (Phase 62-69) have not been implemented
+yet. The API surface and data contracts are real and tested; most of the research intelligence they
+will eventually serve is not built yet. Nothing in this repository currently fabricates results —
+every phase's completion report documents exactly what was and wasn't verified by actual execution.
 
 ## Repository layout
 
@@ -656,6 +673,7 @@ backend/digital_twin/
 backend/simulation/
   failure_injection.py  Phase 59 controlled failure injection (TopologyGraph + FailureScenario -> FailureInjectionResult: isolated graph copy + removed/degraded edge ids), no API route yet
   path_engine.py  Phase 60 dynamic path engine (TopologyGraph [+ FailureInjectionResult] -> PathResult/ConnectivityResult/RouteChange via Dijkstra/Yen's/BFS), no API route yet
+  failure_propagation_pipeline.py  Phase 61 connected failure->propagation->routing->service-impact pipeline (TopologyGraph + FailureScenario + CausalCandidate list [+ RoleClassification map] -> FailurePipelineResult), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
   metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
