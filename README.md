@@ -43,12 +43,12 @@ See `docs/development/environment.md` for what's actually been verified to work,
 
 ## Project status
 
-**Current phase: 62 of 69 complete** (Phase 21's controlled live capture remains
+**Current phase: 63 of 69 complete** (Phase 21's controlled live capture remains
 implemented-and-unit-verified-but-not-yet-Docker-verified — see `docs/architecture/packet_capture.md`).
-Resilience indicators now aggregate a simulated failure's connectivity ratio, reachable-node ratio,
-affected-service count, path-degradation score, emergent bottleneck nodes, and alternative-path
-availability from the Phase 61 pipeline's own output — see
-`docs/architecture/resilience_indicators.md`. Next: Phase 63.
+Digital twin validation now scores a simulated failure's prediction against a caller-supplied
+actual outcome on four axes (affected-node, path, connectivity, resilience-indicator accuracy) —
+honestly scoped, since no Docker this session means no real lab run to validate against yet, see
+`docs/architecture/digital_twin_validation.md`. Next: Phase 64.
 
 Full phase-by-phase state, architecture decisions, test status, and pending work:
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
@@ -636,15 +636,33 @@ Full phase-by-phase state, architecture decisions, test status, and pending work
   Proven by 15 real tests, including a real end-to-end run over a topology discovered from
   synthetic packets — `backend/simulation/resilience_indicators.py`,
   `docs/architecture/resilience_indicators.md`.
+- **Digital twin validation** (Phase 63, RQ6 half of FR-1.38): `evaluate_failure_propagation_prediction`
+  (new `experiments/metrics/failure_propagation_validation.py`) scores a Phase 61/62 prediction
+  against a caller-supplied, capture-mechanism-agnostic `ActualFailureOutcome` on RQ6's four named
+  metrics — affected-node-prediction accuracy (precision/recall/f1), path-prediction accuracy (a
+  fraction-correct match rate over Phase 61's own bounded neighbor pairs), connectivity-prediction
+  accuracy (real ratio-delta error, reusing Phase 62's self-relative formula), and
+  resilience-indicator accuracy (only `affected_service_count`/`alternative_path_available`, each
+  only if actually supplied — `path_degradation_score`/`bottleneck_node_ids` are honestly
+  un-evaluable from this minimal shape and always reported skipped, never fabricated). Honestly
+  scoped: RQ6's own experiment design calls for executing a real failure in the lab and capturing
+  its actual impact, but no mechanism anywhere in this codebase captures a real post-failure
+  outcome yet, and this session has no Docker — so this phase implements and verifies only the
+  scoring step itself, against synthetic fixtures, mirroring Phase 36/37's identical limitation.
+  Returns a plain dataclass, never `MetricResult`, matching the `experiments/metrics/` precedent
+  set by Phase 32/37/42. No new schema, no API route. Proven by 10 real tests. —
+  `experiments/metrics/failure_propagation_validation.py`,
+  `docs/architecture/digital_twin_validation.md`.
 
 ### What doesn't exist yet
 
 The digital twin *model* now exists, stays synchronized with new observations, can have controlled
 failures injected into an isolated copy of its topology, that topology's paths/connectivity can be
 analyzed under failure, a single connected pipeline ties failure injection, dependency propagation,
-routing impact, and itemized service impact together, and that pipeline's output is now aggregated
-into resilience indicators (Phase 57-62), but the structured counterfactual scenario engine (Phase
-63-69) has not been implemented yet. The API surface and data contracts are real and tested; most of
+routing impact, and itemized service impact together, that pipeline's output is aggregated into
+resilience indicators, and a prediction can now be scored against a real or synthetic actual
+outcome (Phase 57-63), but the structured counterfactual scenario engine (Phase 64-69) has not
+been implemented yet. The API surface and data contracts are real and tested; most of
 the research intelligence they will eventually serve is not built yet. Nothing in this repository
 currently fabricates results — every phase's completion report documents exactly what was and
 wasn't verified by actual execution.
@@ -697,7 +715,7 @@ backend/simulation/
   resilience_indicators.py  Phase 62 resilience indicators (TopologyGraph + FailurePipelineResult -> ResilienceIndicators: connectivity/reachable-node ratios, affected-service count, path-degradation score, emergent bottlenecks, alternative-path availability), no API route yet
 experiments/
   artifacts/  Phase 10 reproducible artifact I/O + Phase 17 versioned ground-truth manifest
-  metrics/    Phase 32/37/42 evaluation-only ground-truth/calibration/anomaly-detection scoring (never reachable from backend/)
+  metrics/    Phase 32/37/42/63 evaluation-only ground-truth/calibration/anomaly-detection/failure-prediction scoring (never reachable from backend/)
 frontend/     Phase 06 placeholder React/Vite/Tailwind scaffold
 simulator/
   docker/         Phase 11-15 multi-tier network laboratory

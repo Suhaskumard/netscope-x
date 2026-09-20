@@ -1870,6 +1870,40 @@ None yet — no experiments have been run.
   packets); combined suite 532/532 (up from 517/517), no regressions; `scripts.
   validate_data_contracts` re-verified clean (38/38, no schema changes); `scripts.
   check_ground_truth_boundary` re-verified clean.
-- Next: Phase 63 (Digital Twin Validation, FR-1.38). Compare digital-twin/counterfactual
-  predictions against actual controlled experiment outcomes and shall not claim correctness
-  without this measurement. Not started; awaiting explicit request.
+- Digital twin validation (Phase 63, FR-1.38's RQ6 half) honestly scopes itself to step 4 of
+  RQ6's own four-step experiment design (record prediction / execute real failure / capture
+  actual impact / score prediction against reality) -- steps 2-3 cannot be performed this
+  session, since `simulator/ground_truth/` has never captured a post-failure "actual outcome"
+  (only static steady-state topology/roles/paths) and this session has no Docker, mirroring the
+  same limitation already noted for Phase 36/37's classifier. New `experiments/metrics/
+  failure_propagation_validation.py` (`evaluate_failure_propagation_prediction`) scores a Phase
+  61 `FailurePipelineResult`/Phase 62 `ResilienceIndicators` prediction against a
+  caller-supplied, capture-mechanism-agnostic `ActualFailureOutcome` on RQ6's four named
+  metrics: affected-node-prediction accuracy (precision/recall/f1 on the union of
+  `service_impacts` and `newly_unreachable_node_ids` node ids vs. actual); path-prediction
+  accuracy (a fraction-correct match rate over the same bounded neighbor-pair set Phase 61
+  already established, excluding -- not silently scoring -- any pair the actual outcome didn't
+  cover); connectivity-prediction accuracy (`1 - mean(|connectivity_ratio delta|,
+  |reachable_node_ratio delta|)`, reusing Phase 62's own self-relative ratio formula on the
+  actual side); and resilience-indicator accuracy (only `affected_service_count`/
+  `alternative_path_available`, each only if the caller supplied the matching optional actual
+  field -- `path_degradation_score`/`bottleneck_node_ids` are honestly un-evaluable from this
+  minimal shape and always reported skipped, never fabricated; explicitly scoped to avoid
+  double-counting connectivity_ratio/reachable_node_ratio, already covered by the connectivity
+  metric). Returns a plain dataclass, never `MetricResult` (no experiment registry exists yet;
+  `MetricContext.PATHFORGE` stays reserved for Phase 68), matching the exact
+  `experiments/metrics/` precedent set by Phase 32/37/42. No new schema, no API route; RQ7/Phase
+  66 (counterfactual validation) is untouched. Documented in
+  `docs/architecture/digital_twin_validation.md`. Verified: new `experiments/tests/
+  test_failure_propagation_validation.py` (10/10: a perfect-match actual outcome scores at/near
+  1.0 on all four metrics; a deliberate mismatch on each metric individually drops only that
+  metric, proving independence; an empty-vs-empty case reports perfect node/path scores and an
+  honest `None` resilience-indicator accuracy; both an unsupplied-both-fields case and a
+  partial-one-field case confirm no fabricated score; the function never mutates its inputs; a
+  predicted pair absent from the actual outcome is excluded from the match-rate denominator, not
+  silently scored); combined suite 542/542 (up from 532/532), no regressions; `scripts.
+  validate_data_contracts` re-verified clean (38/38, no schema changes); `scripts.
+  check_ground_truth_boundary` re-verified clean.
+- Next: Phase 64 (structured counterfactual scenario language, FR-1.36). Support REMOVE node,
+  REMOVE edge, INCREASE latency, REDUCE bandwidth, INCREASE traffic, ADD route as a structured
+  counterfactual scenario language. Not started; awaiting explicit request.
