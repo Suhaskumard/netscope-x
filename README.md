@@ -2,7 +2,7 @@
 
 NETSCOPE-X is a research platform for reconstructing and understanding network behavior from traffic, topology, behavioral signals, and failure telemetry. It models the network as a living system: infer nodes and links, learn service roles, detect drift and anomalies, trace historical change, estimate dependencies, and simulate the consequences of failures or counterfactual interventions.
 
-This repository brings together packet analysis, graph reconstruction, behavioral modeling, temporal archaeology, causal reasoning, digital-twin synthesis, and reproducible experiment evaluation in one codebase.
+This repository brings together packet analysis, graph reconstruction, behavioral modeling, temporal archaeology, causal reasoning, digital-twin synthesis, and reproducible experiment evaluation in one codebase. 
 
 ## At a glance
 
