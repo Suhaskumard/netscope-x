@@ -109,7 +109,8 @@ tautological.
   identical across all 5 completeness levels at `packets_per_edge=15`** (the default): e.g. the
   `medium` topology scored `pathforge` F1 = `0.7273`, `counterfactual` F1 = `0.8333` at every one of
   100%/90%/75%/50%/25% completeness (these single-target values are superseded by Phase 73's
-  scoring fix and target sweep; see "Phase 73" below). Verified this is not a sampling bug, not a coincidence of
+  scoring fix and target sweep; see "Phase 73" below; Phase 74 explains the flat axis and adds
+  a low-volume sweep that makes it move in the official run). Verified this is not a sampling bug, not a coincidence of
   identical results: re-running with a deliberately sparser `packets_per_edge=4` on the `large`
   topology shows a real, measurable effect — `edge_f1` = `1.0` at completeness 1.0/0.5, dropping to
   `0.951` at completeness 0.25 (3 of 32 declared edges lost). **Finding, stated plainly**: at this
@@ -245,7 +246,9 @@ Variance Reporting) are complete; see below. Phase 72's 10-seed run revises two 
 single-seed claims (Phase 70's `multi_path` causal result and Phase 71's `large` held-out accuracy).
 Phase 73 (Multi-Target Failure and Counterfactual Sweep) is complete. It also found and fixed a
 scoring bug that had depressed every earlier `pathforge`/`counterfactual` number, so the Phase 68
-and Phase 72 values for those two contexts are superseded; see "Phase 73" below.
+and Phase 72 values for those two contexts are superseded; see "Phase 73" below. Phase 74
+(Observation-Completeness Sensitivity Calibration) is complete: the official run now includes a
+low-volume sweep whose persisted headline numbers vary with completeness.
 
 ## Phase 71: held-out role inference evaluation
 
@@ -495,3 +498,94 @@ Verified: 8 tests in `experiments/tests/test_multi_target.py` (target selection 
 topologies, headline = mean, leave-one-out shift, skip-never-substitute, report formatting, the
 failed-node fix). Full suite 652/652 passed (up from 644/644). `validate_data_contracts` 55/55.
 `check_ground_truth_boundary` clean.
+
+## Phase 74: observation-completeness sensitivity calibration
+
+Before this phase, the completeness axis was flat in the matrix's own output. Topology F1 was
+1.000 in all 54 cells (Phase 72), and the only completeness effect ever shown came from an ad hoc
+`packets_per_edge=4` side run (Phase 68).
+
+**Mechanism.** `sample_packets` keeps each packet independently with probability c. A declared edge
+disappears from the inferred topology only when every one of its packets is dropped, so an edge
+carrying n packets survives with probability 1−(1−c)^n. `edge_survival_check` counts real
+generated packets per declared edge:
+
+- **Default volume.** 15 request/response pairs per edge, plus Phase 70's lag pulses, which each
+  node sends repeatedly to its first neighbour. Declared edges carry 88–288 packets on average
+  (`large` 88.5, `dynamic` 106.3, `medium` 160.7, `multi_service` 206.0, `small` 288.0). Expected
+  survival is ≥ 0.9999 even at c=0.25, and every edge survived at seed 42. The flat axis is a
+  consequence of volume, not of the pipeline ignoring completeness.
+- **Low volume.** 1 pair per edge with pulses off gives n=2 packets per edge. Expected survival is
+  0.75 at c=0.5 and 0.4375 at c=0.25. The observed fraction of surviving edges matches this. Over 30
+  seeds at c=0.25 it averages 0.440 on `large` (32 edges) and 0.457–0.467 elsewhere; at c=0.5 it
+  averages 0.750–0.789. So the sampler is unbiased, and single-seed deviations on small graphs are
+  noise.
+
+**Decision: a dedicated sweep, not a new default.** Lowering the default volume would break
+comparability with every Phase 68–73 number. Removing pulses would destroy Phase 70's causal
+signal. Instead, `matrix_runner.SENSITIVITY_SWEEP` (`variant="lowvol"`, `packets_per_edge=1`,
+`pulse_cycles=0`) is part of the official matrix:
+
+- `run_full_matrix` and `run_multi_seed_matrix` add one sweep baseline cell per (topology,
+  completeness) pair, so the official run persists 84 cells.
+- Sweep cells get their own id (`matrix-<topo>-<c>-baseline-lowvol-<seed>`) and record
+  `packets_per_edge`, `pulse_cycles` and `variant` in `configuration`. Default cell ids and values
+  are unchanged; the 10-seed default rows reproduce Phase 73 exactly.
+- `run_experiment_matrix` prints the sweep table after every single-seed run.
+  `--no-sensitivity-sweep` restores the 54-cell set.
+- `causal_analysis` is not meaningful in sweep cells, because without pulses there is no lag signal.
+
+```
+python -m scripts.run_experiment_matrix --root experiments_data               # 84 cells + sweep table
+python -m scripts.run_experiment_matrix --root experiments_data --n-seeds 10  # 840 runs
+```
+
+### Results
+
+Official single-seed run (seed 42, 84 cells, 28 s): topology F1 varies with completeness on 5 of
+6 levels. `large` falls from 1.000 → 0.984 → 0.792 → 0.694 (c=1.0/0.75/0.5/0.25), and `medium` role
+accuracy falls from 0.857 to 0.167.
+
+10 seeds (42–51, 840 runs, 236 s), sweep cells, `mean ± stdev`:
+
+| topology | metric | c=1.0 | c=0.75 | c=0.5 | c=0.25 |
+|---|---|---|---|---|---|
+| small | topology F1 | 1.000 ± 0.000 | 1.000 ± 0.000 | 0.967 ± 0.105 | 0.667 ± 0.385 |
+| medium | topology F1 | 1.000 ± 0.000 | 0.991 ± 0.029 | 0.915 ± 0.073 | 0.735 ± 0.148 |
+| large | topology F1 | 1.000 ± 0.000 | 0.962 ± 0.030 | 0.835 ± 0.048 | 0.619 ± 0.085 |
+| multi_path | topology F1 | 1.000 ± 0.000 | 0.991 ± 0.029 | 0.915 ± 0.073 | 0.735 ± 0.148 |
+| multi_service | topology F1 | 1.000 ± 0.000 | 0.974 ± 0.028 | 0.891 ± 0.071 | 0.704 ± 0.143 |
+| dynamic | topology F1 | 1.000 ± 0.000 | 0.972 ± 0.019 | 0.861 ± 0.065 | 0.656 ± 0.125 |
+| medium | role accuracy | 0.857 ± 0.000 | 0.826 ± 0.059 | 0.671 ± 0.219 | 0.583 ± 0.243 |
+| multi_service | role accuracy | 0.909 ± 0.000 | 0.847 ± 0.096 | 0.820 ± 0.127 | 0.704 ± 0.187 |
+| multi_path | pathforge F1 | 1.000 ± 0.000 | 0.983 ± 0.053 | 0.908 ± 0.139 | 0.783 ± 0.153 |
+| dynamic | pathforge F1 | 1.000 ± 0.000 | 0.989 ± 0.035 | 0.844 ± 0.101 | 0.721 ± 0.127 |
+| large | counterfactual F1 | 0.292 ± 0.000 | 0.314 ± 0.031 | 0.387 ± 0.058 | 0.517 ± 0.091 |
+
+Findings:
+- **The effect is real and larger than seed noise.** On `large`, topology F1 at c=0.25 is
+  0.619 ± 0.085, and the maximum over 10 seeds (0.745) is still well below 1.0. On every level
+  except `small`, even the best of the 10 seeds at c=0.25 stays below 1.0 (max 0.745–0.909), while
+  c=1.0 is 1.000 at every seed. The drop is at least 1.8 stdev (`medium`, `multi_path`) and up to
+  4.5 stdev (`large`).
+- **Edge survival fully explains the topology numbers.** Precision stays 1.0 (sampling removes
+  evidence; it never invents it), so F1 ≈ 2s/(1+s) for survival s. The analytic s=0.75 gives 0.857
+  at c=0.5, and s=0.4375 gives 0.609 at c=0.25. Measured: 0.835–0.915 and 0.619–0.735. The
+  small-graph levels sit slightly high, consistent with their above-analytic survival.
+- **Downstream metrics inherit the loss.** Role accuracy falls on `medium` and `multi_service` as
+  fingerprints lose traffic. PathForge falls on `multi_path` and `dynamic`, where lost edges change
+  which nodes a failure would strand. `large` and `dynamic` role accuracy are too noisy across seeds
+  to show a clear trend.
+- **Counterfactual F1 *rises* as completeness drops** (`large` 0.292 → 0.517, `dynamic` 0.340 →
+  0.472). This is what was measured. A plausible but unverified reading: with fewer inferred edges,
+  the counterfactual engine predicts fewer service impacts on connected dependents. Phase 73 showed
+  those impacts are what the connectivity-only ground truth counts as false positives. The rise
+  should therefore not be read as better prediction under loss.
+- **`small` is the least sensitive.** It has only 2 edges, so it is almost all-or-nothing:
+  0.667 ± 0.385 at c=0.25.
+
+Verified: 6 tests in `experiments/tests/test_completeness_sensitivity.py` (distinct ids and
+settings, `pulse_cycles=0` honoured, a real `large` topology F1 drop, default-volume survival,
+observed-vs-analytic survival over 20 seeds, sweep persisted and skippable). Two Phase 72 tests
+were updated for the new cell count and table column. Full suite 658/658 passed (up from 652/652).
+`validate_data_contracts` 55/55. `check_ground_truth_boundary` clean.

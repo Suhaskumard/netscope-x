@@ -18,6 +18,10 @@ mean ± stdev [min, max] tables printed as Markdown):
 
 Phase 73 per-target failure/counterfactual report (single-seed run only):
     python -m scripts.run_experiment_matrix --root experiments_data --targets
+
+Phase 74: every run also includes the low-volume completeness-sensitivity sweep
+(`matrix_runner.SENSITIVITY_SWEEP`) and prints its per-completeness table;
+`--no-sensitivity-sweep` skips it.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from experiments.matrix_runner import format_target_report, run_full_matrix
+from experiments.matrix_runner import format_sensitivity_table, format_target_report, run_full_matrix
 from experiments.multi_seed import format_markdown_table, run_multi_seed_matrix
 
 # Headline (context, field) pairs printed for a multi-seed run -- the same
@@ -48,6 +52,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-ablations", action="store_true", help="Skip the 4 ablation studies.")
     parser.add_argument("--targets", action="store_true", help="Phase 73: print the per-failure-target report.")
+    parser.add_argument("--no-sensitivity-sweep", action="store_true", help="Phase 74: skip the low-volume sweep.")
     seeds_group = parser.add_mutually_exclusive_group()
     seeds_group.add_argument("--seeds", type=int, nargs="+", help="Phase 72: run every cell once per listed seed.")
     seeds_group.add_argument("--n-seeds", type=int, help="Phase 72: run every cell for seeds --seed .. --seed+N-1.")
@@ -55,14 +60,18 @@ def main() -> None:
 
     seeds = args.seeds or (list(range(args.seed, args.seed + args.n_seeds)) if args.n_seeds else None)
     if seeds is not None:
-        summaries = run_multi_seed_matrix(args.root, seeds=seeds, run_ablations=not args.no_ablations)
+        summaries = run_multi_seed_matrix(
+            args.root, seeds=seeds, run_ablations=not args.no_ablations, run_sensitivity_sweep=not args.no_sensitivity_sweep
+        )
         print(f"Ran {len(summaries)} cells x {len(seeds)} seeds {seeds}, persisted under {args.root / 'experiments'}.")
         for context, field in _HEADLINE_COLUMNS:
             print(f"\n### {context} {field}\n")
             print(format_markdown_table(summaries, [(context, field)]))
         return
 
-    results = run_full_matrix(args.root, run_ablations=not args.no_ablations, seed=args.seed)
+    results = run_full_matrix(
+        args.root, run_ablations=not args.no_ablations, seed=args.seed, run_sensitivity_sweep=not args.no_sensitivity_sweep
+    )
 
     print(f"Ran {len(results)} experiment cells, persisted under {args.root / 'experiments'}.")
     for cell in results:
@@ -70,6 +79,9 @@ def main() -> None:
     if args.targets:
         print("\n### Phase 73 failure targets\n")
         print(format_target_report(results))
+    if not args.no_sensitivity_sweep:
+        print("\n### Phase 74 completeness sensitivity (low-volume sweep)\n")
+        print(format_sensitivity_table(results))
 
 
 if __name__ == "__main__":

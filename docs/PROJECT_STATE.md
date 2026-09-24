@@ -2212,5 +2212,24 @@ None yet — no experiments have been run.
   Verified: 8 new tests in `experiments/tests/test_multi_target.py`; full suite 652/652 passed (up
   from 644/644); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 74 (Observation-Completeness Sensitivity Calibration, master spec addendum). Not
-  started; awaiting explicit request.
+- Observation-completeness sensitivity calibration (Phase 74, master spec addendum) makes the
+  completeness axis move in the official matrix output. Mechanism: `sample_packets` keeps each
+  packet with probability c, so an edge with n packets survives with probability 1-(1-c)^n. At the
+  default volume (15 pairs/edge plus Phase 70 lag pulses) declared edges carry 88-288 packets, so
+  survival is >= 0.9999 and the axis is flat by construction (`matrix_runner.edge_survival_check`
+  measures this). Rather than change the default (which would break comparability and remove
+  Phase 70's causal signal), `SENSITIVITY_SWEEP` (`lowvol`: 1 pair/edge, pulses off) adds one
+  baseline cell per (topology, completeness) to `run_full_matrix` and `run_multi_seed_matrix`:
+  84 cells, with sweep cells under their own `-lowvol-` ids and default cells unchanged.
+  `run_experiment_matrix` prints the sweep table; `--no-sensitivity-sweep` skips it.
+  Real result (10 seeds, 840 runs, 236 s): sweep topology F1 at c=1.0 -> 0.25 falls on every
+  level, e.g. `large` 1.000 -> 0.619 ± 0.085. This matches the analytic 2s/(1+s) with s=0.4375.
+  Role accuracy (`medium` 0.857 -> 0.583) and PathForge (`dynamic` 1.000 -> 0.721) fall too.
+  Counterfactual F1 rises as edges are lost (cause unverified; see the doc). Details are in
+  `docs/architecture/experimental_matrix.md`'s "Phase 74" section.
+  Verified: 6 new tests in `experiments/tests/test_completeness_sensitivity.py`, 2 Phase 72 tests
+  updated for the new cell count; full suite 658/658 passed (up from 652/652);
+  `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 75 (Experiment Idempotency and Versioning, master spec addendum). Not started;
+  awaiting explicit request.

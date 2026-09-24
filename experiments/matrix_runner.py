@@ -195,6 +195,16 @@ _PULSE_INTENSITY_RANGE = (1, 5)
 # failure targets per cell (see `_pick_failure_targets`), not one highest-degree node.
 FAILURE_TARGET_COUNT = 3
 
+# Phase 74: the completeness-sensitivity sweep. An edge is lost only when sampling drops
+# *all* of its packets, so it survives with probability 1-(1-c)^n. At the default volume
+# (15 request/response pairs per edge plus Phase 70's lag pulses, which each node sends
+# repeatedly to its first neighbour) declared edges carry ~88-288 packets on average
+# (`edge_survival_check`), so survival is >= 0.9999 even at c=0.25 and the completeness
+# axis is flat by construction. The sweep runs 1 pair per edge (n=2) with pulses off,
+# where survival is 1-(1-c)^2: 0.75 at c=0.5, 0.44 at c=0.25. `causal_analysis` is not meaningful in
+# these cells (no pulses, so no lag signal); the sweep exists for the other contexts.
+SENSITIVITY_SWEEP: Dict[str, Any] = {"variant": "lowvol", "packets_per_edge": 1, "pulse_cycles": 0}
+
 
 @dataclass(frozen=True)
 class MatrixCellResult:
@@ -429,6 +439,8 @@ def run_matrix_cell(
     ablation: Optional[str] = None,
     packets_per_edge: int = 15,
     failure_target_count: int = FAILURE_TARGET_COUNT,
+    pulse_cycles: int = _PULSE_CYCLES,
+    variant: Optional[str] = None,
 ) -> MatrixCellResult:
     """Runs one (topology_level, completeness[, ablation]) cell of the
     experimental matrix for real: generates a scenario, synthesizes and
@@ -441,7 +453,10 @@ def run_matrix_cell(
     if ablation is not None and ablation not in ABLATIONS:
         raise ValueError(f"unknown ablation {ablation!r}; choose from {ABLATIONS}")
 
-    experiment_id = f"matrix-{topology_level}-{_sanitize(str(completeness))}-{ablation or 'baseline'}-{seed}"
+    # Phase 74: a `variant` (e.g. the low-volume sweep) gets its own id so it never overwrites
+    # the default cell; default ids are unchanged.
+    variant_part = f"-{variant}" if variant else ""
+    experiment_id = f"matrix-{topology_level}-{_sanitize(str(completeness))}-{ablation or 'baseline'}{variant_part}-{seed}"
     capture_id = experiment_id
     raw_evaluations: Dict[str, Any] = {}
     metrics: List[MetricResult] = []
@@ -454,7 +469,7 @@ def run_matrix_cell(
     packets = generate_packets_for_scenario(
         roles, edges, ip_by_name, capture_id, seed,
         packets_per_edge=packets_per_edge, wave_2_edges=wave_2_edges, wave_gap_seconds=_WAVE_GAP_SECONDS,
-        pulse_cycles=_PULSE_CYCLES, pulse_packets_per_node=_PULSE_PACKETS_PER_NODE,
+        pulse_cycles=pulse_cycles, pulse_packets_per_node=_PULSE_PACKETS_PER_NODE,
         pulse_intensity_range=_PULSE_INTENSITY_RANGE,
     )
     sampled = sample_packets(packets, completeness, seed)
@@ -599,6 +614,9 @@ def run_matrix_cell(
             "node_count": len(roles),
             "edge_count": len(edges),
             "failure_target_count": failure_target_count,
+            "packets_per_edge": packets_per_edge,
+            "pulse_cycles": pulse_cycles,
+            "variant": variant,
         },
         random_seed=seed,
         timestamp=datetime.now(timezone.utc),
@@ -656,13 +674,16 @@ def run_full_matrix(
     completeness_levels: Optional[List[float]] = None,
     run_ablations: bool = True,
     seed: int = 42,
+    run_sensitivity_sweep: bool = True,
 ) -> List[MatrixCellResult]:
     """Runs every (topology_level x completeness) baseline cell, plus, if
     `run_ablations`, the 4 ablation variants of each cell's own baseline
     topology_level/completeness=1.0 combination (one topology per level is
     enough to isolate a component's marginal contribution; running every
     ablation at every completeness level would be 24x the cells for no
-    added isolation power). Persists every cell as it completes.
+    added isolation power). If `run_sensitivity_sweep`, also runs Phase 74's
+    low-volume `SENSITIVITY_SWEEP` baseline cell for every (topology_level x
+    completeness) pair. Persists every cell as it completes.
     """
     levels = topology_levels or list(TOPOLOGY_LEVELS)
     completenesses = completeness_levels or OBSERVATION_COMPLETENESS_LEVELS
@@ -680,4 +701,83 @@ def run_full_matrix(
                 persist_cell(root, cell)
                 results.append(cell)
 
+        if run_sensitivity_sweep:
+            for completeness in completenesses:
+                cell = run_matrix_cell(root, level, completeness, seed=seed, **SENSITIVITY_SWEEP)
+                persist_cell(root, cell)
+                results.append(cell)
+
     return results
+
+
+def format_sensitivity_table(cells: List[MatrixCellResult]) -> str:
+    """Phase 74 Markdown table over the low-volume sweep cells only: one row
+    per (topology, metric), one column per completeness level, read straight
+    from each cell's persisted headline `MetricResult`s."""
+    sweep = [c for c in cells if c.experiment.configuration.get("variant") == SENSITIVITY_SWEEP["variant"]]
+    completenesses = sorted({c.experiment.configuration["completeness"] for c in sweep}, reverse=True)
+    columns = [("topology_reconstruction", "f1"), ("role_inference", "precision"), ("pathforge", "f1"), ("counterfactual", "f1")]
+    header = ["topology", "metric"] + [f"c={c:g}" for c in completenesses]
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    levels = list(dict.fromkeys(c.experiment.configuration["topology_level"] for c in sweep))
+    for level in levels:
+        by_c = {c.experiment.configuration["completeness"]: c for c in sweep if c.experiment.configuration["topology_level"] == level}
+        for context, field in columns:
+            row = [level, f"{context} {field}"]
+            for comp in completenesses:
+                metric = next((m for m in by_c[comp].metrics if m.context.value == context), None) if comp in by_c else None
+                value = getattr(metric, field) if metric is not None else None
+                row.append(f"{value:.3f}" if value is not None else "n/a")
+            lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class EdgeSurvival:
+    edge_count: int
+    mean_packets_per_edge: float
+    expected_survival: float
+    observed_survival: float
+
+
+def edge_survival_check(
+    topology_level: str,
+    completeness: float,
+    seed: int = 42,
+    packets_per_edge: int = 15,
+    pulse_cycles: int = _PULSE_CYCLES,
+) -> EdgeSurvival:
+    """Phase 74 mechanism check. Generates the same real packets a matrix cell
+    would, counts packets per declared (undirected) edge, and compares the
+    analytic survival -- the mean over edges of 1-(1-c)^n_e, since
+    `sample_packets` keeps each packet independently with probability c --
+    against the fraction of declared edges that still have at least one
+    sampled packet."""
+    roles, edges = TOPOLOGY_LEVELS[topology_level]()
+    ip_by_name = assign_ips(list(roles))
+    capture_id = f"survival-{topology_level}"
+    packets = generate_packets_for_scenario(
+        roles, edges, ip_by_name, capture_id, seed,
+        packets_per_edge=packets_per_edge, wave_2_edges=max(1, len(edges) // 4), wave_gap_seconds=_WAVE_GAP_SECONDS,
+        pulse_cycles=pulse_cycles, pulse_packets_per_node=_PULSE_PACKETS_PER_NODE,
+        pulse_intensity_range=_PULSE_INTENSITY_RANGE,
+    )
+    sampled = sample_packets(packets, completeness, seed)
+    declared = {frozenset((ip_by_name[e.source], ip_by_name[e.target])) for e in edges}
+
+    def per_edge(pkts: List[Any]) -> Dict[frozenset, int]:
+        counts: Dict[frozenset, int] = {}
+        for p in pkts:
+            key = frozenset((str(p.src_ip), str(p.dst_ip)))
+            if key in declared:
+                counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    total, kept = per_edge(packets), per_edge(sampled)
+    n = [total.get(e, 0) for e in declared]
+    return EdgeSurvival(
+        edge_count=len(declared),
+        mean_packets_per_edge=sum(n) / len(n),
+        expected_survival=sum(1 - (1 - completeness) ** k for k in n) / len(n),
+        observed_survival=sum(1 for e in declared if kept.get(e, 0) > 0) / len(declared),
+    )

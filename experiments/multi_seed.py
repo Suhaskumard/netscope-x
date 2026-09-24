@@ -30,6 +30,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from experiments.matrix_runner import (
     ABLATIONS,
     OBSERVATION_COMPLETENESS_LEVELS,
+    SENSITIVITY_SWEEP,
     TOPOLOGY_LEVELS,
     persist_cell,
     run_matrix_cell,
@@ -55,6 +56,7 @@ class MultiSeedCellSummary:
     ablation: Optional[str]
     seeds: List[int]
     metrics: Dict[str, Dict[str, MetricSummary]]
+    variant: Optional[str] = None
 
 
 def run_multi_seed_cell(
@@ -65,12 +67,16 @@ def run_multi_seed_cell(
     ablation: Optional[str] = None,
     packets_per_edge: int = 15,
     persist: bool = True,
+    **cell_kwargs,
 ) -> MultiSeedCellSummary:
     """Runs one matrix cell for real once per seed and summarizes every
-    (context, field) pair across those runs."""
+    (context, field) pair across those runs. `cell_kwargs` pass through to
+    `run_matrix_cell` (e.g. Phase 74's `pulse_cycles`/`variant`)."""
     collected: Dict[str, Dict[str, List[Optional[float]]]] = {}
     for seed in seeds:
-        cell = run_matrix_cell(root, topology_level, completeness, seed=seed, ablation=ablation, packets_per_edge=packets_per_edge)
+        cell = run_matrix_cell(
+            root, topology_level, completeness, seed=seed, ablation=ablation, packets_per_edge=packets_per_edge, **cell_kwargs
+        )
         if persist:
             persist_cell(root, cell)
         for metric in cell.metrics:
@@ -87,6 +93,7 @@ def run_multi_seed_cell(
             context: {field: summarize_values(values) for field, values in per_field.items()}
             for context, per_field in collected.items()
         },
+        variant=cell_kwargs.get("variant"),
     )
 
 
@@ -98,10 +105,11 @@ def run_multi_seed_matrix(
     run_ablations: bool = True,
     packets_per_edge: int = 15,
     persist: bool = True,
+    run_sensitivity_sweep: bool = True,
 ) -> List[MultiSeedCellSummary]:
     """The same cell set as `run_full_matrix` (every topology x completeness
-    baseline cell, plus each topology's 4 ablations at completeness 1.0),
-    each run once per seed and summarized."""
+    baseline cell, each topology's 4 ablations at completeness 1.0, and
+    Phase 74's low-volume sweep cells), each run once per seed and summarized."""
     seeds = list(seeds) if seeds is not None else DEFAULT_SEEDS
     levels = topology_levels or list(TOPOLOGY_LEVELS)
     completenesses = completeness_levels or OBSERVATION_COMPLETENESS_LEVELS
@@ -115,15 +123,18 @@ def run_multi_seed_matrix(
                 summaries.append(
                     run_multi_seed_cell(root, level, 1.0, seeds, ablation=ablation, packets_per_edge=packets_per_edge, persist=persist)
                 )
+        if run_sensitivity_sweep:
+            for completeness in completenesses:
+                summaries.append(run_multi_seed_cell(root, level, completeness, seeds, persist=persist, **SENSITIVITY_SWEEP))
     return summaries
 
 
 def format_markdown_table(summaries: Sequence[MultiSeedCellSummary], columns: Sequence[Tuple[str, str]]) -> str:
     """One row per cell, one column per (context, field) pair."""
-    header = ["topology", "completeness", "ablation"] + [f"{context} {field}" for context, field in columns]
+    header = ["topology", "completeness", "ablation", "variant"] + [f"{context} {field}" for context, field in columns]
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     for s in summaries:
-        row = [s.topology_level, f"{s.completeness:g}", s.ablation or "baseline"]
+        row = [s.topology_level, f"{s.completeness:g}", s.ablation or "baseline", s.variant or "default"]
         row += [format_summary(s.metrics.get(context, {}).get(field)) for context, field in columns]
         lines.append("| " + " | ".join(row) + " |")
     return "\n".join(lines)

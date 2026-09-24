@@ -86,12 +86,13 @@ def test_multi_seed_matrix_runs_every_cell_and_persists_every_seed(tmp_path: Pat
     summaries = run_multi_seed_matrix(
         root, seeds=seeds, topology_levels=["small"], completeness_levels=[1.0, 0.5], packets_per_edge=8
     )
-    # 2 baseline completeness cells + 4 ablations.
-    assert len(summaries) == 6
+    # 2 baseline completeness cells + 4 ablations + 2 Phase 74 low-volume sweep cells.
+    assert len(summaries) == 8
     assert [s.ablation for s in summaries][:2] == [None, None]
+    assert [s.variant for s in summaries][-2:] == ["lowvol", "lowvol"]
     for s in summaries:
         assert s.seeds == seeds
-        tag = s.ablation or "baseline"
+        tag = (s.ablation or "baseline") + (f"-{s.variant}" if s.variant else "")
         for seed in seeds:
             exp_id = f"matrix-small-{str(s.completeness).replace('.', 'p')}-{tag}-{seed}"
             assert experiment_path(root, exp_id).exists()
@@ -111,5 +112,5 @@ def test_format_summary_and_table() -> None:
     )
     table = format_markdown_table([s], [("pathforge", "f1"), ("causal_analysis", "f1")])
     lines = table.splitlines()
-    assert lines[0] == "| topology | completeness | ablation | pathforge f1 | causal_analysis f1 |"
-    assert lines[2] == "| small | 0.75 | baseline | 1.000 ± 0.000 [1.000, 1.000] | n/a |"
+    assert lines[0] == "| topology | completeness | ablation | variant | pathforge f1 | causal_analysis f1 |"
+    assert lines[2] == "| small | 0.75 | baseline | default | 1.000 ± 0.000 [1.000, 1.000] | n/a |"
