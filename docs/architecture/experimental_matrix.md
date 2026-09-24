@@ -108,7 +108,8 @@ tautological.
 - **`topology_reconstruction`/`role_inference`/`pathforge`/`counterfactual` were numerically
   identical across all 5 completeness levels at `packets_per_edge=15`** (the default): e.g. the
   `medium` topology scored `pathforge` F1 = `0.7273`, `counterfactual` F1 = `0.8333` at every one of
-  100%/90%/75%/50%/25% completeness. Verified this is not a sampling bug, not a coincidence of
+  100%/90%/75%/50%/25% completeness (these single-target values are superseded by Phase 73's
+  scoring fix and target sweep; see "Phase 73" below). Verified this is not a sampling bug, not a coincidence of
   identical results: re-running with a deliberately sparser `packets_per_edge=4` on the `large`
   topology shows a real, measurable effect — `edge_f1` = `1.0` at completeness 1.0/0.5, dropping to
   `0.951` at completeness 0.25 (3 of 32 declared edges lost). **Finding, stated plainly**: at this
@@ -239,7 +240,12 @@ result for real: a real 54-cell re-run now shows 23 total predicted candidates a
 matched to ground truth, with 2 of 6 topology levels (`multi_path`, `dynamic`) reliably scoring a
 genuine positive F1 — and the remaining 4 levels' continued `0.0` traced to a real, documented
 structural limitation (hub fan-in for star-shaped topologies; too few nodes for `small`), not
-silently glossed over. Phase 71 (Held-Out Role Inference Evaluation) is complete; see below.
+silently glossed over. Phase 71 (Held-Out Role Inference Evaluation) and Phase 72 (Multi-Seed
+Variance Reporting) are complete; see below. Phase 72's 10-seed run revises two earlier
+single-seed claims (Phase 70's `multi_path` causal result and Phase 71's `large` held-out accuracy).
+Phase 73 (Multi-Target Failure and Counterfactual Sweep) is complete. It also found and fixed a
+scoring bug that had depressed every earlier `pathforge`/`counterfactual` number, so the Phase 68
+and Phase 72 values for those two contexts are superseded; see "Phase 73" below.
 
 ## Phase 71: held-out role inference evaluation
 
@@ -274,3 +280,218 @@ accuracy is lower in every cell, and calibration error is much higher, largely b
 topologies are small with several singleton roles (Naive Bayes over few examples per class). This
 is a single seed; multi-seed variance is Phase 72's job. Full suite: 637/637 passed (up from
 631/631); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+## Phase 72: multi-seed variance reporting
+
+`experiments/multi_seed.py::run_multi_seed_matrix` runs the same 54-cell set as `run_full_matrix`
+(6 topologies × 5 completeness levels, plus 4 ablations per topology at completeness 1.0) once per
+seed through the real `run_matrix_cell`, persisting every run
+(`matrix-<topology>-<completeness>-<ablation|baseline>-<seed>`). For each `(context, field)` pair
+it reports `n` / mean / sample stdev (n−1) / min / max. `None` values (e.g. no detection latency)
+are left out rather than counted as 0, and `n` records how many seeds contributed.
+
+**What varies:** the seed drives traffic generation (`generate_packets_for_scenario`: timing,
+jitter, pulse intensities) and observation loss (`sample_packets`). **What stays fixed:** the
+declared topologies, including `dynamic`, whose generator seed stays 42. The spread below is
+therefore traffic and observation variance on a fixed network.
+`test_different_seeds_really_produce_different_traffic` guards against the seed being silently
+ignored.
+
+```
+python -m scripts.run_experiment_matrix --root experiments_data --n-seeds 10   # seeds 42..51
+python -m scripts.run_experiment_matrix --root experiments_data --seeds 42 43 44
+```
+
+Real measurement: 54 cells × 10 seeds (42–51), default `packets_per_edge`, 540 runs, 411 s wall
+clock. Cells show `mean ± stdev [min, max]`. Baseline, completeness 1.0:
+
+| topology | held-out role acc | role ECE | causal F1 | pathforge F1 | counterfactual F1 |
+|---|---|---|---|---|---|
+| small | 0.000 ± 0.000 [0.000, 0.000] | 1.000 ± 0.000 | 0.000 ± 0.000 | 0.667 ± 0.000 | 0.500 ± 0.000 |
+| medium | 0.714 ± 0.000 [0.714, 0.714] | 0.286 ± 0.000 | 0.000 ± 0.000 | 0.727 ± 0.000 | 0.833 ± 0.000 |
+| large | 0.375 ± 0.281 [0.000, 0.750] | 0.584 ± 0.251 | 0.030 ± 0.042 [0.000, 0.118] | 0.000 ± 0.000 | 0.000 ± 0.000 |
+| multi_path | 0.340 ± 0.097 [0.200, 0.400] | 0.660 ± 0.097 | 0.057 ± 0.120 [0.000, 0.286] | 0.000 ± 0.000 | 0.000 ± 0.000 |
+| multi_service | 0.827 ± 0.029 [0.818, 0.909] | 0.173 ± 0.029 | 0.000 ± 0.000 | 0.842 ± 0.000 | 0.900 ± 0.000 |
+| dynamic | 0.375 ± 0.156 [0.250, 0.625] | 0.619 ± 0.145 | 0.143 ± 0.000 [0.143, 0.143] | 0.000 ± 0.000 | 0.000 ± 0.000 |
+
+`topology_reconstruction` F1 and graph similarity, and `temporal_analysis` F1, are `1.000 ± 0.000`
+in all 54 cells.
+
+(The pathforge and counterfactual columns above are superseded by Phase 73's scoring fix and
+target sweep; see "Phase 73" below.)
+
+Held-out role accuracy across completeness levels (baseline):
+
+| topology | 1.0 | 0.9 | 0.75 | 0.5 | 0.25 |
+|---|---|---|---|---|---|
+| medium | 0.714 ± 0.000 | 0.829 ± 0.060 | 0.857 ± 0.000 | 0.857 ± 0.000 | 0.857 ± 0.000 |
+| large | 0.375 ± 0.281 | 0.225 ± 0.208 | 0.292 ± 0.193 | 0.250 ± 0.152 | 0.400 ± 0.179 |
+| multi_path | 0.340 ± 0.097 | 0.480 ± 0.103 | 0.540 ± 0.097 | 0.580 ± 0.063 | 0.500 ± 0.141 |
+| multi_service | 0.827 ± 0.029 | 0.891 ± 0.038 | 0.900 ± 0.029 | 0.900 ± 0.029 | 0.909 ± 0.000 |
+| dynamic | 0.375 ± 0.156 | 0.250 ± 0.212 | 0.325 ± 0.105 | 0.312 ± 0.135 | 0.225 ± 0.079 |
+
+(`small` is 0.000 at every level: all 3 of its roles are singletons.)
+
+Findings:
+- **Seed-stable metrics.** Topology reconstruction, temporal analysis, pathforge and
+  counterfactual have stdev 0 at completeness ≥ 0.5; pathforge only moves at 0.25 (medium
+  0.764 ± 0.077, multi_service 0.853 ± 0.033). These metrics do not respond to traffic noise at
+  this scale. Their zeros (`large`, `multi_path`, `dynamic`) are structural, not unlucky seeds.
+- **Held-out role inference is the noisiest metric.** On `large` it ranges from 0.000 to 0.750
+  across seeds. Phase 71's single-seed 0.583 for `large` came from a favourable seed; the 10-seed
+  mean is 0.375. `multi_path` (0.200 at seed 42, mean 0.340) and `dynamic` (0.250 at seed 42, mean
+  0.375) were understated by seed 42.
+- **Phase 70 is revised for `multi_path`.** Its causal F1 is not reliably positive: it is
+  0.057 ± 0.120 at completeness 1.0 and 0.000 at every seed for completeness 0.75 and 0.5. Only
+  `dynamic` is reliably positive (0.143 at every seed at completeness 1.0 and 0.9). `large` shows
+  occasional positive seeds (max 0.118).
+- **Some role accuracy rises as completeness drops** (medium 0.714 → 0.857, multi_path
+  0.340 → 0.580, multi_service 0.827 → 0.909). This is what was measured, not an artifact of the
+  aggregation. The cause has not been investigated. A plausible guess is that sampling thins
+  noisy fingerprint features, but that is unverified.
+- **Ablations.** Across all 10 seeds, only `without_temporal` changes any headline metric: it
+  drives causal F1 to 0 wherever the baseline was positive. The other three ablations match
+  baseline exactly on every headline column. The multi-seed data therefore confirms, rather than
+  masks, that they have no measurable headline effect.
+
+Verified: 7 tests in `experiments/tests/test_multi_seed.py`. Full suite 644/644 passed (up from
+637/637). `validate_data_contracts` 55/55. `check_ground_truth_boundary` clean.
+
+## Phase 73: multi-target failure and counterfactual sweep
+
+Before this phase, PathForge and counterfactual failed one node per cell: the highest-degree
+declared node. `run_matrix_cell` now fails up to `FAILURE_TARGET_COUNT = 3` structurally distinct
+nodes. `_pick_failure_targets` chooses them on the *declared* topology, so target choice is part of
+the experiment design and does not depend on inference quality.
+
+- **Ranking.** Nodes are ranked by Phase 55's `compute_graph_criticality`: path-dependency impact,
+  then betweenness, then degree, with the name breaking ties.
+- **Distinctness.** Only the highest-ranked node of each structural signature is kept (articulation
+  flag, impact, degree, betweenness, sorted neighbour degrees). A star therefore yields
+  `{hub, one leaf}`, not three interchangeable leaves. The list is never padded, so fewer than K
+  targets means fewer than K distinct classes exist.
+- **Unobserved targets.** A target that sampling removed from the inferred graph is skipped and
+  listed in `skipped_targets`, never replaced by another node.
+- **Aggregation.** The headline `MetricResult` is the mean across targets. `Experiment.results`
+  keeps every target's full evaluation. It also keeps an aggregate: n/mean/stdev/min/max for
+  precision, recall and F1, `nontrivial_target_count` (targets whose failure strands at least one
+  other node), and `max_leave_one_out_f1_shift`, the largest change in mean F1 from dropping any one
+  target.
+
+Selected targets (identical at every seed and completeness level; none were ever skipped):
+
+| topology | targets (criticality order) |
+|---|---|
+| small | node-2 (articulation), node-1 |
+| medium | hub (articulation), leaf-1 |
+| large | tier1-1, tier0-1 |
+| multi_path | sink, mid-1 |
+| multi_service | hub (articulation), leaf-1 |
+| dynamic | svc-1, svc-2, svc-5 |
+
+`large`, `multi_path` and `dynamic` have no articulation point, so none of their targets strands
+another node.
+
+```
+python -m scripts.run_experiment_matrix --root experiments_data --targets      # per-target report
+python -m scripts.run_experiment_matrix --root experiments_data --n-seeds 10
+```
+
+### Scoring bug found and fixed
+
+The first sweep scored every non-articulation target at F1 = 0.0, for PathForge and counterfactual
+alike. The cause was not the prediction. PathForge and the counterfactual engine always list the
+failed node itself as its primary service impact, but
+`matrix_runner._actual_outcome_from_ground_truth` left the failed node out of the actual affected
+set. A leaf failure therefore compared predicted `{leaf}` against actual `{}`, which scores 0.0 by
+construction, even though `newly_unreachable` was correctly empty and connectivity accuracy was 1.0.
+On hub targets the same mismatch added one guaranteed false positive.
+
+The evaluators' own unit tests already count the failed node as affected
+(`actually_affected_node_ids={"B", "D"}` for a failed `B` in both
+`test_failure_propagation_validation.py` and `test_counterfactual_validation.py`). So the matrix
+runner was the inconsistent part. It now adds the failed node to the actual set, and the
+evaluators are unchanged. `test_failed_node_itself_counts_as_affected_so_a_leaf_is_not_zero_by_construction`
+guards this.
+
+This fix alone changes every earlier `pathforge`/`counterfactual` number. Phase 68's single hub
+target on `medium` moves from 0.727 → 0.833 (PathForge) and 0.833 → 0.923 (counterfactual). On
+`multi_service` it moves from 0.842 → 0.900 and 0.900 → 0.952. Phase 72's structural zeros on
+`large`, `multi_path` and `dynamic` were this bug, not a property of those networks.
+
+### Results
+
+Real measurement: 54 cells × 10 seeds (42–51), 540 runs, 260 s. Baseline, `mean ± stdev [min, max]`
+of the across-target mean F1:
+
+| topology | pathforge F1 (c=1.0) | pathforge F1 (c=0.25) | counterfactual F1 (all c) |
+|---|---|---|---|
+| small | 1.000 ± 0.000 | 1.000 ± 0.000 | 0.733 ± 0.000 |
+| medium | 0.917 ± 0.000 | 0.933 ± 0.035 [0.917, 1.000] | 0.795 ± 0.000 |
+| large | 0.792 ± 0.081 [0.583, 0.833] | 0.775 ± 0.125 [0.583, 1.000] | 0.289 ± 0.008 [0.268, 0.292] |
+| multi_path | 1.000 ± 0.000 | 1.000 ± 0.000 | 0.450 ± 0.000 |
+| multi_service | 0.950 ± 0.000 | 0.955 ± 0.016 [0.950, 1.000] | 0.810 ± 0.000 |
+| dynamic | 0.889 ± 0.000 | 0.922 ± 0.075 [0.778, 1.000] | 0.340 ± 0.000 |
+
+(`large` counterfactual at c=0.25 is 0.287 ± 0.010; every other counterfactual cell is identical
+across completeness levels.)
+
+Per target, seed 42, completeness 1.0 (`--targets` output):
+
+| topology | target | stranded | pathforge F1 | counterfactual F1 |
+|---|---|---|---|---|
+| small | node-2 | 1 | 1.000 | 0.800 |
+| small | node-1 | 0 | 1.000 | 0.667 |
+| medium | hub | 5 | 0.833 | 0.923 |
+| medium | leaf-1 | 0 | 1.000 | 0.667 |
+| large | tier1-1 | 0 | 0.667 | 0.250 |
+| large | tier0-1 | 0 | 1.000 | 0.333 |
+| multi_path | sink | 0 | 1.000 | 0.400 |
+| multi_path | mid-1 | 0 | 1.000 | 0.500 |
+| multi_service | hub | 9 | 0.900 | 0.952 |
+| multi_service | leaf-1 | 0 | 1.000 | 0.667 |
+| dynamic | svc-1 | 0 | 0.667 | 0.286 |
+| dynamic | svc-2 | 0 | 1.000 | 0.333 |
+| dynamic | svc-5 | 0 | 1.000 | 0.400 |
+
+### Is the aggregate dominated by one target?
+
+Largest `max_leave_one_out_f1_shift` over all 50 baseline cells (10 seeds × 5 completeness levels)
+per topology:
+
+| topology | pathforge | counterfactual |
+|---|---|---|
+| small | 0.000 | 0.067 |
+| medium | 0.083 | 0.128 |
+| large | 0.250 | 0.042 |
+| multi_path | 0.000 | 0.050 |
+| multi_service | 0.050 | 0.143 |
+| dynamic | 0.111 | 0.030 |
+
+Findings:
+- **No single target dominates.** Dropping any one target moves the mean by at most 0.25, and by
+  0.143 or less everywhere except `large` PathForge. On `large`, both targets vary by seed at
+  completeness 1.0 (`tier1-1` 0.5–1.0, `tier0-1` 0.5–1.0), and the one that scores lower changes
+  from seed to seed, so no single node consistently drives `large`'s 0.081 stdev. Before the
+  scoring fix, the single-seed leave-one-out shift reached 0.450, and that spread was entirely the
+  bug.
+- **The old single-target choice was unrepresentative in one direction.** The highest-degree node
+  was always the hardest case for PathForge on star topologies (hub 0.833 vs leaf 1.000 on
+  `medium`) and the easiest for counterfactual (hub 0.923 vs leaf 0.667).
+- **PathForge is accurate on non-articulation failures.** It correctly predicts that nothing is
+  stranded. Its remaining errors are extra secondary service impacts. At seed 42, `tier1-1` and
+  `svc-1` each report one dependent that ground truth does not count.
+- **Counterfactual scores much lower on non-articulation targets (0.25–0.50).** The counterfactual
+  engine reports service impacts on dependents that remain connected. The ground-truth outcome only
+  models connectivity loss, so those impacts count as false positives. This is a limit of what the
+  synthetic ground truth can express, not established evidence that the predictions are wrong.
+  Scoring service-level impact would need a service-dependency ground truth, which does not exist
+  yet.
+- **Still mostly seed- and completeness-stable** (Phase 72's finding holds). Apart from `large`,
+  PathForge varies only at completeness ≤ 0.75 (`dynamic`) or 0.25 (`medium`, `multi_service`).
+  Counterfactual varies only on `large`.
+
+Verified: 8 tests in `experiments/tests/test_multi_target.py` (target selection on real
+topologies, headline = mean, leave-one-out shift, skip-never-substitute, report formatting, the
+failed-node fix). Full suite 652/652 passed (up from 644/644). `validate_data_contracts` 55/55.
+`check_ground_truth_boundary` clean.

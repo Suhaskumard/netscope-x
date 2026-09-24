@@ -23,7 +23,6 @@ many seeds actually contributed a value.
 
 from __future__ import annotations
 
-import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -35,6 +34,7 @@ from experiments.matrix_runner import (
     persist_cell,
     run_matrix_cell,
 )
+from experiments.metrics.summary_stats import MetricSummary, format_summary, summarize_values
 
 DEFAULT_SEEDS: List[int] = list(range(42, 52))
 
@@ -49,37 +49,12 @@ METRIC_FIELDS: Tuple[str, ...] = (
 
 
 @dataclass(frozen=True)
-class MetricSummary:
-    n: int
-    mean: Optional[float]
-    stdev: Optional[float]
-    min: Optional[float]
-    max: Optional[float]
-
-
-@dataclass(frozen=True)
 class MultiSeedCellSummary:
     topology_level: str
     completeness: float
     ablation: Optional[str]
     seeds: List[int]
     metrics: Dict[str, Dict[str, MetricSummary]]
-
-
-def summarize_values(values: Sequence[Optional[float]]) -> MetricSummary:
-    """n/mean/sample-stdev/min/max over the non-`None` values. Sample
-    stdev (n-1 denominator) is `None` below 2 values; everything but `n`
-    is `None` when there are no values at all."""
-    present = [float(v) for v in values if v is not None]
-    if not present:
-        return MetricSummary(n=0, mean=None, stdev=None, min=None, max=None)
-    return MetricSummary(
-        n=len(present),
-        mean=statistics.fmean(present),
-        stdev=statistics.stdev(present) if len(present) >= 2 else None,
-        min=min(present),
-        max=max(present),
-    )
 
 
 def run_multi_seed_cell(
@@ -141,14 +116,6 @@ def run_multi_seed_matrix(
                     run_multi_seed_cell(root, level, 1.0, seeds, ablation=ablation, packets_per_edge=packets_per_edge, persist=persist)
                 )
     return summaries
-
-
-def format_summary(summary: Optional[MetricSummary]) -> str:
-    """`mean ± stdev [min, max]` to 3 d.p.; `n/a` when no seed produced a value."""
-    if summary is None or summary.n == 0:
-        return "n/a"
-    stdev = f"{summary.stdev:.3f}" if summary.stdev is not None else "n/a"
-    return f"{summary.mean:.3f} ± {stdev} [{summary.min:.3f}, {summary.max:.3f}]"
 
 
 def format_markdown_table(summaries: Sequence[MultiSeedCellSummary], columns: Sequence[Tuple[str, str]]) -> str:

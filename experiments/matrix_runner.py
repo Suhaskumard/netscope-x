@@ -46,6 +46,18 @@ by reusing the *inferred* prediction's own graph, which would make the
 scoring tautological) -- a real, if synthetic-network, "actual" outcome,
 not a live capture but also not fabricated.
 
+## Failure targets (Phase 73)
+
+PathForge/counterfactual used to fail one node per cell (the highest-degree
+declared node). They now fail each of up to `FAILURE_TARGET_COUNT`
+structurally distinct nodes, ranked by Phase 55's criticality metrics on
+the declared topology (`_pick_failure_targets`), and the headline
+`MetricResult` is the mean across targets. The raw result keeps every
+target's full evaluation plus an aggregate with n/mean/stdev/min/max, the
+number of targets whose actual outcome is non-empty, and
+`max_leave_one_out_f1_shift` -- how far the mean moves when any one target
+is dropped -- so a single unrepresentative target cannot hide.
+
 ## Ablations: real code paths, not code forks
 
 Each of the four ablations changes one real, already-existing parameter
@@ -106,9 +118,11 @@ from backend.app.models.failure import FailureScenario, FailureType
 from backend.app.models.metric import MetricContext, MetricResult
 from backend.app.models.simulation import CounterfactualAction, CounterfactualScenario
 from backend.app.models.snapshot import ChangeType
+from backend.app.models.topology import TopologyGraph
 from backend.archaeology.diff import diff_snapshots
 from backend.archaeology.snapshots import create_snapshot
 from backend.dependency.causal_candidates import generate_causal_candidates
+from backend.dependency.criticality import NodeCriticality, compute_graph_criticality
 from backend.dependency.strength import estimate_dependency_strength
 from backend.flowmind.classification.role_classifier import classify_node_role, fit_role_model
 from backend.flowmind.fingerprints.node_fingerprint import assemble_node_fingerprint
@@ -131,6 +145,7 @@ from experiments.metrics.failure_propagation_validation import (
 )
 from experiments.metrics.role_calibration import evaluate_role_calibration
 from experiments.metrics.role_heldout import evaluate_role_held_out
+from experiments.metrics.summary_stats import MetricSummary, format_summary, summarize_values
 from experiments.metrics.temporal_evaluation import LabeledTopologyEvent, evaluate_temporal_analysis
 from experiments.metrics.topology_comparison import compare_topology_to_ground_truth
 from experiments.observation_sampling import sample_packets
@@ -175,6 +190,10 @@ _BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 _PULSE_CYCLES = 12
 _PULSE_PACKETS_PER_NODE = 2
 _PULSE_INTENSITY_RANGE = (1, 5)
+
+# Phase 73: PathForge/counterfactual are scored over this many structurally distinct
+# failure targets per cell (see `_pick_failure_targets`), not one highest-degree node.
+FAILURE_TARGET_COUNT = 3
 
 
 @dataclass(frozen=True)
@@ -226,7 +245,11 @@ def _actual_outcome_from_ground_truth(
     components = list(nx.connected_components(after)) if after.number_of_nodes() > 0 else []
     largest = max(components, key=len, default=set())
     stranded_names = {n for n in after.nodes if n not in largest}
-    actually_affected = {name_to_node_id[n] for n in stranded_names if n in name_to_node_id}
+    # Phase 73: the failed node itself is affected too -- the same convention the
+    # evaluators' own tests encode (`actually_affected_node_ids={"B", "D"}` for a
+    # failed B), and PathForge/counterfactual always list it as the primary impact.
+    # Leaving it out scored every non-articulation target 0.0 by construction.
+    actually_affected = {name_to_node_id[n] for n in stranded_names | {failed_name} if n in name_to_node_id}
     actual_largest_ids = [name_to_node_id[n] for n in largest if n in name_to_node_id]
 
     actual_reachable_pairs: Dict[Tuple[str, str], bool] = {}
@@ -240,14 +263,142 @@ def _actual_outcome_from_ground_truth(
     return actually_affected, actual_largest_ids, actual_reachable_pairs
 
 
-def _pick_failed_name(roles: Dict[str, ServiceRole], edges: List[ScenarioEdge]) -> str:
-    """The declared node with the most incident edges -- the structurally
-    most consequential real target for a failure/counterfactual scenario."""
-    degree: Dict[str, int] = {name: 0 for name in roles}
-    for e in edges:
-        degree[e.source] = degree.get(e.source, 0) + 1
-        degree[e.target] = degree.get(e.target, 0) + 1
-    return max(degree, key=lambda name: degree[name])
+def _pick_failure_targets(ground_truth_graph: TopologyGraph, k: int) -> List[NodeCriticality]:
+    """Phase 73: the top-`k` structurally distinct failure/counterfactual
+    targets on the *declared* topology (never the inferred one, so target
+    choice is experiment design, independent of inference quality).
+
+    Ranked by Phase 55's `compute_graph_criticality`: path-dependency impact,
+    then betweenness, then degree (name breaks ties, for determinism).
+    Distinct = a different structural signature (articulation flag, impact,
+    degree, betweenness, sorted neighbour degrees); only the highest-ranked
+    node of each signature is kept, so e.g. a star yields {hub, one leaf},
+    not k interchangeable leaves. Returns fewer than `k` when fewer distinct
+    classes exist -- never padded."""
+    report = compute_graph_criticality(ground_truth_graph)
+    neighbours: Dict[str, List[str]] = {n.node_id: [] for n in ground_truth_graph.nodes}
+    for e in ground_truth_graph.edges:
+        neighbours[e.source_node_id].append(e.target_node_id)
+        neighbours[e.target_node_id].append(e.source_node_id)
+
+    ranked = sorted(
+        report.node_scores,
+        key=lambda s: (-s.path_dependency_impact, -s.betweenness_centrality, -s.degree_centrality, s.node_id),
+    )
+    seen: Set[Tuple[Any, ...]] = set()
+    targets: List[NodeCriticality] = []
+    for score in ranked:
+        signature = (
+            score.is_articulation_point,
+            score.path_dependency_impact,
+            round(score.degree_centrality, 9),
+            round(score.betweenness_centrality, 9),
+            tuple(sorted(len(neighbours[n]) for n in neighbours[score.node_id])),
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        targets.append(score)
+        if len(targets) == k:
+            break
+    return targets
+
+
+@dataclass(frozen=True)
+class _TargetAggregate:
+    """Mean-across-targets affected-node scores, shaped like the per-target
+    evaluation dataclasses so `_to_metric_result` maps it unchanged."""
+
+    affected_node_precision: float
+    affected_node_recall: float
+    affected_node_f1: float
+
+
+def _aggregate_targets(per_target: List[Dict[str, Any]], skipped: List[str]) -> Tuple[Dict[str, Any], _TargetAggregate]:
+    """Phase 73 aggregate over every scored target, plus the dominance check:
+    `max_leave_one_out_f1_shift` is the largest change in mean f1 caused by
+    dropping any single target (`None` below 2 targets)."""
+    summaries = {
+        field: summarize_values([t[f"affected_node_{field}"] for t in per_target])
+        for field in ("precision", "recall", "f1")
+    }
+    f1s = [t["affected_node_f1"] for t in per_target]
+    shift: Optional[float] = None
+    if len(f1s) >= 2:
+        mean_all = sum(f1s) / len(f1s)
+        shift = max(abs(mean_all - (sum(f1s) - f) / (len(f1s) - 1)) for f in f1s)
+
+    aggregate = {
+        "target_count": len(per_target),
+        "skipped_targets": skipped,
+        "nontrivial_target_count": sum(1 for t in per_target if t["actual_stranded_count"] > 0),
+        **{field: asdict(summary) for field, summary in summaries.items()},
+        "max_leave_one_out_f1_shift": shift,
+    }
+    headline = _TargetAggregate(
+        affected_node_precision=summaries["precision"].mean,
+        affected_node_recall=summaries["recall"].mean,
+        affected_node_f1=summaries["f1"].mean,
+    )
+    return aggregate, headline
+
+
+def _evaluate_failure_target(
+    graph: TopologyGraph,
+    gt_nx: nx.Graph,
+    candidates,
+    name_to_node_id: Dict[str, str],
+    failed_name: str,
+    experiment_id: str,
+    created_at: datetime,
+) -> Tuple[Any, Any, Any, int]:
+    """Fails one declared node for real through PathForge and the
+    counterfactual engine, and scores both against the ground-truth outcome.
+    Returns `(failure_eval, resilience, cf_eval, actual_stranded_count)`."""
+    failed_node_id = name_to_node_id[failed_name]
+    role_classifications = None  # without_behavioral is always applied to PathForge/counterfactual --
+    # see module docstring: neither function's scored fields read role_classifications at all.
+
+    scenario = FailureScenario(
+        scenario_id=f"{experiment_id}:failure:{failed_name}", failure_type=FailureType.NODE_FAILURE, target_node_id=failed_node_id
+    )
+    pipeline_result = run_failure_propagation_pipeline(graph, scenario, candidates, role_classifications=role_classifications)
+    resilience = compute_resilience_indicators(graph, pipeline_result)
+
+    pairs = [(rc.source_node_id, rc.target_node_id) for rc in pipeline_result.route_changes]
+    actually_affected, actual_largest_ids, actual_reachable_pairs = _actual_outcome_from_ground_truth(
+        gt_nx, failed_name, name_to_node_id, pairs
+    )
+    actual = ActualFailureOutcome(
+        actually_affected_node_ids=actually_affected,
+        actual_largest_component_node_ids=actual_largest_ids,
+        actual_reachable_pairs=actual_reachable_pairs,
+    )
+    failure_eval = evaluate_failure_propagation_prediction(pipeline_result, resilience, actual)
+
+    cf_scenario = CounterfactualScenario(
+        scenario_id=f"{experiment_id}:cf:{failed_name}",
+        action=CounterfactualAction.REMOVE_NODE,
+        baseline_graph_id=graph.graph_id,
+        isolated_graph_id=f"{graph.graph_id}-cf-{failed_name}",
+        target_node_id=failed_node_id,
+        created_at=created_at,
+    )
+    execution = execute_counterfactual_scenario(graph, cf_scenario)
+    cf_result = compare_counterfactual_outcome(graph, execution, candidates=candidates, role_classifications=role_classifications)
+
+    cf_pairs = [(rc.source_node_id, rc.target_node_id) for rc in cf_result.route_changes]
+    cf_affected, cf_largest_ids, cf_reachable_pairs = _actual_outcome_from_ground_truth(
+        gt_nx, failed_name, name_to_node_id, cf_pairs
+    )
+    cf_actual = ActualCounterfactualOutcome(
+        lab_realizable=True,
+        actually_affected_node_ids=cf_affected,
+        actual_largest_component_node_ids=cf_largest_ids,
+        actual_reachable_pairs=cf_reachable_pairs,
+    )
+    cf_eval = evaluate_counterfactual_prediction(cf_result, cf_actual)
+    return failure_eval, resilience, cf_eval, len(actually_affected - {failed_node_id})
 
 
 def _to_metric_result(context: MetricContext, experiment_id: str, raw: Any) -> MetricResult:
@@ -277,6 +428,7 @@ def run_matrix_cell(
     seed: int = 42,
     ablation: Optional[str] = None,
     packets_per_edge: int = 15,
+    failure_target_count: int = FAILURE_TARGET_COUNT,
 ) -> MatrixCellResult:
     """Runs one (topology_level, completeness[, ablation]) cell of the
     experimental matrix for real: generates a scenario, synthesizes and
@@ -401,60 +553,40 @@ def run_matrix_cell(
     raw_evaluations["causal_analysis"] = asdict(causal_eval)
     metrics.append(_to_metric_result(MetricContext.CAUSAL_ANALYSIS, experiment_id, causal_eval))
 
-    # --- pathforge (failure propagation + resilience) ---
-    failed_name = _pick_failed_name(roles, edges)
-    if failed_name not in name_to_node_id:
-        # sampling dropped every packet touching the chosen node -- fall back to any mapped name.
-        failed_name = next(iter(name_to_node_id), None)
-
-    role_classifications = None  # without_behavioral is always applied to PathForge/counterfactual --
-    # see module docstring: neither function's scored fields read role_classifications at all.
-
-    if failed_name is not None:
-        failed_node_id = name_to_node_id[failed_name]
-        scenario = FailureScenario(scenario_id=f"{experiment_id}:failure", failure_type=FailureType.NODE_FAILURE, target_node_id=failed_node_id)
-        pipeline_result = run_failure_propagation_pipeline(graph, scenario, candidates, role_classifications=role_classifications)
-        resilience = compute_resilience_indicators(graph, pipeline_result)
-
-        pairs = [(rc.source_node_id, rc.target_node_id) for rc in pipeline_result.route_changes]
-        actually_affected, actual_largest_ids, actual_reachable_pairs = _actual_outcome_from_ground_truth(
-            gt_nx, failed_name, name_to_node_id, pairs
+    # --- pathforge + counterfactual (Phase 73: swept over several failure targets) ---
+    pathforge_targets: List[Dict[str, Any]] = []
+    cf_targets: List[Dict[str, Any]] = []
+    resilience_by_target: Dict[str, Any] = {}
+    skipped_targets: List[str] = []
+    for rank, target in enumerate(_pick_failure_targets(ground_truth_graph, failure_target_count), start=1):
+        if target.node_id not in name_to_node_id:
+            # sampling dropped every packet touching this node -- reported, never substituted.
+            skipped_targets.append(target.node_id)
+            continue
+        failure_eval, resilience, cf_eval, actual_stranded_count = _evaluate_failure_target(
+            graph, gt_nx, candidates, name_to_node_id, target.node_id, experiment_id, wave2_end
         )
-        actual = ActualFailureOutcome(
-            actually_affected_node_ids=actually_affected,
-            actual_largest_component_node_ids=actual_largest_ids,
-            actual_reachable_pairs=actual_reachable_pairs,
-        )
-        failure_eval = evaluate_failure_propagation_prediction(pipeline_result, resilience, actual)
-        raw_evaluations["pathforge"] = asdict(failure_eval)
-        raw_evaluations["resilience_indicators"] = resilience.model_dump()
-        metrics.append(_to_metric_result(MetricContext.PATHFORGE, experiment_id, failure_eval))
+        target_info = {
+            "target": target.node_id,
+            "criticality_rank": rank,
+            "path_dependency_impact": target.path_dependency_impact,
+            "betweenness_centrality": target.betweenness_centrality,
+            "is_articulation_point": target.is_articulation_point,
+            "actual_stranded_count": actual_stranded_count,
+        }
+        pathforge_targets.append({**target_info, **asdict(failure_eval)})
+        cf_targets.append({**target_info, **asdict(cf_eval)})
+        resilience_by_target[target.node_id] = resilience.model_dump()
 
-        # --- counterfactual ---
-        cf_scenario = CounterfactualScenario(
-            scenario_id=f"{experiment_id}:cf",
-            action=CounterfactualAction.REMOVE_NODE,
-            baseline_graph_id=graph.graph_id,
-            isolated_graph_id=f"{graph.graph_id}-cf",
-            target_node_id=failed_node_id,
-            created_at=wave2_end,
-        )
-        execution = execute_counterfactual_scenario(graph, cf_scenario)
-        cf_result = compare_counterfactual_outcome(graph, execution, candidates=candidates, role_classifications=role_classifications)
+    if pathforge_targets:
+        pf_aggregate, pf_headline = _aggregate_targets(pathforge_targets, skipped_targets)
+        raw_evaluations["pathforge"] = {"targets": pathforge_targets, "aggregate": pf_aggregate}
+        raw_evaluations["resilience_indicators"] = resilience_by_target
+        metrics.append(_to_metric_result(MetricContext.PATHFORGE, experiment_id, pf_headline))
 
-        cf_pairs = [(rc.source_node_id, rc.target_node_id) for rc in cf_result.route_changes]
-        cf_affected, cf_largest_ids, cf_reachable_pairs = _actual_outcome_from_ground_truth(
-            gt_nx, failed_name, name_to_node_id, cf_pairs
-        )
-        cf_actual = ActualCounterfactualOutcome(
-            lab_realizable=True,
-            actually_affected_node_ids=cf_affected,
-            actual_largest_component_node_ids=cf_largest_ids,
-            actual_reachable_pairs=cf_reachable_pairs,
-        )
-        cf_eval = evaluate_counterfactual_prediction(cf_result, cf_actual)
-        raw_evaluations["counterfactual"] = asdict(cf_eval)
-        metrics.append(_to_metric_result(MetricContext.COUNTERFACTUAL, experiment_id, cf_eval))
+        cf_aggregate, cf_headline = _aggregate_targets(cf_targets, skipped_targets)
+        raw_evaluations["counterfactual"] = {"targets": cf_targets, "aggregate": cf_aggregate}
+        metrics.append(_to_metric_result(MetricContext.COUNTERFACTUAL, experiment_id, cf_headline))
 
     experiment = Experiment(
         experiment_id=experiment_id,
@@ -466,6 +598,7 @@ def run_matrix_cell(
             "ablation": ablation,
             "node_count": len(roles),
             "edge_count": len(edges),
+            "failure_target_count": failure_target_count,
         },
         random_seed=seed,
         timestamp=datetime.now(timezone.utc),
@@ -475,6 +608,41 @@ def run_matrix_cell(
     )
 
     return MatrixCellResult(experiment=experiment, metrics=metrics, raw_evaluations=raw_evaluations)
+
+
+def format_target_report(cells: List[MatrixCellResult]) -> str:
+    """Phase 73 per-target Markdown report: one row per scored failure target
+    of every baseline cell (target, criticality rank, actual-affected count,
+    PathForge and counterfactual F1), then one aggregate row per cell (mean
+    ± stdev [min, max] and `max_leave_one_out_f1_shift`). Ablation cells are
+    left out: they share the baseline's targets."""
+    header = ["topology", "completeness", "target", "rank", "stranded", "pathforge f1", "counterfactual f1"]
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    for cell in cells:
+        config = cell.experiment.configuration
+        if config.get("ablation") is not None:
+            continue
+        pathforge = cell.raw_evaluations.get("pathforge")
+        counterfactual = cell.raw_evaluations.get("counterfactual")
+        prefix = [config["topology_level"], f"{config['completeness']:g}"]
+        if pathforge is None or counterfactual is None:
+            lines.append("| " + " | ".join(prefix + ["(no observed target)", "", "", "", ""]) + " |")
+            continue
+        for pf, cf in zip(pathforge["targets"], counterfactual["targets"]):
+            row = prefix + [pf["target"], str(pf["criticality_rank"]), str(pf["actual_stranded_count"]),
+                            f"{pf['affected_node_f1']:.3f}", f"{cf['affected_node_f1']:.3f}"]
+            lines.append("| " + " | ".join(row) + " |")
+        pf_agg, cf_agg = pathforge["aggregate"], counterfactual["aggregate"]
+
+        def _agg(agg: Dict[str, Any]) -> str:
+            shift = agg["max_leave_one_out_f1_shift"]
+            shift_text = f"{shift:.3f}" if shift is not None else "n/a"
+            return f"{format_summary(MetricSummary(**agg['f1']))} (LOO shift {shift_text})"
+
+        skipped = f", skipped {pf_agg['skipped_targets']}" if pf_agg["skipped_targets"] else ""
+        label = f"**aggregate** (n={pf_agg['target_count']}, nontrivial={pf_agg['nontrivial_target_count']}{skipped})"
+        lines.append("| " + " | ".join(prefix + [label, "", "", _agg(pf_agg), _agg(cf_agg)]) + " |")
+    return "\n".join(lines)
 
 
 def persist_cell(root: Path, cell: MatrixCellResult) -> None:

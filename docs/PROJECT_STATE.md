@@ -2174,5 +2174,43 @@ None yet — no experiments have been run.
   637/637 passed (up from 631/631); `validate_data_contracts` 55/55; `check_ground_truth_boundary`
   clean.
 
-- Next: Phase 72 (Multi-Seed Variance Reporting, master spec addendum). Run every matrix cell across
-  N seeds and report mean/stdev/min/max per metric. Not started; awaiting explicit request.
+- Multi-seed variance reporting (Phase 72, master spec addendum) runs every matrix cell across N
+  seeds. `experiments/multi_seed.py::run_multi_seed_matrix` calls the real `run_matrix_cell` once
+  per seed for the same 54 cells, persists each run, and summarizes every (context, field) as
+  n/mean/sample-stdev/min/max, leaving out `None` values. `scripts/run_experiment_matrix.py` gains
+  `--seeds` / `--n-seeds` and prints Markdown tables. The seed varies traffic generation and
+  observation sampling; the topologies stay fixed. Real result (seeds 42-51, 540 runs, 411 s):
+  topology reconstruction and temporal F1 are 1.000 ± 0.000 everywhere. Pathforge and
+  counterfactual are seed-invariant at completeness ≥ 0.5. Held-out role accuracy is the noisiest
+  metric: `large` is 0.375 ± 0.281 [0.0, 0.75], so Phase 71's single-seed 0.583 was a favourable
+  seed. Phase 70's `multi_path` causal claim is revised: 0.057 ± 0.120, not reliably positive.
+  Only `dynamic` (0.143 at every seed) is. Of the ablations, only `without_temporal` moves a
+  headline metric. Details are in `docs/architecture/experimental_matrix.md`'s "Phase 72" section.
+  Verified: 7 new tests in `experiments/tests/test_multi_seed.py`; full suite 644/644 passed (up
+  from 637/637); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Multi-target failure and counterfactual sweep (Phase 73, master spec addendum) replaces the single
+  highest-degree failure target per cell. `experiments/matrix_runner.py::_pick_failure_targets`
+  ranks declared-topology nodes by Phase 55 criticality and keeps up to 3 structurally distinct ones
+  (a star gives {hub, one leaf}). Unobserved targets are skipped and reported, never replaced. The
+  headline PathForge/counterfactual `MetricResult` is the mean across targets. `Experiment.results`
+  keeps every target's evaluation plus n/mean/stdev/min/max and `max_leave_one_out_f1_shift`.
+  `scripts/run_experiment_matrix.py --targets` prints the per-target report. `summarize_values` /
+  `format_summary` moved to `experiments/metrics/summary_stats.py`.
+  The sweep exposed a real scoring bug. PathForge and counterfactual list the failed node as its
+  own primary impact, but `_actual_outcome_from_ground_truth` left it out of the actual set. Every
+  non-articulation target therefore scored 0.0 by construction, and hub targets carried one
+  guaranteed false positive. The failed node now counts as affected, matching the evaluators' own
+  unit tests. This supersedes all earlier pathforge/counterfactual numbers: Phase 72's zeros on
+  `large`/`multi_path`/`dynamic` were this bug.
+  Real result (seeds 42-51, 540 runs, 260 s), PathForge F1 at completeness 1.0: small 1.000,
+  medium 0.917, large 0.792 ± 0.081, multi_path 1.000, multi_service 0.950, dynamic 0.889.
+  Counterfactual F1: 0.733 / 0.795 / 0.289 / 0.450 / 0.810 / 0.340 (low on non-articulation targets
+  because the connectivity-only ground truth cannot confirm service-level impacts). The largest
+  leave-one-out shift is 0.25 (`large` PathForge) and ≤ 0.143 elsewhere, so no single target
+  dominates. Details are in `docs/architecture/experimental_matrix.md`'s "Phase 73" section.
+  Verified: 8 new tests in `experiments/tests/test_multi_target.py`; full suite 652/652 passed (up
+  from 644/644); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 74 (Observation-Completeness Sensitivity Calibration, master spec addendum). Not
+  started; awaiting explicit request.

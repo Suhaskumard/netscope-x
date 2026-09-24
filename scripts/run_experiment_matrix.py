@@ -15,6 +15,9 @@ Phase 72 multi-seed variance run (every cell once per seed, then
 mean ± stdev [min, max] tables printed as Markdown):
     python -m scripts.run_experiment_matrix --root experiments_data --n-seeds 10
     python -m scripts.run_experiment_matrix --root experiments_data --seeds 42 43 44
+
+Phase 73 per-target failure/counterfactual report (single-seed run only):
+    python -m scripts.run_experiment_matrix --root experiments_data --targets
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from experiments.matrix_runner import run_full_matrix
+from experiments.matrix_runner import format_target_report, run_full_matrix
 from experiments.multi_seed import format_markdown_table, run_multi_seed_matrix
 
 # Headline (context, field) pairs printed for a multi-seed run -- the same
@@ -44,6 +47,7 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=Path("experiments_data"))
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-ablations", action="store_true", help="Skip the 4 ablation studies.")
+    parser.add_argument("--targets", action="store_true", help="Phase 73: print the per-failure-target report.")
     seeds_group = parser.add_mutually_exclusive_group()
     seeds_group.add_argument("--seeds", type=int, nargs="+", help="Phase 72: run every cell once per listed seed.")
     seeds_group.add_argument("--n-seeds", type=int, help="Phase 72: run every cell for seeds --seed .. --seed+N-1.")
@@ -63,6 +67,9 @@ def main() -> None:
     print(f"Ran {len(results)} experiment cells, persisted under {args.root / 'experiments'}.")
     for cell in results:
         print(f"  {cell.experiment.experiment_id}: {len(cell.metrics)} metrics")
+    if args.targets:
+        print("\n### Phase 73 failure targets\n")
+        print(format_target_report(results))
 
 
 if __name__ == "__main__":
