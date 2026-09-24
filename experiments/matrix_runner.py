@@ -130,6 +130,7 @@ from experiments.metrics.failure_propagation_validation import (
     evaluate_failure_propagation_prediction,
 )
 from experiments.metrics.role_calibration import evaluate_role_calibration
+from experiments.metrics.role_heldout import evaluate_role_held_out
 from experiments.metrics.temporal_evaluation import LabeledTopologyEvent, evaluate_temporal_analysis
 from experiments.metrics.topology_comparison import compare_topology_to_ground_truth
 from experiments.observation_sampling import sample_packets
@@ -337,12 +338,20 @@ def run_matrix_cell(
         if (name := ip_to_name.get(str(node.ip_addresses[0]))) is not None
     ]
     if len(labeled) >= 1:
-        model = fit_role_model(labeled)
-        classifications = [classify_node_role(model, fp) for fp, _ in labeled]
-        true_roles = [role for _, role in labeled]
-        role_eval = evaluate_role_calibration(classifications, true_roles)
-        raw_evaluations["role_inference"] = asdict(role_eval)
-        metrics.append(_to_metric_result(MetricContext.ROLE_INFERENCE, experiment_id, role_eval))
+        if len(labeled) >= 2:
+            # Phase 71: genuine leave-one-node-out held-out measurement is the headline
+            # `MetricResult`; the original in-sample (Phase 68) score is kept side by side.
+            role_heldout_eval = evaluate_role_held_out(labeled)
+            raw_evaluations["role_inference"] = asdict(role_heldout_eval)
+            metrics.append(_to_metric_result(MetricContext.ROLE_INFERENCE, experiment_id, role_heldout_eval.held_out))
+        else:
+            # Too few nodes to hold one out -- fall back to in-sample only, reported as such.
+            model = fit_role_model(labeled)
+            classifications = [classify_node_role(model, fp) for fp, _ in labeled]
+            true_roles = [role for _, role in labeled]
+            role_eval = evaluate_role_calibration(classifications, true_roles)
+            raw_evaluations["role_inference"] = {"in_sample": asdict(role_eval), "held_out": None}
+            metrics.append(_to_metric_result(MetricContext.ROLE_INFERENCE, experiment_id, role_eval))
 
     # --- temporal_analysis ---
     wave1_edges = edges[: len(edges) - wave_2_edges]

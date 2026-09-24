@@ -2159,7 +2159,20 @@ None yet — no experiments have been run.
   -- 631/631 passed (up from 625/625), no regressions; `scripts.validate_data_contracts` re-verified
   clean (55/55, no schema changes); `scripts.check_ground_truth_boundary` re-verified clean.
 
-- Next: Phase 71 (Held-Out Role Inference Evaluation, master spec addendum). Replace Phase 68's
-  in-sample role-model evaluation (fit and score on the same fingerprints) with a genuine held-out
-  measurement (leave-one-node-out or wave-split cross-validation). Not started; awaiting explicit
-  request.
+- Held-out role inference evaluation (Phase 71, master spec addendum) replaces Phase 68's
+  in-sample-only `role_inference` score with leave-one-node-out cross-validation.
+  `experiments/metrics/role_heldout.py::evaluate_role_held_out` refits `fit_role_model` on all
+  other nodes per fold and classifies only the held-out node; both in-sample and held-out
+  accuracy/Brier/ECE are reported side by side, plus `held_out_accuracy_seen_roles` and
+  `unseen_role_fold_count` (singleton roles are unlearnable when held out and are counted, not
+  hidden). `matrix_runner` now stores both in `role_inference` raw results and uses the held-out
+  score as the headline `MetricResult`. Real result (seed 42, completeness 1.0): in-sample
+  accuracy 0.75-1.0 vs held-out 0.0 (small), 0.714 (medium), 0.583 (large), 0.2 (multi_path),
+  0.818 (multi_service), 0.25 (dynamic) -- Phase 68's in-sample numbers materially overstated
+  quality; details in `docs/architecture/experimental_matrix.md`'s "Phase 71" section. Verified:
+  5 new tests in `experiments/tests/test_role_heldout.py`, 1 new matrix-level test; full suite
+  637/637 passed (up from 631/631); `validate_data_contracts` 55/55; `check_ground_truth_boundary`
+  clean.
+
+- Next: Phase 72 (Multi-Seed Variance Reporting, master spec addendum). Run every matrix cell across
+  N seeds and report mean/stdev/min/max per metric. Not started; awaiting explicit request.

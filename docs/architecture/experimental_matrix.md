@@ -117,11 +117,9 @@ tautological.
   for `discover_edges` to register it — real robustness to observation loss at this volume, not an
   absence of a completeness effect. The effect exists and is measurable, but only becomes visible
   once per-edge evidence volume is low enough that sampling can plausibly zero out an edge entirely.
-- `role_inference` reports `accuracy=1.0`/`calibration_error≈0.0` in every cell — expected and
-  disclosed as a real limitation, not an inflated claim: the role model is fit
-  (`fit_role_model`) on the *same* synthetic fingerprints it is then scored against (in-sample
-  accuracy), since no independent held-out capture exists in this synthetic, non-Docker setup. A
-  genuine out-of-sample measurement is future work.
+- `role_inference` originally reported `accuracy=1.0`/`calibration_error≈0.0` in every cell because
+  the role model was fit on the *same* synthetic fingerprints it was then scored against
+  (in-sample). **Phase 71 replaced this with a real held-out measurement** — see "Phase 71" below.
 - **`without_behavioral` produces byte-for-byte identical `pathforge`/`counterfactual` accuracy to
   baseline in every cell** — verified directly in `test_without_behavioral_ablation_produces_identical_pathforge_accuracy_to_baseline`.
   This is a real, honest null result: neither `run_failure_propagation_pipeline` nor
@@ -241,4 +239,38 @@ result for real: a real 54-cell re-run now shows 23 total predicted candidates a
 matched to ground truth, with 2 of 6 topology levels (`multi_path`, `dynamic`) reliably scoring a
 genuine positive F1 — and the remaining 4 levels' continued `0.0` traced to a real, documented
 structural limitation (hub fan-in for star-shaped topologies; too few nodes for `small`), not
-silently glossed over. Phase 71 (Held-Out Role Inference Evaluation) remains ahead.
+silently glossed over. Phase 71 (Held-Out Role Inference Evaluation) is complete; see below.
+
+## Phase 71: held-out role inference evaluation
+
+`experiments/metrics/role_heldout.py::evaluate_role_held_out` runs leave-one-node-out
+cross-validation: for each labeled node, a fresh `fit_role_model` is fit on every *other* node and
+`classify_node_role` scores only the held-out one, so every held-out prediction comes from a model
+that never saw that node's fingerprint or label (verified in
+`experiments/tests/test_role_heldout.py`, which spies on every fit call and asserts each fold
+trains on exactly n-1 examples). The matrix's `role_inference` raw result is now
+`{in_sample, held_out, held_out_accuracy_seen_roles, unseen_role_fold_count, fold_count}`, and the
+headline `MetricResult` (`precision`=accuracy, `calibration_error`=ECE) is the **held-out** score.
+With fewer than 2 labeled nodes no fold is possible, so the cell falls back to in-sample only
+(`held_out: None`).
+
+Roles occurring exactly once in a topology cannot be learned when that node is held out, so that
+fold is necessarily wrong; these are counted (`unseen_role_fold_count`) and
+`held_out_accuracy_seen_roles` gives accuracy over only the folds whose role was learnable.
+
+Real measurement (`run_matrix_cell`, completeness 1.0, seed 42, default `packets_per_edge`):
+
+| topology | in-sample acc | held-out acc | held-out acc (seen roles) | unseen-role folds | held-out ECE |
+|---|---|---|---|---|---|
+| small | 1.000 | 0.000 | n/a | 3 / 3 | 1.000 |
+| medium | 1.000 | 0.714 | 0.833 | 1 / 7 | 0.286 |
+| large | 0.833 | 0.583 | 0.583 | 0 / 12 | 0.433 |
+| multi_path | 0.800 | 0.200 | 0.333 | 2 / 5 | 0.800 |
+| multi_service | 1.000 | 0.818 | 0.900 | 1 / 11 | 0.182 |
+| dynamic | 0.750 | 0.250 | 0.333 | 2 / 8 | 0.700 |
+
+Finding: the Phase 68 in-sample figures substantially overstated role-inference quality. Held-out
+accuracy is lower in every cell, and calibration error is much higher, largely because these
+topologies are small with several singleton roles (Naive Bayes over few examples per class). This
+is a single seed; multi-seed variance is Phase 72's job. Full suite: 637/637 passed (up from
+631/631); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.

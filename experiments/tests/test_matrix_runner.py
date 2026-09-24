@@ -141,3 +141,16 @@ def test_phase_70_pulses_give_causal_analysis_a_real_positive_signal(tmp_path: P
     causal = cell.raw_evaluations["causal_analysis"]
     assert causal["predicted_count"] > 0
     assert causal["matched_count"] > 0
+
+
+def test_phase_71_role_inference_reports_in_sample_and_held_out_side_by_side(tmp_path: Path) -> None:
+    """Phase 71: the matrix's role_inference result carries BOTH the in-sample score
+    (Phase 68's original methodology) and a genuine leave-one-node-out held-out score,
+    and the headline MetricResult is the held-out one, not the in-sample one."""
+    root = tmp_path / "artifacts"
+    cell = run_matrix_cell(root, "medium", 1.0, seed=42)
+    role = cell.raw_evaluations["role_inference"]
+    assert role["in_sample"]["sample_count"] == role["held_out"]["sample_count"] == role["fold_count"]
+    assert role["held_out"]["accuracy"] <= role["in_sample"]["accuracy"]
+    headline = next(m for m in cell.metrics if m.context == MetricContext.ROLE_INFERENCE)
+    assert headline.precision == role["held_out"]["accuracy"]
