@@ -1,8 +1,28 @@
 # NETSCOPE-X
 
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Research](https://img.shields.io/badge/Mode-Research%20Platform-6A5ACD)](https://github.com/)
+
 NETSCOPE-X is a research platform for reconstructing and understanding network behavior from traffic, topology, behavioral signals, and failure telemetry. It models the network as a living system: infer nodes and links, learn service roles, detect drift and anomalies, trace historical change, estimate dependencies, and simulate the consequences of failures or counterfactual interventions.
 
+> Research-grade network intelligence for topology inference, behavioral analysis, temporal archaeology, dependency reasoning, and failure simulation.
+
 This repository brings together packet analysis, graph reconstruction, behavioral modeling, temporal archaeology, causal reasoning, digital-twin synthesis, and reproducible experiment evaluation in one codebase.
+
+## Why NETSCOPE-X matters
+
+NETSCOPE-X is designed for teams that need more than dashboards and raw flow summaries. It turns traffic and system signals into an interpretable model of how the network behaves, why it changes, and what happens when it is stressed or disrupted.
+
+The project combines:
+
+- topology reconstruction from observed traffic
+- behavioral fingerprinting and role inference
+- temporal evolution and historical change tracking
+- dependency and causal evidence assessment
+- digital-twin simulation and failure impact analysis
+- experimental evaluation with reproducible validation
 
 ## At a glance
 
