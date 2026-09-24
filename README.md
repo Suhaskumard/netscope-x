@@ -287,12 +287,6 @@ The project includes deeper design and operations guidance in the docs folder, i
 
 This repository is a research-grade implementation with active modules across the stack. Some components are fully implemented, while others remain intentionally scaffolded or documented as future work. The project documentation is explicit about what has been verified and what remains theoretical, exploratory, or unimplemented.
 
-## Contributing
-
-1. Create a feature branch for your work.
-2. Follow the project’s established patterns in the relevant backend module.
-3. Add or update tests for any behavioral change.
-4. Run the relevant validation commands before submitting a pull request.
 
 ## License
 
