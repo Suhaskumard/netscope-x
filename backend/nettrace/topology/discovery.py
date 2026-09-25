@@ -70,6 +70,13 @@ def discover_nodes(root: Path, capture_id: str, as_of: Optional[datetime] = None
             if ip not in last_observed or pkt.timestamp > last_observed[ip]:
                 last_observed[ip] = pkt.timestamp
 
+    return nodes_from_observations(capture_id, first_observed, last_observed)
+
+
+def nodes_from_observations(capture_id: str, first_observed: Dict[str, object], last_observed: Dict[str, object]) -> List[Node]:
+    """Ordered, deterministically-id'd `Node`s from per-IP first/last observation times -- what `discover_nodes`
+    builds after scanning packets, shared with the Phase 85 incremental reconstructor (which keeps these maps
+    up to date as packets arrive instead of rescanning)."""
     ordered_ips = sorted(first_observed, key=lambda ip: (first_observed[ip], ip))
 
     return [

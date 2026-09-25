@@ -2384,5 +2384,17 @@ None yet — no experiments have been run.
   `docs/architecture/adversarial_robustness.md`.
   Verified: 14 new tests; full suite 785/785; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 85 (Incremental Topology Reconstruction, master spec addendum). Not started; awaiting explicit
+- Incremental topology reconstruction (Phase 85, master spec addendum) is built and verified; not wired into the
+  pipeline. `backend/nettrace/topology/incremental.py` (`IncrementalTopology`) ingests packets in memory and
+  re-derives only touched flow keys; batch code was split (behavior-preserving) so both paths share
+  `derive_units`/`assemble_flows`/`discover_edges_from_flows`/`nodes_from_observations`.
+  Real result (354 streams, 6 topologies x 3 completeness x 3 seeds + UDP sessions): after every chunk the graph and
+  flows equal a from-scratch batch rebuild exactly (in-order 3418/3418 prefixes; shuffled arrival vs the same arrival
+  order 1738/1738; vs timestamp-sorted batch only order-free content is compared, 1738/1738, no exactness claimed).
+  Update cost is 5.4-9.6x lower per chunk than a batch rebuild, shrinking with capture size (`graph()` is still
+  linear); timings were taken under concurrent load. Limits: no pcap TLS, no `as_of`, memory unbounded. Details are
+  in `docs/architecture/incremental_topology.md`.
+  Verified: 10 new tests; full suite 795/795; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 86 (Real-Time Anomaly Detection Pipeline, master spec addendum). Not started; awaiting explicit
   request.

@@ -170,17 +170,21 @@ def bucket_flows_by_node_pair(
     `nodes`, or is self-referential, is silently skipped; `as_of` (spec Phase 43) filters to
     `flow.first_seen <= as_of`; returns `{}` for a missing/empty `flows.jsonl`, never an error.
     """
-    ip_to_node_id: Dict[str, str] = {
-        str(ip): node.node_id for node in nodes for ip in node.ip_addresses
-    }
-
     path = flows_path(root, capture_id)
     if not path.is_file():
         return {}
     flows: List[Flow] = read_jsonl(path, Flow)
     if as_of is not None:
         flows = [f for f in flows if f.first_seen <= as_of]
+    return bucket_flows_in_memory(flows, nodes)
 
+
+def bucket_flows_in_memory(flows: List[Flow], nodes: List[Node]) -> Dict[Tuple[str, str], List[Flow]]:
+    """The grouping `bucket_flows_by_node_pair` applies, over already-loaded `flows` (Phase 85: the incremental
+    reconstructor has flows in memory and must not round-trip them through a file)."""
+    ip_to_node_id: Dict[str, str] = {
+        str(ip): node.node_id for node in nodes for ip in node.ip_addresses
+    }
     buckets: Dict[Tuple[str, str], List[Flow]] = defaultdict(list)
     for flow in flows:
         src_node_id = ip_to_node_id.get(str(flow.src_ip))
@@ -224,7 +228,33 @@ def discover_edges(
     an edge. `0.0` (default) keeps every pair -- identical to pre-Phase-84 behavior.
     """
     buckets = bucket_flows_by_node_pair(root, capture_id, nodes, as_of=as_of)
+    return edges_from_buckets(
+        capture_id, buckets, edge_confidence_packet_scale, edge_confidence_signal_strength, min_bidirectionality
+    )
 
+
+def discover_edges_from_flows(
+    capture_id: str,
+    flows: List[Flow],
+    nodes: List[Node],
+    edge_confidence_packet_scale: float = _DEFAULT_PACKET_SCALE,
+    edge_confidence_signal_strength: float = _DEFAULT_SIGNAL_STRENGTH,
+    min_bidirectionality: float = 0.0,
+) -> List[Edge]:
+    """`discover_edges` over in-memory `flows` (no file, no `as_of`); one implementation, shared (Phase 85)."""
+    return edges_from_buckets(
+        capture_id, bucket_flows_in_memory(flows, nodes), edge_confidence_packet_scale,
+        edge_confidence_signal_strength, min_bidirectionality,
+    )
+
+
+def edges_from_buckets(
+    capture_id: str,
+    buckets: Dict[Tuple[str, str], List[Flow]],
+    edge_confidence_packet_scale: float,
+    edge_confidence_signal_strength: float,
+    min_bidirectionality: float = 0.0,
+) -> List[Edge]:
     aggregated = []
     for (source_node_id, target_node_id), bucket_flows in buckets.items():
         if min_bidirectionality > 0.0 and _signal_indicators(bucket_flows)["bidirectional"] < min_bidirectionality:

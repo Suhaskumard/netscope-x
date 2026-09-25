@@ -88,6 +88,7 @@ from __future__ import annotations
 
 import statistics
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -218,6 +219,119 @@ def _split_udp_sessions(group: List[Packet], idle_timeout_seconds: float) -> Lis
     return sessions
 
 
+@dataclass(frozen=True)
+class _Unit:
+    """One flow unit (a TCP five-tuple, or one UDP session) after per-unit derivation: everything that depends
+    only on this unit's own packets. Cross-unit aggregates are added by `assemble_flows`. (Phase 85 split this out of
+    `reconstruct_flows` unchanged so the incremental reconstructor derives units with the very same code.)"""
+
+    canonical: Packet
+    group: List[Packet]
+    directed: List[Tuple[Packet, PacketDirection]]
+    forward_bytes: int
+    tcp_state: Optional[TCPState]
+    fingerprinted_protocol: Optional[str]
+    key: _FlowKey
+    src_ip_str: str
+
+
+def derive_units(key_group: List[Packet], udp_session_idle_timeout_seconds: float = 30.0) -> List[_Unit]:
+    """Units for ONE five-tuple key's packets (all sharing `_flow_key`)."""
+    if key_group[0].protocol == TransportProtocol.UDP:
+        raw_units = _split_udp_sessions(key_group, udp_session_idle_timeout_seconds)
+    else:
+        raw_units = [key_group]
+    out: List[_Unit] = []
+    for group in raw_units:
+        group = sorted(group, key=lambda p: p.timestamp)
+        canonical = group[0]
+        canonical_src = (str(canonical.src_ip), canonical.src_port)
+        canonical_dst = (str(canonical.dst_ip), canonical.dst_port)
+
+        forward_bytes = 0
+        directed_group: List[Tuple[Packet, PacketDirection]] = []
+        for pkt in group:
+            orientation = (str(pkt.src_ip), pkt.src_port) == canonical_src and (
+                str(pkt.dst_ip),
+                pkt.dst_port,
+            ) == canonical_dst
+            direction = PacketDirection.FORWARD if orientation else PacketDirection.REVERSE
+            if direction == PacketDirection.FORWARD:
+                forward_bytes += pkt.size_bytes
+            directed_group.append((pkt, direction))
+
+        tcp_state = (
+            _compute_tcp_state(directed_group)
+            if canonical.protocol == TransportProtocol.TCP
+            else None
+        )
+        out.append(
+            _Unit(
+                canonical=canonical,
+                group=group,
+                directed=directed_group,
+                forward_bytes=forward_bytes,
+                tcp_state=tcp_state,
+                fingerprinted_protocol=fingerprint_protocol(
+                    canonical.protocol, canonical.src_port, canonical.dst_port
+                ),
+                key=_flow_key(canonical),
+                src_ip_str=str(canonical.src_ip),
+            )
+        )
+    return out
+
+
+def assemble_flows(
+    capture_id: str, units: List[_Unit], tls_versions: Optional[Dict] = None
+) -> List[Flow]:
+    """Deterministic ordering + the cross-unit aggregates (`destination_diversity`, `port_diversity`,
+    `is_persistent`) that need every unit in the capture, then builds every `Flow`. Flows are numbered by their
+    first packet's timestamp across the whole capture, not dict/group iteration order (a stable sort, so ties keep
+    the order `units` was given in)."""
+    tls_versions = tls_versions or {}
+    ordered_units = sorted(units, key=lambda u: u.group[0].timestamp)
+
+    key_counts: "Counter[_FlowKey]" = Counter()
+    dest_by_src: Dict[str, Set[str]] = defaultdict(set)
+    port_by_src: Dict[str, Set[Optional[int]]] = defaultdict(set)
+    for unit in ordered_units:
+        key_counts[unit.key] += 1
+        dest_by_src[unit.src_ip_str].add(str(unit.canonical.dst_ip))
+        port_by_src[unit.src_ip_str].add(unit.canonical.dst_port)
+
+    flows: List[Flow] = []
+    for index, unit in enumerate(ordered_units):
+        canonical, group = unit.canonical, unit.group
+        tls_version = tls_versions.get((str(canonical.src_ip), canonical.src_port)) or tls_versions.get(
+            (str(canonical.dst_ip), canonical.dst_port)
+        )
+        flows.append(
+            Flow(
+                flow_id=f"{capture_id}:flow:{index}",
+                capture_id=capture_id,
+                src_ip=canonical.src_ip,
+                dst_ip=canonical.dst_ip,
+                src_port=canonical.src_port,
+                dst_port=canonical.dst_port,
+                protocol=canonical.protocol,
+                first_seen=group[0].timestamp,
+                last_seen=group[-1].timestamp,
+                tcp_state=unit.tcp_state,
+                fingerprinted_protocol=unit.fingerprinted_protocol,
+                tls_version=tls_version,
+                features=_compute_features(
+                    group,
+                    unit.forward_bytes,
+                    destination_diversity=len(dest_by_src[unit.src_ip_str]),
+                    port_diversity=len(port_by_src[unit.src_ip_str]),
+                    is_persistent=key_counts[unit.key] > 1,
+                ),
+            )
+        )
+    return flows
+
+
 def reconstruct_flows(
     root: Path,
     capture_id: str,
@@ -244,112 +358,18 @@ def reconstruct_flows(
         else:
             passthrough.append(pkt)
 
-    flows: List[Flow] = []
-    resolved_by_id: Dict[str, Packet] = {}
-
     # Each TCP five-tuple stays one unit; each UDP five-tuple is further
     # split into timing-window sessions (Phase 25) -- one unit per session.
-    units: List[List[Packet]] = []
-    for key, group in groups.items():
-        if key[2] == TransportProtocol.UDP:
-            units.extend(_split_udp_sessions(group, udp_session_idle_timeout_seconds))
-        else:
-            units.append(group)
+    units: List[_Unit] = []
+    for group in groups.values():
+        units.extend(derive_units(group, udp_session_idle_timeout_seconds))
 
-    # Deterministic ordering: flows are numbered by their first packet's
-    # timestamp across the whole capture, not dict/group iteration order.
-    ordered_groups = sorted(units, key=lambda g: min(p.timestamp for p in g))
+    flows = assemble_flows(capture_id, units, tls_versions)
 
-    # Pass 1: resolve direction/state/protocol per unit and accumulate the
-    # cross-flow aggregates Phase 28's `destination_diversity`/
-    # `port_diversity`/`is_persistent` need -- these can't be known until
-    # every unit in the capture has been examined, so `Flow` construction is
-    # deferred to pass 2.
-    pending: List[dict] = []
-    key_counts: "Counter[_FlowKey]" = Counter()
-    dest_by_src: Dict[str, Set[str]] = defaultdict(set)
-    port_by_src: Dict[str, Set[Optional[int]]] = defaultdict(set)
-
-    for index, group in enumerate(ordered_groups):
-        group = sorted(group, key=lambda p: p.timestamp)
-        canonical = group[0]
-        canonical_src = (str(canonical.src_ip), canonical.src_port)
-        canonical_dst = (str(canonical.dst_ip), canonical.dst_port)
-
-        forward_bytes = 0
-        directed_group: List[Tuple[Packet, PacketDirection]] = []
-        for pkt in group:
-            orientation = (str(pkt.src_ip), pkt.src_port) == canonical_src and (
-                str(pkt.dst_ip),
-                pkt.dst_port,
-            ) == canonical_dst
-            direction = PacketDirection.FORWARD if orientation else PacketDirection.REVERSE
-            if direction == PacketDirection.FORWARD:
-                forward_bytes += pkt.size_bytes
-            directed_group.append((pkt, direction))
+    resolved_by_id: Dict[str, Packet] = {}
+    for unit in units:
+        for pkt, direction in unit.directed:
             resolved_by_id[pkt.packet_id] = pkt.model_copy(update={"direction": direction})
-
-        tcp_state = (
-            _compute_tcp_state(directed_group)
-            if canonical.protocol == TransportProtocol.TCP
-            else None
-        )
-        fingerprinted_protocol = fingerprint_protocol(
-            canonical.protocol, canonical.src_port, canonical.dst_port
-        )
-        tls_version = tls_versions.get(
-            (str(canonical.src_ip), canonical.src_port)
-        ) or tls_versions.get((str(canonical.dst_ip), canonical.dst_port))
-
-        key = _flow_key(canonical)
-        key_counts[key] += 1
-        src_ip_str = str(canonical.src_ip)
-        dest_by_src[src_ip_str].add(str(canonical.dst_ip))
-        port_by_src[src_ip_str].add(canonical.dst_port)
-
-        pending.append(
-            {
-                "index": index,
-                "canonical": canonical,
-                "group": group,
-                "forward_bytes": forward_bytes,
-                "tcp_state": tcp_state,
-                "fingerprinted_protocol": fingerprinted_protocol,
-                "tls_version": tls_version,
-                "key": key,
-                "src_ip_str": src_ip_str,
-            }
-        )
-
-    # Pass 2: the aggregates above are now complete for the whole capture --
-    # build every `Flow`.
-    for unit in pending:
-        canonical = unit["canonical"]
-        group = unit["group"]
-        flows.append(
-            Flow(
-                flow_id=f"{capture_id}:flow:{unit['index']}",
-                capture_id=capture_id,
-                src_ip=canonical.src_ip,
-                dst_ip=canonical.dst_ip,
-                src_port=canonical.src_port,
-                dst_port=canonical.dst_port,
-                protocol=canonical.protocol,
-                first_seen=group[0].timestamp,
-                last_seen=group[-1].timestamp,
-                tcp_state=unit["tcp_state"],
-                fingerprinted_protocol=unit["fingerprinted_protocol"],
-                tls_version=unit["tls_version"],
-                features=_compute_features(
-                    group,
-                    unit["forward_bytes"],
-                    destination_diversity=len(dest_by_src[unit["src_ip_str"]]),
-                    port_diversity=len(port_by_src[unit["src_ip_str"]]),
-                    is_persistent=key_counts[unit["key"]] > 1,
-                ),
-            )
-        )
-
     for pkt in passthrough:
         resolved_by_id[pkt.packet_id] = pkt
 
