@@ -2247,5 +2247,53 @@ None yet — no experiments have been run.
   `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean. Known limitations: no file
   locking (single-process); direct `run_matrix_cell` calls still default the capture id to `<id>`.
 
-- Next: Phase 76 (Minimal Anomaly-Injection Dataset, master spec addendum). Not started; awaiting
-  explicit request.
+- Minimal anomaly-injection dataset (Phase 76, master spec addendum) makes `anomaly_detection` the
+  seventh scored matrix context. `experiments/anomaly_injection.py` builds 12 epochs of 60 s per cell
+  (8 normal baseline epochs with a ±2 volume jitter, then 4 scored epochs), with a volume spike (5x on
+  one node's outgoing edges) in epoch 9 and a new-destination burst (up to 3 unconnected nodes) in
+  epoch 10; epochs 8 and 11 stay clean. Both are real packets; onset is the first injected packet.
+  Labels are derived by construction from the injected traffic, never from detector output. The matrix
+  scores the real `detect_node_anomalies` with `evaluate_anomaly_detection` in every baseline cell
+  (ablation cells do not re-score it). The fingerprint history is built by the shared
+  `experiments/anomaly_fingerprints.py`.
+  Real result (10 seeds, 840 runs, default traffic): recall 0.979-1.000 at every completeness level,
+  but precision only 0.289 at completeness 1.0 and 0.143-0.158 below it, with a clean-epoch
+  false-alarm rate of 0.074 at 1.0 that jumps to 0.216 at 0.9. Any sampling loss, not a graded
+  amount, drives the jump (mechanism not isolated). Low-volume traffic also loses recall (0.884 to
+  0.636). Latency has a one-epoch floor (about 59.8 s). The detector was not retuned. Details are in
+  `docs/architecture/experimental_matrix.md`'s "Phase 76" section.
+  Verified: 9 new tests in `experiments/tests/test_anomaly_injection.py`; full suite 676/676 at that
+  point; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- GNN-based topology and edge-confidence model (Phase 77, master spec addendum) is built and
+  benchmarked, and rejected as a replacement for Phase 31's heuristic. `backend/nettrace/topology/
+  gnn_edge_model.py` is a two-layer graph network in plain numpy (no torch; `requirements.txt`
+  unchanged) with hand-written backpropagation checked against numerical gradients; it scores every
+  node pair, so it can propose unobserved edges. `experiments/gnn_benchmark.py` and
+  `scripts/run_gnn_benchmark.py` compare it with the heuristic and a confidence-thresholded heuristic
+  through `compare_topology_to_ground_truth`, leave-one-topology-level-out with disjoint training seeds.
+  Real result (6 folds, 10 test seeds): default traffic F1 heuristic 1.000, GNN 0.998; low-volume
+  traffic F1 heuristic 0.912 ± 0.152, GNN 0.877 ± 0.165, thresholded heuristic 0.489. It recovers at most
+  0.37 true unobserved edges per capture, and on the held-out `large` topology keeps every true edge but
+  drops to precision 0.517 (F1 0.682 versus 1.000). Its confidence is better calibrated (ECE 0.09-0.12
+  versus 0.22-0.36 low-volume), which does not change the edge set that is scored. Rejected; not wired
+  into `build_topology_graph`, the API or the matrix. Details are in `docs/architecture/gnn_edge_model.md`.
+  Verified: 16 new tests (7 model, 9 benchmark); `check_ground_truth_boundary` clean.
+
+- Deep sequence model for anomaly detection (Phase 78, master spec addendum) is built and benchmarked,
+  and rejected as a replacement for the MAD/z-score detector. `backend/flowmind/anomaly/
+  sequence_model.py` is a one-layer numpy LSTM (1,412 parameters, hand-written BPTT checked against
+  numerical gradients, no new dependency) that predicts each node's next-epoch behavior from its own
+  normalized history and flags large residuals on four dimensions (PORTS/PROTOCOLS are not covered).
+  `experiments/sequence_anomaly_benchmark.py` scores both detectors on Phase 76's labeled data with the
+  same scorer, leave-one-topology-level-out, plus a cold-start sweep; the shared fingerprint builder moved
+  to `experiments/anomaly_fingerprints.py` with Phase 76's numbers unchanged.
+  Real result (default traffic, 8 baseline epochs): MAD recall 0.994, precision 0.246, F1 0.384,
+  clean-epoch false-alarm rate 0.145; LSTM recall 0.144, precision 0.226, F1 0.149, false-alarm rate
+  0.025. Below MAD's 5-observation minimum it emits nothing while the LSTM scores from 2 epochs, but
+  only at recall about 0.14. The likely cause (a training-quantile alarm threshold that is too high) was
+  not swept. Details are in `docs/architecture/sequence_anomaly_model.md`.
+  Verified: 16 new tests (8 model, 8 benchmark); full suite 708/708; `validate_data_contracts` 55/55;
+  `check_ground_truth_boundary` clean.
+
+- Next: Phase 79 (Real Causal Discovery, master spec addendum). Not started; awaiting explicit request.

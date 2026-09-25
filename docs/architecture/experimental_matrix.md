@@ -29,9 +29,8 @@ minimum ablation studies; real, persisted `Experiment`/`MetricResult` records; `
 `GET /metrics` wired for real.
 
 **Explicitly out of scope**, matching this project's own precedent for honest scope-outs:
-- **`anomaly_detection`**: no labeled anomaly-injection dataset generator exists anywhere in this
-  repository — `experiments/metrics/anomaly_evaluation.py`'s own docstring (Phase 42) already calls
-  building one "a separate, much larger capability nobody has asked for." Still true; not built here.
+- **`anomaly_detection`**: deferred in Phase 68 because no labeled anomaly-injection dataset existed.
+  **Now scored (Phase 76).** See the "Phase 76" section below.
 - **PERF-1..8** (throughput/latency/memory benchmarking): a separate NFR category, not named in
   FR-1.40's own text; deferred to Phase 69.
 - **Recalibrating** the many "pending Phase 68" provisional constants: FR-1.40 asks to *measure*,
@@ -235,8 +234,8 @@ unwired even after their engines were built (Phase 59-66).
 The full experimental matrix (spec Phase 68, FR-1.40) is implemented and genuinely executed: 6 of 7
 `MetricContext`s are scored for real across a 6×5 topology/completeness sweep plus 4 ablation
 studies, with `GET /experiments`/`GET /metrics` serving the real, persisted results.
-`anomaly_detection`, PERF-1..8 benchmarking, and constant recalibration are explicitly deferred (see
-Scope decision above). Phase 70 (spec addendum) fixed `causal_analysis`'s original `0.0`-everywhere
+PERF-1..8 benchmarking and constant recalibration are explicitly deferred (see Scope decision above);
+`anomaly_detection` was deferred here and scored in Phase 76. Phase 70 (spec addendum) fixed `causal_analysis`'s original `0.0`-everywhere
 result for real: a real 54-cell re-run now shows 23 total predicted candidates and 11 correctly
 matched to ground truth, with 2 of 6 topology levels (`multi_path`, `dynamic`) reliably scoring a
 genuine positive F1 — and the remaining 4 levels' continued `0.0` traced to a real, documented
@@ -642,3 +641,80 @@ Known limitations:
   `<id>` unless `capture_id` is passed.
 - Default `version` policy grows disk use on every re-run of a full matrix; use `refuse` or clear
   the root to avoid that.
+
+## Phase 76: minimal anomaly-injection dataset (`anomaly_detection`, 7 of 7 contexts)
+
+Phase 42 built the scorer (`evaluate_anomaly_detection`) but no labeled dataset. Phase 76 adds the smallest
+honest generator, `experiments/anomaly_injection.py`, and scores the real `detect_node_anomalies` on it in
+every baseline matrix cell (ablation cells do not re-score it: none of the four ablations touches that path).
+
+**Dataset.** 12 epochs of 60 s. Epochs 0-7 are normal traffic (the matrix's own `generate_packets_for_scenario`,
+re-seeded per epoch with a ±2 request-pair volume jitter so baselines have a real spread; without it every
+MAD is 0). Epochs 8-11 are scored. Epoch 9 carries a **volume spike** (one node's outgoing edges send 5x their
+normal packets) and epoch 10 a **new-destination burst** (one node contacts up to 3 nodes it has no edge
+with); epochs 8 and 11 stay clean so false alarms are measurable. Both are real packets in the capture. The
+actor is chosen from the seed; a pattern that cannot be built (no non-neighbour) is reported as skipped,
+never faked. `onset_at` is the timestamp of the first injected packet.
+
+**Labels are by construction, not from the detector.** The spike genuinely changes `TRAFFIC_VOLUME` on the
+actor and every node that receives it. The burst changes `DESTINATIONS` on the actor (that feature counts a
+node's own outbound destinations). Side effects the detector also flags (e.g. the burst's extra bytes) are
+deliberately unlabeled, so they count as false positives. Detection happens after an epoch ends
+(`detected_at` = epoch end), so latency has a floor of about one epoch.
+
+**Scoring.** Per node, `build_node_baseline` on epochs 0-7, then `detect_node_anomalies` on each test-epoch
+fingerprint; `evaluate_anomaly_detection` with `total_checks` = nodes x 6 dimensions x 4 epochs. The headline
+`MetricResult` carries precision, recall, F1, false-positive rate, false-negative rate and latency. The raw
+result also stores the injected events, every detection, and a clean-epoch breakdown
+(`clean_epoch_detections`, `clean_epoch_false_alarm_rate`): any detection in a clean epoch is a false alarm
+by construction.
+
+### Real result (10 seeds 42-51, 84 cells, 840 runs)
+
+Mean over topologies and seeds, per completeness level (baseline cells; the clean-epoch rate is
+detections per check in the two clean epochs):
+
+| traffic | completeness | precision | recall | F1 | false-positive rate | clean-epoch false-alarm rate |
+|---|---|---|---|---|---|---|
+| default | 1.0 | 0.289 | 1.000 | 0.437 | 0.091 | 0.074 |
+| default | 0.9 | 0.143 | 0.991 | 0.243 | 0.233 | 0.216 |
+| default | 0.75 | 0.158 | 0.994 | 0.262 | 0.219 | 0.188 |
+| default | 0.5 | 0.158 | 0.997 | 0.263 | 0.218 | 0.188 |
+| default | 0.25 | 0.152 | 0.979 | 0.255 | 0.216 | 0.196 |
+| lowvol | 1.0 | 0.298 | 0.884 | 0.426 | 0.078 | 0.074 |
+| lowvol | 0.9 | 0.140 | 0.851 | 0.234 | 0.198 | 0.167 |
+| lowvol | 0.75 | 0.128 | 0.802 | 0.214 | 0.209 | 0.200 |
+| lowvol | 0.5 | 0.106 | 0.687 | 0.179 | 0.214 | 0.197 |
+| lowvol | 0.25 | 0.098 | 0.636 | 0.166 | 0.214 | 0.187 |
+
+Per topology, default traffic, completeness 1.0: F1 small 0.491 ± 0.076, medium 0.552 ± 0.070, large
+0.263 ± 0.057, multi_path 0.445 ± 0.076, multi_service 0.559 ± 0.086, dynamic 0.310 ± 0.104. Mean detection
+latency is 59.7-59.9 s on default traffic (the epoch floor), and 58.6-80.5 s on low-volume traffic.
+
+Findings:
+- **Recall is essentially perfect on default traffic (0.979-1.000) and precision is poor.** The detector
+  finds every injected spike and burst, but at completeness 1.0 only about 29% of its detections are labeled
+  ones, and its clean-epoch false-alarm rate is 7.4% of checks. This is a measurement of the existing
+  Phase 40 defaults (`z_threshold` 3.0 on an un-scaled MAD, 8 baseline epochs) on this data, not a claim about
+  real traffic; Phase 68's policy is to measure, not retune, so the detector is unchanged.
+- **Any observation loss more than doubles the false-alarm rate.** From completeness 1.0 to 0.9 the
+  clean-epoch false-alarm rate goes from 0.074 to 0.216 on default traffic, and it stays about there down to
+  0.25. So the step is between "no sampling" and "any sampling," not a gradual decline. A plausible reading
+  is that random packet loss makes per-epoch flow statistics noisy in a way the 8-epoch baseline did not
+  see; this was not isolated.
+- **Low volume adds real missed detections.** With 1 request/response pair per edge, recall falls
+  monotonically from 0.884 to 0.636 as completeness drops, because sampling removes the injected packets
+  themselves. Latency above the 60 s floor (up to 80.5 s) appears in these cells; its cause was not
+  investigated.
+- **`large` and `dynamic` are hardest** (default F1 0.263 and 0.310 at c=1.0): more nodes means more
+  unlabeled side-effect detections on nodes the injections touch.
+
+Limitations: the baseline is far cleaner than real traffic; only two injection types; the ±2 volume jitter
+is a provisional choice that directly sets the baseline spread; unlabeled co-firing dimensions are scored as
+false positives on purpose, which lowers precision; latency cannot go below one epoch by construction.
+
+Verified: 9 tests in `experiments/tests/test_anomaly_injection.py` (determinism, >= 5 baseline epochs and
+real volume spread, onset equals the first injected packet, labels follow the patterns, burst peers have no
+prior edge, spike multiplies volume, skipped rather than faked, real scored cell, ablations do not re-score);
+`test_matrix_runner.py` updated to expect 7 contexts. Full suite 676/676 at that point;
+`validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.

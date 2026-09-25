@@ -135,6 +135,7 @@ from backend.simulation.resilience_indicators import compute_resilience_indicato
 from backend.app.models.anomaly import Anomaly
 from backend.flowmind.anomaly.node_anomaly import detect_node_anomalies
 from backend.flowmind.baseline.node_baseline import build_node_baseline
+from experiments.anomaly_fingerprints import build_epoch_fingerprints
 from experiments.anomaly_injection import AnomalyDataset, generate_anomaly_dataset
 from experiments.artifacts.experiment_manifest import ExperimentManifestEntry
 from experiments.artifacts.io import OnExisting, next_experiment_version, write_experiment_run, write_jsonl
@@ -459,22 +460,15 @@ def _evaluate_anomaly_detection(
     build each node's `NodeBehavioralBaseline`; every node's fingerprint in every test epoch is then
     checked against it. Returns `None` if no injected label survives (nothing to score against).
     """
-    anomaly_capture_id = f"{capture_id}-anomaly"
-    write_jsonl(packets_path(root, anomaly_capture_id), sample_packets(dataset.packets, completeness, seed))
-    flows = reconstruct_flows(root, anomaly_capture_id)
-    window_seconds = {ObservationWindow.SHORT: dataset.epoch_seconds}
-
-    def epoch_fingerprint(node: Any, epoch: int) -> Any:
-        start, end = dataset.epoch_start(epoch), dataset.epoch_end(epoch)
-        epoch_flows = [f for f in flows if start <= f.last_seen < end]
-        return assemble_node_fingerprint(epoch_flows, node, ObservationWindow.SHORT, window_seconds, computed_at=end)
+    fingerprints = build_epoch_fingerprints(root, capture_id, dataset, completeness, seed, nodes)
 
     detected: List[Anomaly] = []
     first_test = dataset.baseline_epochs
     for node in nodes:
-        baseline = build_node_baseline([epoch_fingerprint(node, e) for e in range(first_test)])
-        for epoch in range(first_test, dataset.total_epochs):
-            detected.extend(detect_node_anomalies(baseline, epoch_fingerprint(node, epoch)))
+        history = fingerprints[node.node_id]
+        baseline = build_node_baseline(history[:first_test])
+        for fingerprint in history[first_test:]:
+            detected.extend(detect_node_anomalies(baseline, fingerprint))
 
     labels: List[LabeledAnomalyEvent] = []
     unscored: List[str] = []
