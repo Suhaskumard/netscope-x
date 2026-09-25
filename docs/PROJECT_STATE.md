@@ -2396,5 +2396,18 @@ None yet — no experiments have been run.
   in `docs/architecture/incremental_topology.md`.
   Verified: 10 new tests; full suite 795/795; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 86 (Real-Time Anomaly Detection Pipeline, master spec addendum). Not started; awaiting explicit
-  request.
+- Real-time anomaly detection (Phase 86, master spec addendum) is built and measured; not wired into the pipeline.
+  `backend/flowmind/anomaly/streaming.py` (`StreamingAnomalyDetector`) scores nodes on the open window as packets
+  arrive (Phase 85 incremental flows + the unchanged `detect_node_anomalies`); only partial-evidence-safe checks fire
+  early, the rest at window close.
+  Real result (54 cells): quality matches batch (recall 0.96-1.00 both; FP 1,620 vs 1,641); detection latency in stream
+  time 1.6-2.6 s vs ~59.8 s batch. Window-close fingerprints equal batch in 1576/1656 (all 80 mismatches are flows
+  recurring in a later window, checked); alert sets identical in 32/54 cells.
+  Load, honestly: small topology keeps up 200-100,000 pps (latency p50 0.05-0.48 s, max 1.11 s at 200 pps); the large
+  topology (11,530 pkts) does NOT keep up at any tested rate (10-27 s behind, latency p50 5.9-11.5 s), so the
+  sub-second target is not met there - cost is linear in capture size (`flows()` per chunk, window-close rescoring).
+  Details are in `docs/architecture/streaming_anomaly_detection.md`.
+  Verified: 8 new tests; full suite 803/803; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 87 (Streaming Dependency and Causal-Candidate Updates, master spec addendum). Not started; awaiting
+  explicit request.
