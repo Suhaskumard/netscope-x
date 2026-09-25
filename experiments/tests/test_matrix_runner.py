@@ -35,8 +35,8 @@ def test_baseline_cell_produces_six_real_metrics(tmp_path: Path) -> None:
         MetricContext.CAUSAL_ANALYSIS,
         MetricContext.PATHFORGE,
         MetricContext.COUNTERFACTUAL,
+        MetricContext.ANOMALY_DETECTION,  # Phase 76
     }
-    assert MetricContext.ANOMALY_DETECTION not in contexts  # explicitly out of scope, see plan
 
 
 def test_perfect_topology_reconstruction_at_full_completeness(tmp_path: Path) -> None:

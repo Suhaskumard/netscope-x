@@ -44,6 +44,8 @@ _HEADLINE_COLUMNS = [
     ("causal_analysis", "f1"),
     ("pathforge", "f1"),
     ("counterfactual", "f1"),
+    ("anomaly_detection", "f1"),
+    ("anomaly_detection", "detection_latency_seconds"),
 ]
 
 

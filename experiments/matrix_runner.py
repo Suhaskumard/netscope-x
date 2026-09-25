@@ -13,13 +13,13 @@ ones (`causal_evaluation.py`, `temporal_evaluation.py`).
 ## Scope (see docs/architecture/experimental_matrix.md for the full
    decision record)
 
-Six of `MetricContext`'s seven values are scored for real:
+All seven of `MetricContext`'s values are scored for real:
 `topology_reconstruction`, `role_inference`, `temporal_analysis`,
-`causal_analysis`, `pathforge`, `counterfactual`. `anomaly_detection` is
-not run -- no anomaly-injection dataset generator exists anywhere in this
-repository (`experiments/metrics/anomaly_evaluation.py`'s own docstring
-already calls building one "a separate, much larger capability nobody
-has asked for"), and this phase does not build one either.
+`causal_analysis`, `pathforge`, `counterfactual`, and (Phase 76)
+`anomaly_detection`, scored on `experiments/anomaly_injection.py`'s
+minimal injected-anomaly dataset. Ablation cells do not re-score
+`anomaly_detection`: none of the four ablations touches that path, so it
+would only duplicate the baseline cell.
 
 ## Topology-complexity mapping
 
@@ -132,9 +132,14 @@ from backend.simulation.counterfactual_comparison import compare_counterfactual_
 from backend.simulation.counterfactual_engine import execute_counterfactual_scenario
 from backend.simulation.failure_propagation_pipeline import run_failure_propagation_pipeline
 from backend.simulation.resilience_indicators import compute_resilience_indicators
+from backend.app.models.anomaly import Anomaly
+from backend.flowmind.anomaly.node_anomaly import detect_node_anomalies
+from backend.flowmind.baseline.node_baseline import build_node_baseline
+from experiments.anomaly_injection import AnomalyDataset, generate_anomaly_dataset
 from experiments.artifacts.experiment_manifest import ExperimentManifestEntry
 from experiments.artifacts.io import OnExisting, next_experiment_version, write_experiment_run, write_jsonl
 from experiments.artifacts.paths import packets_path
+from experiments.metrics.anomaly_evaluation import LabeledAnomalyEvent, evaluate_anomaly_detection
 from experiments.metrics.causal_evaluation import evaluate_causal_analysis
 from experiments.metrics.counterfactual_validation import (
     ActualCounterfactualOutcome,
@@ -433,6 +438,86 @@ def _evaluate_failure_target(
     return failure_eval, resilience, cf_eval, len(actually_affected - {failed_node_id})
 
 
+# Dimensions `detect_node_anomalies` can emit (everything except TOPOLOGY, which is Phase 45's job).
+_DETECTOR_DIMENSION_COUNT = 6
+
+
+def _evaluate_anomaly_detection(
+    root: Path,
+    capture_id: str,
+    dataset: AnomalyDataset,
+    completeness: float,
+    seed: int,
+    nodes: List[Any],
+    name_to_node_id: Dict[str, str],
+) -> Optional[Tuple[Any, Dict[str, Any]]]:
+    """Phase 76: scores the real `detect_node_anomalies` against `dataset`'s injected labels.
+
+    The (observation-sampled) anomaly capture is reconstructed into flows once; each epoch's flows
+    give every node one real `BehavioralFingerprint` (`computed_at` = the epoch's end, so detection
+    latency honestly includes the epoch that must finish before it can be judged). The baseline epochs
+    build each node's `NodeBehavioralBaseline`; every node's fingerprint in every test epoch is then
+    checked against it. Returns `None` if no injected label survives (nothing to score against).
+    """
+    anomaly_capture_id = f"{capture_id}-anomaly"
+    write_jsonl(packets_path(root, anomaly_capture_id), sample_packets(dataset.packets, completeness, seed))
+    flows = reconstruct_flows(root, anomaly_capture_id)
+    window_seconds = {ObservationWindow.SHORT: dataset.epoch_seconds}
+
+    def epoch_fingerprint(node: Any, epoch: int) -> Any:
+        start, end = dataset.epoch_start(epoch), dataset.epoch_end(epoch)
+        epoch_flows = [f for f in flows if start <= f.last_seen < end]
+        return assemble_node_fingerprint(epoch_flows, node, ObservationWindow.SHORT, window_seconds, computed_at=end)
+
+    detected: List[Anomaly] = []
+    first_test = dataset.baseline_epochs
+    for node in nodes:
+        baseline = build_node_baseline([epoch_fingerprint(node, e) for e in range(first_test)])
+        for epoch in range(first_test, dataset.total_epochs):
+            detected.extend(detect_node_anomalies(baseline, epoch_fingerprint(node, epoch)))
+
+    labels: List[LabeledAnomalyEvent] = []
+    unscored: List[str] = []
+    for injected in dataset.injected:
+        for name, dimension in injected.labels:
+            node_id = name_to_node_id.get(name)
+            if node_id is None:
+                unscored.append(f"{injected.pattern}:{name} (dropped by observation sampling)")
+                continue
+            labels.append(LabeledAnomalyEvent(node_id=node_id, dimension=dimension, onset_at=injected.onset_at))
+    if not labels:
+        return None
+
+    total_checks = len(nodes) * _DETECTOR_DIMENSION_COUNT * dataset.test_epochs
+    evaluation = evaluate_anomaly_detection(detected, labels, total_checks=total_checks)
+
+    # Diagnostic split of the detections (headline scoring above stays strict): any detection in a
+    # clean test epoch is a false alarm by construction; detections in an injected epoch that match no
+    # label are co-firing dimensions on the same injection (e.g. the burst's extra bytes).
+    injected_epochs = {i.epoch for i in dataset.injected}
+    epoch_by_end = {dataset.epoch_end(e): e for e in range(first_test, dataset.total_epochs)}
+    clean_epoch_count = dataset.test_epochs - len(injected_epochs)
+    clean_epoch_detections = sum(1 for a in detected if epoch_by_end[a.detected_at] not in injected_epochs)
+    clean_epoch_checks = len(nodes) * _DETECTOR_DIMENSION_COUNT * clean_epoch_count
+    raw = {
+        **asdict(evaluation),
+        "clean_epoch_detections": clean_epoch_detections,
+        "clean_epoch_false_alarm_rate": (clean_epoch_detections / clean_epoch_checks) if clean_epoch_checks else None,
+        "baseline_epochs": dataset.baseline_epochs,
+        "test_epochs": dataset.test_epochs,
+        "epoch_seconds": dataset.epoch_seconds,
+        "scored_node_count": len(nodes),
+        "injected": [asdict(i) for i in dataset.injected],
+        "skipped_patterns": dataset.skipped,
+        "unscored_labels": unscored,
+        "detected": [
+            {"node_id": a.node_id, "dimension": a.dimension.value, "detected_at": a.detected_at.isoformat()}
+            for a in detected
+        ],
+    }
+    return evaluation, raw
+
+
 def _to_metric_result(context: MetricContext, experiment_id: str, raw: Any) -> MetricResult:
     """Maps each evaluation dataclass's most direct analogue onto
     `MetricResult`'s shared fields (see module docstring); the full `raw`
@@ -445,6 +530,12 @@ def _to_metric_result(context: MetricContext, experiment_id: str, raw: Any) -> M
         kwargs.update(precision=raw.accuracy, calibration_error=raw.expected_calibration_error)
     elif context == MetricContext.TEMPORAL_ANALYSIS:
         kwargs.update(precision=raw.precision, recall=raw.recall, f1=raw.f1, detection_latency_seconds=raw.mean_detection_latency_seconds)
+    elif context == MetricContext.ANOMALY_DETECTION:
+        kwargs.update(
+            precision=raw.precision, recall=raw.recall, f1=raw.f1,
+            false_positive_rate=raw.false_positive_rate, false_negative_rate=raw.false_negative_rate,
+            detection_latency_seconds=raw.mean_detection_latency_seconds,
+        )
     elif context == MetricContext.CAUSAL_ANALYSIS:
         kwargs.update(precision=raw.dependency_precision, recall=raw.dependency_recall, f1=raw.dependency_f1)
     elif context in (MetricContext.PATHFORGE, MetricContext.COUNTERFACTUAL):
@@ -591,6 +682,19 @@ def run_matrix_cell(
     raw_evaluations["causal_analysis"] = asdict(causal_eval)
     metrics.append(_to_metric_result(MetricContext.CAUSAL_ANALYSIS, experiment_id, causal_eval))
 
+    # --- anomaly_detection (Phase 76; baseline cells only -- no ablation touches this path) ---
+    if ablation is None:
+        anomaly_dataset = generate_anomaly_dataset(
+            roles, edges, ip_by_name, capture_id, seed, packets_per_edge=packets_per_edge
+        )
+        anomaly_result = _evaluate_anomaly_detection(
+            root, capture_id, anomaly_dataset, completeness, seed, graph.nodes, name_to_node_id
+        )
+        if anomaly_result is not None:
+            anomaly_eval, anomaly_raw = anomaly_result
+            raw_evaluations["anomaly_detection"] = anomaly_raw
+            metrics.append(_to_metric_result(MetricContext.ANOMALY_DETECTION, experiment_id, anomaly_eval))
+
     # --- pathforge + counterfactual (Phase 73: swept over several failure targets) ---
     pathforge_targets: List[Dict[str, Any]] = []
     cf_targets: List[Dict[str, Any]] = []
@@ -629,7 +733,7 @@ def run_matrix_cell(
     experiment = Experiment(
         experiment_id=experiment_id,
         dataset_version=f"synthetic-{topology_level}-v1",
-        code_version="phase-75",
+        code_version="phase-76",
         configuration={
             "topology_level": topology_level,
             "completeness": completeness,
