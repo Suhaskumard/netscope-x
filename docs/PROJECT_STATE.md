@@ -2296,4 +2296,24 @@ None yet — no experiments have been run.
   Verified: 16 new tests (8 model, 8 benchmark); full suite 708/708; `validate_data_contracts` 55/55;
   `check_ground_truth_boundary` clean.
 
-- Next: Phase 79 (Real Causal Discovery, master spec addendum). Not started; awaiting explicit request.
+- Real causal discovery (Phase 79, master spec addendum) is built and benchmarked; adopted
+  conditionally as an opt-in alternative candidate generator, not wired into the pipeline.
+  `backend/dependency/causal_discovery.py` is a time-series PC (the parent-discovery stage of PCMCI) in
+  numpy/scipy: per-node flow-activity series at lags 1-5, Fisher-z partial-correlation tests (alpha 0.05,
+  conditioning sets up to 3), orientation from time, undefined (collinear) tests kept and counted, and no
+  multiple-testing correction. It returns Phase 53's own `CausalCandidate` with the method's assumptions
+  in every rationale, so Phase 68's unmodified `evaluate_causal_analysis` scores it. Outputs remain
+  candidates, never proven causation. `experiments/causal_generators.py` adds a parent-driven control
+  dataset where the declared edges are the true causal graph.
+  Real result (6 topologies x 5 completeness levels x 10 seeds, 300 captures per dataset): pooled directed
+  F1 on Phase 70 traffic PC 0.252 versus Phase 53 0.033; on the control dataset 0.240 versus 0.049. PC is at
+  least as good on every topology, but precision is only about 0.3 (about 6 spurious pairs per capture; a
+  stricter alpha does not fix it), and both methods score near zero on star topologies. Phase 70's
+  delayed-copy construction makes 20.9% of PC's tests undefined (0.0% on the control), yet F1 is similar on
+  both, and only 28% of spurious pairs carry the tier-lag signature, so the hidden-driver effect explains a
+  minority of the errors. Details are in `docs/architecture/causal_discovery.md`.
+  Verified: 16 new tests (9 discovery, 7 benchmark); full suite 724/724; `validate_data_contracts` 55/55;
+  `check_ground_truth_boundary` clean.
+
+- Next: Phase 80 (Active-Learning Experiment Recommendation Policy, master spec addendum). Not started;
+  awaiting explicit request.
