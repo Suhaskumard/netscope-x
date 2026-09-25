@@ -269,3 +269,49 @@ def detect_node_anomalies_with_drift(
         upgraded.append(anomaly.model_copy(update={"anomaly_class": drift_result.anomaly_class}))
 
     return upgraded
+
+
+def detect_sustained_drift(
+    baseline: NodeBehavioralBaseline,
+    fingerprints: List[BehavioralFingerprint],
+    z_threshold: float = 3.0,
+    drift_z: float = 1.5,
+    min_epochs: int = 3,
+    mad_floor: float = 1e-6,
+) -> List[Anomaly]:
+    """Phase 84 hardening for the low-and-slow evasion of `detect_node_anomalies`: a traffic-volume ramp that
+    stays under `z_threshold` in every single epoch. Flags TRAFFIC_VOLUME at the first epoch where the last
+    `min_epochs` robust z-scores are all at least `drift_z` and strictly increasing -- a sustained, monotone
+    departure that one-epoch noise does not produce. `fingerprints` are one node's consecutive new epochs in
+    time order. Returns `[]` for an insufficient baseline or a sequence shorter than `min_epochs`. Opt-in: nothing
+    calls this unless a caller adds it to `detect_node_anomalies`.
+    """
+    if not baseline.is_sufficient or len(fingerprints) < min_epochs:
+        return []
+    for fp in fingerprints:
+        _check_fingerprint_matches_baseline(baseline, fp)
+    feature = baseline.total_byte_count
+    effective_mad = max(feature.mad, mad_floor)
+    zs = [(float(fp.total_byte_count) - feature.median) / effective_mad for fp in fingerprints]
+    for i in range(min_epochs - 1, len(fingerprints)):
+        window = zs[i - min_epochs + 1 : i + 1]
+        if all(z >= drift_z for z in window) and all(b > a for a, b in zip(window, window[1:])):
+            fp = fingerprints[i]
+            z = zs[i]
+            return [
+                Anomaly(
+                    node_id=fp.node_id,
+                    anomaly_id=f"{fp.node_id}:{AnomalyDimension.TRAFFIC_VOLUME.value}:drift:{fp.computed_at.isoformat()}",
+                    detected_at=fp.computed_at,
+                    dimension=AnomalyDimension.TRAFFIC_VOLUME,
+                    anomaly_class=AnomalyClass.TRANSIENT_ANOMALY,
+                    evidence=[
+                        f"byte_count rose for {min_epochs} consecutive epochs, each at least {drift_z:.1f} robust "
+                        f"MADs above the historical typical value {_format_value(feature.median)} "
+                        f"(latest z-score {z:.3f})"
+                    ],
+                    evidence_values={"z_score": f"{z:.3f}", "drift_epochs": str(min_epochs)},
+                    score=1 - math.exp(-z / z_threshold),
+                )
+            ]
+    return []

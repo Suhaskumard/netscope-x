@@ -2371,5 +2371,18 @@ None yet — no experiments have been run.
   Verified: 20 new tests (11 calibration, 9 uncertainty); full suite 771/771; `validate_data_contracts` 55/55;
   `check_ground_truth_boundary` clean.
 
-- Next: Phase 84 (Adversarial Robustness Evaluation, master spec addendum). Not started; awaiting explicit
+- Adversarial robustness evaluation (Phase 84, master spec addendum) is built and measured; hardening is
+  opt-in and not wired into the pipeline. `experiments/adversarial/` crafts 8 attacks (spoofed sources, decoy
+  chatter, IP aliasing, role mimicry, fingerprint noise, low-and-slow, baseline poisoning, minimal burst) as
+  packet transforms through the real pipeline. Opt-in hardening (defaults bit-identical): `min_edge_bidirectionality`,
+  `classify_node_role_robust`, `build_anchored_baseline`, `detect_sustained_drift`.
+  Real result (456 cells, 5 topologies x 3 seeds): 6 of 8 attacks succeed. Fixed: spoofed sources (node F1 0.708 ->
+  1.000), baseline poisoning (recall 0.235 -> 0.897). Role attacks are mitigated only by abstention (hardened is right
+  0% under attack, abstains 83-100%; 17% of mimicry still fools it). Open: decoy chatter (edge F1 0.850) and IP aliasing
+  (node F1 0.708). Low-and-slow keeps recall but doubles false positives and raises latency 51 -> 88 s, unfixed.
+  Clean spread is 0, so effect sizes matter more than the success rule. Details are in
+  `docs/architecture/adversarial_robustness.md`.
+  Verified: 14 new tests; full suite 785/785; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 85 (Incremental Topology Reconstruction, master spec addendum). Not started; awaiting explicit
   request.

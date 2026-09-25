@@ -39,6 +39,7 @@ def build_topology_graph(
     edge_confidence_packet_scale: float = _DEFAULT_PACKET_SCALE,
     edge_confidence_signal_strength: float = _DEFAULT_SIGNAL_STRENGTH,
     as_of: Optional[datetime] = None,
+    min_edge_bidirectionality: float = 0.0,
 ) -> TopologyGraph:
     """Assembles the complete inferred `TopologyGraph` for a capture: every
     node `discover_nodes` finds, every edge `discover_edges` finds between
@@ -55,6 +56,10 @@ def build_topology_graph(
     time-bounded graph a stable, versioned identity is `NetworkSnapshot`'s
     job (spec Phase 44), not this one's. `None` (default) reproduces the
     original, whole-capture behavior exactly.
+
+    `min_edge_bidirectionality` (Phase 84 hardening, opt-in): edges need at least this much genuine two-way
+    traffic, and nodes left with no edge are dropped (a spoofed source that never converses is not a node).
+    `0.0` (default) reproduces the original behavior exactly.
     """
     nodes = discover_nodes(root, capture_id, as_of=as_of)
     edges = discover_edges(
@@ -64,7 +69,11 @@ def build_topology_graph(
         edge_confidence_packet_scale,
         edge_confidence_signal_strength,
         as_of=as_of,
+        min_bidirectionality=min_edge_bidirectionality,
     )
+    if min_edge_bidirectionality > 0.0:
+        connected = {e.source_node_id for e in edges} | {e.target_node_id for e in edges}
+        nodes = [n for n in nodes if n.node_id in connected]
     return TopologyGraph(
         graph_id=graph_id,
         generated_at=datetime.now(timezone.utc),

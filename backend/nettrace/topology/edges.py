@@ -199,6 +199,7 @@ def discover_edges(
     edge_confidence_packet_scale: float = _DEFAULT_PACKET_SCALE,
     edge_confidence_signal_strength: float = _DEFAULT_SIGNAL_STRENGTH,
     as_of: Optional[datetime] = None,
+    min_bidirectionality: float = 0.0,
 ) -> List[Edge]:
     """Reads `flows_path(root, capture_id)` and aggregates flows sharing a
     node pair into one `Edge` each. `nodes` must be (an equivalent IP
@@ -217,11 +218,17 @@ def discover_edges(
     confidence, never overstate it (Phase 31's noisy-OR formula is
     monotonic in evidence). `None` (default) reproduces the original,
     whole-capture behavior exactly.
+
+    `min_bidirectionality` (Phase 84 hardening, opt-in): drops a node pair whose best flow's genuine
+    two-way-traffic strength (`_bidirectionality`) is below it, so one-way (e.g. spoofed) traffic cannot create
+    an edge. `0.0` (default) keeps every pair -- identical to pre-Phase-84 behavior.
     """
     buckets = bucket_flows_by_node_pair(root, capture_id, nodes, as_of=as_of)
 
     aggregated = []
     for (source_node_id, target_node_id), bucket_flows in buckets.items():
+        if min_bidirectionality > 0.0 and _signal_indicators(bucket_flows)["bidirectional"] < min_bidirectionality:
+            continue
         ordered_flows = sorted(bucket_flows, key=lambda f: (f.first_seen, f.flow_id))
         confidence = _confidence(
             bucket_flows, edge_confidence_packet_scale, edge_confidence_signal_strength

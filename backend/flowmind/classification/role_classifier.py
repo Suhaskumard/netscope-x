@@ -290,3 +290,46 @@ def fit_temperature(
         return coarse_t
     refined_t, _ = _grid_search_minimize(objective, refined_low, refined_high, grid_size)
     return refined_t
+
+
+# Phase 84 hardening. A continuous feature's scale is floored at this fraction of its (role) mean magnitude so a
+# role fitted from one or two nodes (near-zero variance) does not call every clean node out-of-distribution.
+# Provisional and evidence-light, like the other floors in this file; the benchmark reports its clean abstain rate.
+_OOD_RELATIVE_SCALE_FLOOR = 0.1
+
+
+def is_out_of_distribution(model: RoleModel, fingerprint: BehavioralFingerprint, max_feature_z: float = 4.0) -> bool:
+    """True if some continuous feature of `fingerprint` lies more than `max_feature_z` scale units from EVERY
+    role's mean -- behavior no known role produces (e.g. crafted mimicry that matches no one role's profile)."""
+    for name, value in _continuous_features(fingerprint).items():
+        nearest = min(
+            abs(value - model.continuous_mean[role][name])
+            / max(
+                math.sqrt(model.continuous_variance[role][name]),
+                _OOD_RELATIVE_SCALE_FLOOR * max(abs(model.continuous_mean[role][name]), 1.0),
+            )
+            for role in model.roles
+        )
+        if nearest > max_feature_z:
+            return True
+    return False
+
+
+def classify_node_role_robust(
+    model: RoleModel,
+    fingerprint: BehavioralFingerprint,
+    computed_at: Optional[datetime] = None,
+    temperature: float = 1.0,
+    max_feature_z: float = 4.0,
+) -> RoleClassification:
+    """`classify_node_role`, but a fingerprint that `is_out_of_distribution` gets a uniform posterior over
+    `model.roles` (an honest "cannot tell") instead of a confident wrong role. Inputs that are in distribution
+    give exactly `classify_node_role`'s result."""
+    if not is_out_of_distribution(model, fingerprint, max_feature_z):
+        return classify_node_role(model, fingerprint, computed_at, temperature)
+    uniform = {role: 1.0 / len(model.roles) for role in model.roles}
+    return RoleClassification(
+        node_id=fingerprint.node_id,
+        computed_at=computed_at or datetime.now(timezone.utc),
+        role_probabilities=uniform,
+    )

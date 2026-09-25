@@ -130,3 +130,16 @@ def build_node_baseline(
         historical_protocols=historical_protocols,
         persistent_talker_frequency=persistent_talker_frequency,
     )
+
+
+def build_anchored_baseline(
+    fingerprint_history: List[BehavioralFingerprint],
+    anchor_count: int = 5,
+    min_observations: int = 5,
+) -> NodeBehavioralBaseline:
+    """Phase 84 hardening against slow baseline poisoning: builds the baseline from only the OLDEST
+    `anchor_count` fingerprints, which a campaign that ramps behavior up during the history window has not yet
+    reached. Trades adaptation for resistance -- a legitimate change that happened inside the anchored span is
+    baked in, and an attacker who poisons from the very first observation defeats it. Opt-in; nothing calls it
+    unless a caller chooses it over `build_node_baseline`."""
+    return build_node_baseline(fingerprint_history[:anchor_count], min_observations=min_observations)
