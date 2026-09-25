@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from backend.app.models.anomaly import Anomaly, AnomalyDimension
-from backend.app.models.behavior import BehavioralFingerprint
+from backend.app.models.behavior import BehavioralFingerprint, ServiceRole
 from backend.flowmind.anomaly.node_anomaly import detect_node_anomalies
 from backend.flowmind.anomaly.sequence_model import (
     FEATURES,
@@ -68,12 +68,17 @@ class AnomalyBenchExample:
     dataset: AnomalyDataset
     fingerprints: Dict[str, List[BehavioralFingerprint]]
     labels: List[LabeledAnomalyEvent]
+    role_by_node: Dict[str, ServiceRole] = field(default_factory=dict)  # node_id -> declared role (Phase 81)
 
 
-def build_bench_example(root: Path, level: str, completeness: float, seed: int, variant: str) -> AnomalyBenchExample:
+def build_bench_example(
+    root: Path, level: str, completeness: float, seed: int, variant: str, topology=None
+) -> AnomalyBenchExample:
+    """`topology` (Phase 81): an explicit `(roles, edges)` overriding the matrix level named by `level`,
+    which is then only a label."""
     if variant not in VARIANTS:
         raise ValueError(f"unknown variant {variant!r}; choose from {VARIANTS}")
-    roles, edges = TOPOLOGY_LEVELS[level]()
+    roles, edges = topology if topology is not None else TOPOLOGY_LEVELS[level]()
     ip_by_name = assign_ips(list(roles))
     capture_id = f"seqbench-{level}-{str(completeness).replace('.', 'p')}-{variant}-{seed}"
     packets_per_edge = SENSITIVITY_SWEEP["packets_per_edge"] if variant == "lowvol" else 15
@@ -95,7 +100,8 @@ def build_bench_example(root: Path, level: str, completeness: float, seed: int, 
         for name, dim in injected.labels
         if name in node_id_by_name
     ]
-    return AnomalyBenchExample(level, completeness, variant, seed, dataset, fingerprints, labels)
+    role_by_node = {node_id: roles[name] for name, node_id in node_id_by_name.items()}
+    return AnomalyBenchExample(level, completeness, variant, seed, dataset, fingerprints, labels, role_by_node)
 
 
 def _mad_detections(item: AnomalyBenchExample, history_epochs: int) -> Tuple[List[Anomaly], int]:

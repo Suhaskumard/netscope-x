@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -200,11 +200,15 @@ def fit_sequence_model(
     threshold_quantile: float = 0.99,
     min_history: int = 2,
     seed: int = 0,
+    init: Optional[SequenceAnomalyModel] = None,
 ) -> SequenceAnomalyModel:
     """Trains on `histories` -- one time-ordered fingerprint list per node, which the caller vouches are
     NORMAL. Full-batch Adam, deterministic per `seed`. The alarm threshold is the `threshold_quantile` of
     the pooled training residuals in per-feature scale units, fixed here, not tuned on test data. Raises
-    `ValueError` if no history is long enough to form a training sample."""
+    `ValueError` if no history is long enough to form a training sample.
+
+    `init` (Phase 81 fine-tuning): start from a copy of that model's weights (its `hidden` is used) instead
+    of a random initialization; residual scale and threshold are re-derived from `histories` only."""
     if min_history < 1:
         raise ValueError("min_history must be at least 1")
     samples = _samples(histories, min_history)
@@ -212,8 +216,11 @@ def fit_sequence_model(
         raise ValueError(f"fit_sequence_model needs at least one history longer than min_history={min_history}")
     groups = _group_by_length(samples)
 
-    rng = np.random.default_rng(seed)
-    params = _init_params(hidden, rng)
+    if init is not None:
+        hidden = init.hidden
+        params = {k: v.copy() for k, v in init.params.items()}
+    else:
+        params = _init_params(hidden, np.random.default_rng(seed))
     m = {k: np.zeros_like(v) for k, v in params.items()}
     s = {k: np.zeros_like(v) for k, v in params.items()}
     beta1, beta2, eps = 0.9, 0.999, 1e-8

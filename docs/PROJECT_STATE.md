@@ -2332,5 +2332,21 @@ None yet — no experiments have been run.
   Verified: 17 new tests (10 policy, 7 benchmark); full suite 741/741; `validate_data_contracts` 55/55;
   `check_ground_truth_boundary` clean.
 
-- Next: Phase 81 (Cross-Topology Transfer Learning, master spec addendum). Not started; awaiting
+- Cross-topology transfer learning (Phase 81, master spec addendum) is built and measured; nothing is
+  wired into the pipeline. `experiments/transfer_benchmark.py` runs leave-one-ARCHETYPE-out (chain, star,
+  multi_tier, multi_path, redundant, dynamic, two sizes each; the matrix's `medium`/`multi_service` are both
+  stars so level-based splits leak) for the Naive Bayes role model and the Phase 78 LSTM (MAD as the
+  transfer-free comparator): in-distribution, zero-shot, few-shot (k=1,2,5 support nodes, disjoint seeds)
+  and scratch-on-k. `fit_sequence_model` gained an optional `init` for fine-tuning; `build_bench_example`
+  accepts an explicit topology.
+  Real result: role accuracy collapses zero-shot on 4 of 6 archetypes (0.43-0.54 on chain, multi_path,
+  redundant, dynamic; ECE up to 0.56; star 0.815, multi_tier holds at 0.972); pooled few-shot barely helps
+  and scratch on 5 nodes beats it on all 6. LSTM zero-shot F1 is at or above MAD on 5 of 6 archetypes (tie on
+  chain) but precision stays low, and few-shot fine-tuning lowers F1 on all six (threshold re-derived from
+  few residuals is the probable cause, untested). LSTM "in-distribution" is a smaller-data baseline, not an
+  upper bound. Details are in `docs/architecture/transfer_learning.md`.
+  Verified: 10 new tests; full suite 751/751; `validate_data_contracts` 55/55; `check_ground_truth_boundary`
+  clean.
+
+- Next: Phase 82 (Automated Constant Calibration, master spec addendum). Not started; awaiting
   explicit request.
