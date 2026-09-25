@@ -102,21 +102,33 @@ def _signal_indicators(bucket_flows: List[Flow]) -> Dict[str, float]:
     }
 
 
+def confidence_from_stats(
+    total_packet_count: int,
+    indicators: Dict[str, float],
+    edge_confidence_packet_scale: float,
+    edge_confidence_signal_strength: float,
+) -> float:
+    """The Phase 31 noisy-OR over already-aggregated evidence (shared with Phase 87's streaming estimator, which
+    maintains `total_packet_count` and `indicators` incrementally)."""
+    p_volume = 1 - math.exp(-total_packet_count / edge_confidence_packet_scale)
+    s = edge_confidence_signal_strength
+    survival = 1 - p_volume
+    for value in indicators.values():
+        survival *= 1 - s * value
+    return 1 - survival
+
+
 def _confidence(
     bucket_flows: List[Flow],
     edge_confidence_packet_scale: float,
     edge_confidence_signal_strength: float,
 ) -> float:
-    total_packet_count = sum(f.features.packet_count for f in bucket_flows)
-    p_volume = 1 - math.exp(-total_packet_count / edge_confidence_packet_scale)
-
-    s = edge_confidence_signal_strength
-    indicators = _signal_indicators(bucket_flows)
-
-    survival = 1 - p_volume
-    for value in indicators.values():
-        survival *= 1 - s * value
-    return 1 - survival
+    return confidence_from_stats(
+        sum(f.features.packet_count for f in bucket_flows),
+        _signal_indicators(bucket_flows),
+        edge_confidence_packet_scale,
+        edge_confidence_signal_strength,
+    )
 
 
 def _evidence_line(flow: Flow) -> str:

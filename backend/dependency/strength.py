@@ -67,6 +67,28 @@ _DEFAULT_PERSISTENCE_SCALE = 60.0  # mirrors Settings.dependency_persistence_sca
 _DEFAULT_DEPENDENCY_SIGNAL_STRENGTH = 0.3  # mirrors Settings.dependency_signal_strength's own default
 
 
+def combine_dependency_strength(
+    frequency: float,
+    persistence_seconds: float,
+    directionality_score: float,
+    edge_confidence: float,
+    temporal_precedence_score: float,
+    dependency_frequency_scale: float = _DEFAULT_FREQUENCY_SCALE,
+    dependency_persistence_scale: float = _DEFAULT_PERSISTENCE_SCALE,
+    dependency_signal_strength: float = _DEFAULT_DEPENDENCY_SIGNAL_STRENGTH,
+) -> float:
+    """The five-signal noisy-OR, shared with Phase 87's streaming estimator."""
+    p_frequency = 1 - math.exp(-frequency / dependency_frequency_scale)
+    p_persistence = 1 - math.exp(-persistence_seconds / dependency_persistence_scale)
+    s = dependency_signal_strength
+    survival = 1 - p_frequency
+    survival *= 1 - s * p_persistence
+    survival *= 1 - s * directionality_score
+    survival *= 1 - s * edge_confidence
+    survival *= 1 - s * temporal_precedence_score
+    return 1 - survival
+
+
 def estimate_dependency_strength(
     root: Path,
     capture_id: str,
@@ -133,16 +155,16 @@ def estimate_dependency_strength(
             max_lag_buckets=dependency_temporal_max_lag_buckets,
         )
 
-        p_frequency = 1 - math.exp(-relationship.frequency / dependency_frequency_scale)
-        p_persistence = 1 - math.exp(-relationship.persistence_seconds / dependency_persistence_scale)
-
-        s = dependency_signal_strength
-        survival = 1 - p_frequency
-        survival *= 1 - s * p_persistence
-        survival *= 1 - s * directionality_score
-        survival *= 1 - s * edge.confidence
-        survival *= 1 - s * temporal_precedence_score
-        strength = 1 - survival
+        strength = combine_dependency_strength(
+            relationship.frequency,
+            relationship.persistence_seconds,
+            directionality_score,
+            edge.confidence,
+            temporal_precedence_score,
+            dependency_frequency_scale,
+            dependency_persistence_scale,
+            dependency_signal_strength,
+        )
 
         dependencies.append(
             DependencyEdge(

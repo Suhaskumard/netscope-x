@@ -19,7 +19,7 @@ rather than get silently different results); `as_of` time-travel remains a batch
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Sequence, Set, Tuple
 
@@ -41,6 +41,9 @@ class IngestStats:
     flow_keys_touched: int
     flow_keys_total: int
     new_ips: int
+    # (flow key, units before, units after) for every touched key; Phase 87's streaming dependency estimator
+    # retracts the old contribution and adds the new one. Excluded from equality so older comparisons are unaffected.
+    changes: Tuple[Tuple[_FlowKey, Tuple[_Unit, ...], Tuple[_Unit, ...]], ...] = field(default=(), compare=False, repr=False)
 
 
 class IncrementalTopology:
@@ -82,10 +85,13 @@ class IncrementalTopology:
                 key = _flow_key(pkt)
                 self._groups[key].append(pkt)
                 touched.add(key)
+        changes = []
         for key in touched:
+            before = tuple(self._units.get(key, ()))
             self._units[key] = derive_units(self._groups[key], self._udp_idle)
+            changes.append((key, before, tuple(self._units[key])))
         self.packet_count += len(packets)
-        return IngestStats(len(packets), len(touched), len(self._groups), new_ips)
+        return IngestStats(len(packets), len(touched), len(self._groups), new_ips, tuple(changes))
 
     def nodes(self) -> List[Node]:
         return nodes_from_observations(self.capture_id, self._first, self._last)

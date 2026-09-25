@@ -57,6 +57,15 @@ def _bucket_counts(
     return counts
 
 
+def _times_to_counts(times: List[datetime], bucket_seconds: float, start: datetime, num_buckets: int) -> List[int]:
+    counts = [0] * num_buckets
+    for t in times:
+        index = int((t - start).total_seconds() // bucket_seconds)
+        if 0 <= index < num_buckets:
+            counts[index] += 1
+    return counts
+
+
 def _correlation(a: List[float], b: List[float]) -> Optional[float]:
     """Pearson correlation coefficient via stdlib `statistics.correlation`
     (the same module this project already uses for robust statistics --
@@ -95,19 +104,30 @@ def estimate_temporal_precedence(
     input, insufficient overlapping data, or when no lag search beats the
     zero-lag baseline -- never an error, never a fabricated score.
     """
-    source_touching = flows_touching_node(flows, source_node)
-    target_touching = flows_touching_node(flows, target_node)
-    all_touching = source_touching + target_touching
-    if not all_touching:
+    source_times = [f.first_seen for f in flows_touching_node(flows, source_node)]
+    target_times = [f.first_seen for f in flows_touching_node(flows, target_node)]
+    return precedence_from_times(source_times, target_times, bucket_seconds, max_lag_buckets)
+
+
+def precedence_from_times(
+    source_times: List[datetime],
+    target_times: List[datetime],
+    bucket_seconds: float = _DEFAULT_BUCKET_SECONDS,
+    max_lag_buckets: int = _DEFAULT_MAX_LAG_BUCKETS,
+) -> float:
+    """`estimate_temporal_precedence` over the `first_seen` times of each node's touching flows (shared with
+    Phase 87's streaming estimator, which keeps those times per node instead of re-filtering every flow)."""
+    all_times = source_times + target_times
+    if not all_times:
         return 0.0
 
-    start = min(f.first_seen for f in all_touching)
-    end = max(f.first_seen for f in all_touching)
+    start = min(all_times)
+    end = max(all_times)
     span_seconds = (end - start).total_seconds()
     num_buckets = int(span_seconds // bucket_seconds) + 1
 
-    source_series = _bucket_counts(flows, source_node, bucket_seconds, start, num_buckets)
-    target_series = _bucket_counts(flows, target_node, bucket_seconds, start, num_buckets)
+    source_series = _times_to_counts(source_times, bucket_seconds, start, num_buckets)
+    target_series = _times_to_counts(target_times, bucket_seconds, start, num_buckets)
 
     zero_lag = _correlation(source_series, target_series) or 0.0
 
