@@ -132,8 +132,9 @@ from backend.simulation.counterfactual_comparison import compare_counterfactual_
 from backend.simulation.counterfactual_engine import execute_counterfactual_scenario
 from backend.simulation.failure_propagation_pipeline import run_failure_propagation_pipeline
 from backend.simulation.resilience_indicators import compute_resilience_indicators
-from experiments.artifacts.io import write_json, write_jsonl
-from experiments.artifacts.paths import experiment_path, metrics_path, packets_path
+from experiments.artifacts.experiment_manifest import ExperimentManifestEntry
+from experiments.artifacts.io import OnExisting, next_experiment_version, write_experiment_run, write_jsonl
+from experiments.artifacts.paths import packets_path
 from experiments.metrics.causal_evaluation import evaluate_causal_analysis
 from experiments.metrics.counterfactual_validation import (
     ActualCounterfactualOutcome,
@@ -215,6 +216,27 @@ class MatrixCellResult:
 
 def _sanitize(text: str) -> str:
     return text.replace(".", "p")
+
+
+def cell_experiment_id(
+    topology_level: str,
+    completeness: float,
+    seed: int,
+    ablation: Optional[str] = None,
+    variant: Optional[str] = None,
+) -> str:
+    """The stable id of one matrix cell. Phase 74: a `variant` (e.g. the low-volume sweep) gets
+    its own id so it never collides with the default cell; default ids are unchanged. Phase 75:
+    re-runs of the same cell share this id and are told apart by run version (see
+    `run_and_persist_cell`)."""
+    variant_part = f"-{variant}" if variant else ""
+    return f"matrix-{topology_level}-{_sanitize(str(completeness))}-{ablation or 'baseline'}{variant_part}-{seed}"
+
+
+def cell_capture_id(experiment_id: str, version: int) -> str:
+    """Run v1 keeps the pre-Phase-75 capture id (= experiment_id); later runs get their own capture
+    directory, so a re-run never rewrites the first run's packets/flows or appends snapshots to it."""
+    return experiment_id if version == 1 else f"{experiment_id}-v{version}"
 
 
 def _reverse_lookup(ip_by_name: Dict[str, str]) -> Dict[str, str]:
@@ -441,23 +463,24 @@ def run_matrix_cell(
     failure_target_count: int = FAILURE_TARGET_COUNT,
     pulse_cycles: int = _PULSE_CYCLES,
     variant: Optional[str] = None,
+    capture_id: Optional[str] = None,
 ) -> MatrixCellResult:
     """Runs one (topology_level, completeness[, ablation]) cell of the
     experimental matrix for real: generates a scenario, synthesizes and
     samples packets, runs the real pipeline, and scores every applicable
     `MetricContext` against ground truth. Raises `KeyError` for an unknown
     `topology_level`, `ValueError` for an unknown `ablation`.
+
+    `capture_id` (default: the experiment_id) is where this run's packets/flows/snapshots are
+    written; `run_and_persist_cell` passes a per-run-version one (Phase 75).
     """
     if topology_level not in TOPOLOGY_LEVELS:
         raise KeyError(f"unknown topology_level {topology_level!r}; choose from {sorted(TOPOLOGY_LEVELS)}")
     if ablation is not None and ablation not in ABLATIONS:
         raise ValueError(f"unknown ablation {ablation!r}; choose from {ABLATIONS}")
 
-    # Phase 74: a `variant` (e.g. the low-volume sweep) gets its own id so it never overwrites
-    # the default cell; default ids are unchanged.
-    variant_part = f"-{variant}" if variant else ""
-    experiment_id = f"matrix-{topology_level}-{_sanitize(str(completeness))}-{ablation or 'baseline'}{variant_part}-{seed}"
-    capture_id = experiment_id
+    experiment_id = cell_experiment_id(topology_level, completeness, seed, ablation, variant)
+    capture_id = capture_id or experiment_id
     raw_evaluations: Dict[str, Any] = {}
     metrics: List[MetricResult] = []
 
@@ -606,7 +629,7 @@ def run_matrix_cell(
     experiment = Experiment(
         experiment_id=experiment_id,
         dataset_version=f"synthetic-{topology_level}-v1",
-        code_version="phase-68",
+        code_version="phase-75",
         configuration={
             "topology_level": topology_level,
             "completeness": completeness,
@@ -617,6 +640,7 @@ def run_matrix_cell(
             "packets_per_edge": packets_per_edge,
             "pulse_cycles": pulse_cycles,
             "variant": variant,
+            "capture_id": capture_id,
         },
         random_seed=seed,
         timestamp=datetime.now(timezone.utc),
@@ -663,9 +687,47 @@ def format_target_report(cells: List[MatrixCellResult]) -> str:
     return "\n".join(lines)
 
 
-def persist_cell(root: Path, cell: MatrixCellResult) -> None:
-    write_json(experiment_path(root, cell.experiment.experiment_id), cell.experiment)
-    write_jsonl(metrics_path(root, cell.experiment.experiment_id), cell.metrics)
+def persist_cell(
+    root: Path, cell: MatrixCellResult, on_existing: OnExisting = "version", version: Optional[int] = None
+) -> ExperimentManifestEntry:
+    """Persists `cell` as a new numbered run of its experiment_id (Phase 75): never overwrites an
+    earlier run -- `on_existing="version"` bumps the run number, `"refuse"` raises
+    `ExperimentExistsError`. Returns the manifest entry recorded for this run."""
+    if version is None:
+        version = next_experiment_version(root, cell.experiment.experiment_id, on_existing)
+    cell.experiment.configuration["run_version"] = version
+    return write_experiment_run(
+        root,
+        cell.experiment,
+        cell.metrics,
+        capture_id=cell.experiment.configuration.get("capture_id"),
+        on_existing=on_existing,
+        version=version,
+    )
+
+
+def run_and_persist_cell(
+    root: Path,
+    topology_level: str,
+    completeness: float,
+    seed: int = 42,
+    ablation: Optional[str] = None,
+    variant: Optional[str] = None,
+    on_existing: OnExisting = "version",
+    **cell_kwargs,
+) -> MatrixCellResult:
+    """Runs one matrix cell and persists it as a new run version (Phase 75). The version is
+    resolved *before* running, so `on_existing="refuse"` fails fast without writing anything, and
+    a re-run (v2, v3, ...) writes its capture under its own `cell_capture_id`, leaving every earlier
+    run's experiment record and capture untouched. `cell_kwargs` pass through to `run_matrix_cell`."""
+    experiment_id = cell_experiment_id(topology_level, completeness, seed, ablation, variant)
+    version = next_experiment_version(root, experiment_id, on_existing)
+    cell = run_matrix_cell(
+        root, topology_level, completeness, seed=seed, ablation=ablation, variant=variant,
+        capture_id=cell_capture_id(experiment_id, version), **cell_kwargs,
+    )
+    persist_cell(root, cell, version=version)
+    return cell
 
 
 def run_full_matrix(
@@ -675,6 +737,7 @@ def run_full_matrix(
     run_ablations: bool = True,
     seed: int = 42,
     run_sensitivity_sweep: bool = True,
+    on_existing: OnExisting = "version",
 ) -> List[MatrixCellResult]:
     """Runs every (topology_level x completeness) baseline cell, plus, if
     `run_ablations`, the 4 ablation variants of each cell's own baseline
@@ -683,7 +746,8 @@ def run_full_matrix(
     ablation at every completeness level would be 24x the cells for no
     added isolation power). If `run_sensitivity_sweep`, also runs Phase 74's
     low-volume `SENSITIVITY_SWEEP` baseline cell for every (topology_level x
-    completeness) pair. Persists every cell as it completes.
+    completeness) pair. Persists every cell as it completes, as a new run
+    version of its experiment_id (`on_existing`, Phase 75).
     """
     levels = topology_levels or list(TOPOLOGY_LEVELS)
     completenesses = completeness_levels or OBSERVATION_COMPLETENESS_LEVELS
@@ -691,20 +755,17 @@ def run_full_matrix(
     results: List[MatrixCellResult] = []
     for level in levels:
         for completeness in completenesses:
-            cell = run_matrix_cell(root, level, completeness, seed=seed)
-            persist_cell(root, cell)
+            cell = run_and_persist_cell(root, level, completeness, seed=seed, on_existing=on_existing)
             results.append(cell)
 
         if run_ablations:
             for ablation in ABLATIONS:
-                cell = run_matrix_cell(root, level, 1.0, seed=seed, ablation=ablation)
-                persist_cell(root, cell)
+                cell = run_and_persist_cell(root, level, 1.0, seed=seed, ablation=ablation, on_existing=on_existing)
                 results.append(cell)
 
         if run_sensitivity_sweep:
             for completeness in completenesses:
-                cell = run_matrix_cell(root, level, completeness, seed=seed, **SENSITIVITY_SWEEP)
-                persist_cell(root, cell)
+                cell = run_and_persist_cell(root, level, completeness, seed=seed, on_existing=on_existing, **SENSITIVITY_SWEEP)
                 results.append(cell)
 
     return results

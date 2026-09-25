@@ -13,8 +13,8 @@ from backend.app.api.errors import NotYetImplemented
 from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
 from backend.app.models import Experiment
-from experiments.artifacts.io import read_json
-from experiments.artifacts.paths import experiment_path
+from experiments.artifacts.io import read_experiment_run
+from experiments.artifacts.paths import experiment_manifest_path, experiment_path
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -26,9 +26,9 @@ def _list_experiments(root) -> list[Experiment]:
     experiment_ids = sorted(p.name for p in experiments_dir.iterdir() if p.is_dir())
     experiments = []
     for experiment_id in experiment_ids:
-        path = experiment_path(root, experiment_id)
-        if path.is_file():
-            experiments.append(read_json(path, Experiment))
+        # Phase 75: one record per experiment_id -- its latest run (older runs stay on disk).
+        if experiment_manifest_path(root, experiment_id).is_file() or experiment_path(root, experiment_id).is_file():
+            experiments.append(read_experiment_run(root, experiment_id)[0])
     return experiments
 
 

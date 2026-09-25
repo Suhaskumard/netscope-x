@@ -589,3 +589,56 @@ settings, `pulse_cycles=0` honoured, a real `large` topology F1 drop, default-vo
 observed-vs-analytic survival over 20 seeds, sweep persisted and skippable). Two Phase 72 tests
 were updated for the new cell count and table column. Full suite 658/658 passed (up from 652/652).
 `validate_data_contracts` 55/55. `check_ground_truth_boundary` clean.
+
+## Phase 75: experiment idempotency and versioning
+
+Before this phase `persist_cell` wrote `experiments/<id>/experiment.json` and `metrics.jsonl`
+unconditionally. Re-running a cell (same topology level, completeness, ablation, variant and seed,
+hence the same `experiment_id`) silently overwrote the first run's results. It also rewrote that
+capture's `packets.jsonl`/`flows.jsonl` and appended snapshot versions 3-4 to the first run's
+`captures/<id>/snapshots/`.
+
+Design (mirrors Phase 17's ground-truth generations):
+
+```
+experiments/<experiment_id>/
+  manifest.json (+ .sha256)   every run, hash-protected (ExperimentManifest)
+  v1/experiment.json, v1/metrics.jsonl
+  v2/...                      written by a re-run; v1 is never touched
+```
+
+- **Policy.** `on_existing="version"` (default) records a new `v<N>` run. `on_existing="refuse"`
+  raises `ExperimentExistsError`. Nothing overwrites. CLI: `--on-existing {version,refuse}`.
+- **Capture isolation.** `run_and_persist_cell` resolves the version *before* running. Run v1 keeps
+  the pre-existing capture id (`<id>`); run N >= 2 uses `<id>-v<N>`. A re-run therefore never
+  rewrites the first run's capture, and `refuse` fails before writing anything.
+- **Integrity.** The manifest is stored with `write_ground_truth` (sha256 sidecar) and records a
+  per-file hash for each run. `read_experiment_run` verifies them and raises
+  `ExperimentIntegrityError` on a mismatch. It reads the latest run by default, or `version=N`.
+- **Legacy roots.** A pre-Phase-75 flat `experiment.json` counts as v1. On the first re-run it is
+  *copied* into `v1/` and recorded; the flat files are left byte-for-byte unchanged. Reads fall
+  back to the flat layout when no manifest exists.
+- **API.** `GET /experiments` and `GET /metrics` return each experiment's latest run only, so a
+  re-run is not double-counted. Older runs stay on disk and are readable via `read_experiment_run`.
+- **Provenance.** `Experiment.configuration` now carries `run_version` and `capture_id`;
+  `code_version` is `phase-75`.
+
+Real check (scratch root, `medium` c=0.5 seed 7 run twice): v1's `experiment.json` and
+`metrics.jsonl` hashes were identical before and after the second run; the manifest listed
+`(1, matrix-medium-0p5-baseline-7)` and `(2, matrix-medium-0p5-baseline-7-v2)`; a third call under
+`refuse` raised `ExperimentExistsError`.
+
+Verified: 8 tests in `experiments/tests/test_experiment_versioning.py` (v1 bytes and capture
+unchanged after a re-run, latest vs `version=1` reads, refuse writes nothing, unknown policy,
+different seed is a different experiment, taken version refused, tampered file detected, legacy
+adoption) plus 1 API test (re-run listed once). Four existing tests were updated for the versioned
+layout. Full suite 667/667 passed (up from 658/658). `validate_data_contracts` 55/55.
+`check_ground_truth_boundary` clean.
+
+Known limitations:
+- Single-process only: there is no file locking, so two concurrent writers of one `experiment_id`
+  could race for the same version (the loser gets `ExperimentExistsError`, not a silent overwrite).
+- `run_matrix_cell` called directly (not via `run_and_persist_cell`) still writes its capture under
+  `<id>` unless `capture_id` is passed.
+- Default `version` policy grows disk use on every re-run of a full matrix; use `refuse` or clear
+  the root to avoid that.

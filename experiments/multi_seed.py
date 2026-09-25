@@ -32,9 +32,10 @@ from experiments.matrix_runner import (
     OBSERVATION_COMPLETENESS_LEVELS,
     SENSITIVITY_SWEEP,
     TOPOLOGY_LEVELS,
-    persist_cell,
+    run_and_persist_cell,
     run_matrix_cell,
 )
+from experiments.artifacts.io import OnExisting
 from experiments.metrics.summary_stats import MetricSummary, format_summary, summarize_values
 
 DEFAULT_SEEDS: List[int] = list(range(42, 52))
@@ -67,18 +68,22 @@ def run_multi_seed_cell(
     ablation: Optional[str] = None,
     packets_per_edge: int = 15,
     persist: bool = True,
+    on_existing: OnExisting = "version",
     **cell_kwargs,
 ) -> MultiSeedCellSummary:
     """Runs one matrix cell for real once per seed and summarizes every
     (context, field) pair across those runs. `cell_kwargs` pass through to
-    `run_matrix_cell` (e.g. Phase 74's `pulse_cycles`/`variant`)."""
+    `run_matrix_cell` (e.g. Phase 74's `pulse_cycles`/`variant`). When
+    `persist`, each run is stored as a new run version of its cell
+    (`on_existing`, Phase 75) instead of overwriting an earlier run."""
     collected: Dict[str, Dict[str, List[Optional[float]]]] = {}
     for seed in seeds:
-        cell = run_matrix_cell(
-            root, topology_level, completeness, seed=seed, ablation=ablation, packets_per_edge=packets_per_edge, **cell_kwargs
+        run = run_and_persist_cell if persist else run_matrix_cell
+        extra = {"on_existing": on_existing} if persist else {}
+        cell = run(
+            root, topology_level, completeness, seed=seed, ablation=ablation, packets_per_edge=packets_per_edge,
+            **extra, **cell_kwargs,
         )
-        if persist:
-            persist_cell(root, cell)
         for metric in cell.metrics:
             per_field = collected.setdefault(metric.context.value, {f: [] for f in METRIC_FIELDS})
             for field in METRIC_FIELDS:
@@ -106,6 +111,7 @@ def run_multi_seed_matrix(
     packets_per_edge: int = 15,
     persist: bool = True,
     run_sensitivity_sweep: bool = True,
+    on_existing: OnExisting = "version",
 ) -> List[MultiSeedCellSummary]:
     """The same cell set as `run_full_matrix` (every topology x completeness
     baseline cell, each topology's 4 ablations at completeness 1.0, and
@@ -117,15 +123,15 @@ def run_multi_seed_matrix(
     summaries: List[MultiSeedCellSummary] = []
     for level in levels:
         for completeness in completenesses:
-            summaries.append(run_multi_seed_cell(root, level, completeness, seeds, packets_per_edge=packets_per_edge, persist=persist))
+            summaries.append(run_multi_seed_cell(root, level, completeness, seeds, packets_per_edge=packets_per_edge, persist=persist, on_existing=on_existing))
         if run_ablations:
             for ablation in ABLATIONS:
                 summaries.append(
-                    run_multi_seed_cell(root, level, 1.0, seeds, ablation=ablation, packets_per_edge=packets_per_edge, persist=persist)
+                    run_multi_seed_cell(root, level, 1.0, seeds, ablation=ablation, packets_per_edge=packets_per_edge, persist=persist, on_existing=on_existing)
                 )
         if run_sensitivity_sweep:
             for completeness in completenesses:
-                summaries.append(run_multi_seed_cell(root, level, completeness, seeds, persist=persist, **SENSITIVITY_SWEEP))
+                summaries.append(run_multi_seed_cell(root, level, completeness, seeds, persist=persist, on_existing=on_existing, **SENSITIVITY_SWEEP))
     return summaries
 
 

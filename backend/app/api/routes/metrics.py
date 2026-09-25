@@ -12,8 +12,8 @@ from fastapi import APIRouter, Depends, Query
 from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
 from backend.app.models import MetricContext, MetricResult
-from experiments.artifacts.io import read_jsonl
-from experiments.artifacts.paths import metrics_path
+from experiments.artifacts.io import read_experiment_run
+from experiments.artifacts.paths import experiment_manifest_path, experiment_path
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -24,10 +24,10 @@ def _list_metrics(root, context: Optional[MetricContext]) -> list[MetricResult]:
         return []
     metrics: list[MetricResult] = []
     for experiment_id in sorted(p.name for p in experiments_dir.iterdir() if p.is_dir()):
-        path = metrics_path(root, experiment_id)
-        if not path.is_file():
+        # Phase 75: only each experiment's latest run is listed (older runs stay on disk).
+        if not (experiment_manifest_path(root, experiment_id).is_file() or experiment_path(root, experiment_id).is_file()):
             continue
-        for metric in read_jsonl(path, MetricResult):
+        for metric in read_experiment_run(root, experiment_id)[1]:
             if context is None or metric.context == context:
                 metrics.append(metric)
     return metrics

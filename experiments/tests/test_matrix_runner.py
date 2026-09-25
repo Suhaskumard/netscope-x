@@ -13,10 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from backend.app.models.experiment import Experiment
-from backend.app.models.metric import MetricContext, MetricResult
-from experiments.artifacts.io import read_json, read_jsonl
-from experiments.artifacts.paths import experiment_path, metrics_path
+from backend.app.models.metric import MetricContext
+from experiments.artifacts.io import read_experiment_run
 from experiments.matrix_runner import (
     ABLATIONS,
     TOPOLOGY_LEVELS,
@@ -66,10 +64,9 @@ def test_persist_cell_writes_real_files(tmp_path: Path) -> None:
     cell = run_matrix_cell(root, "small", 1.0, seed=4)
     persist_cell(root, cell)
 
-    loaded_experiment = read_json(experiment_path(root, cell.experiment.experiment_id), Experiment)
+    loaded_experiment, loaded_metrics = read_experiment_run(root, cell.experiment.experiment_id)
     assert loaded_experiment.experiment_id == cell.experiment.experiment_id
-
-    loaded_metrics = read_jsonl(metrics_path(root, cell.experiment.experiment_id), MetricResult)
+    assert loaded_experiment.configuration["run_version"] == 1
     assert len(loaded_metrics) == len(cell.metrics)
 
 

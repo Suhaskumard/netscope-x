@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from experiments.artifacts.io import ExperimentExistsError
 from experiments.matrix_runner import format_sensitivity_table, format_target_report, run_full_matrix
 from experiments.multi_seed import format_markdown_table, run_multi_seed_matrix
 
@@ -53,15 +54,28 @@ def main() -> None:
     parser.add_argument("--no-ablations", action="store_true", help="Skip the 4 ablation studies.")
     parser.add_argument("--targets", action="store_true", help="Phase 73: print the per-failure-target report.")
     parser.add_argument("--no-sensitivity-sweep", action="store_true", help="Phase 74: skip the low-volume sweep.")
+    parser.add_argument(
+        "--on-existing", choices=["version", "refuse"], default="version",
+        help="Phase 75: what to do when a cell's experiment_id already has a run -- store a new "
+             "run version (default) or refuse (abort with an error). Earlier runs are never overwritten.",
+    )
     seeds_group = parser.add_mutually_exclusive_group()
     seeds_group.add_argument("--seeds", type=int, nargs="+", help="Phase 72: run every cell once per listed seed.")
     seeds_group.add_argument("--n-seeds", type=int, help="Phase 72: run every cell for seeds --seed .. --seed+N-1.")
     args = parser.parse_args()
+    try:
+        _run(args)
+    except ExperimentExistsError as exc:
+        raise SystemExit(f"error: {exc} (--on-existing refuse)")
+
+
+def _run(args: argparse.Namespace) -> None:
 
     seeds = args.seeds or (list(range(args.seed, args.seed + args.n_seeds)) if args.n_seeds else None)
     if seeds is not None:
         summaries = run_multi_seed_matrix(
-            args.root, seeds=seeds, run_ablations=not args.no_ablations, run_sensitivity_sweep=not args.no_sensitivity_sweep
+            args.root, seeds=seeds, run_ablations=not args.no_ablations, run_sensitivity_sweep=not args.no_sensitivity_sweep,
+            on_existing=args.on_existing,
         )
         print(f"Ran {len(summaries)} cells x {len(seeds)} seeds {seeds}, persisted under {args.root / 'experiments'}.")
         for context, field in _HEADLINE_COLUMNS:
@@ -70,7 +84,8 @@ def main() -> None:
         return
 
     results = run_full_matrix(
-        args.root, run_ablations=not args.no_ablations, seed=args.seed, run_sensitivity_sweep=not args.no_sensitivity_sweep
+        args.root, run_ablations=not args.no_ablations, seed=args.seed, run_sensitivity_sweep=not args.no_sensitivity_sweep,
+        on_existing=args.on_existing,
     )
 
     print(f"Ran {len(results)} experiment cells, persisted under {args.root / 'experiments'}.")

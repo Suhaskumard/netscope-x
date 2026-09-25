@@ -30,7 +30,12 @@ Layout:
         docker-compose.yml            (generated, deployable)
         topology.json                 (only if actually deployed)
       experiments/<experiment_id>/
-        experiment.json
+        manifest.json                 (every run of this cell, spec addendum Phase 75)
+        manifest.json.sha256
+        v<N>/
+          experiment.json
+          metrics.jsonl
+        experiment.json               (legacy pre-Phase-75 flat layout; read-only fallback)
         metrics.jsonl
 """
 
@@ -124,8 +129,19 @@ def experiment_dir(root: Path, experiment_id: str) -> Path:
 
 
 def experiment_path(root: Path, experiment_id: str) -> Path:
+    """Legacy (pre-Phase-75) flat location, overwritten on every re-run. New runs are written
+    under `experiment_run_dir`; this path is only read as a fallback for older artifact roots."""
     return experiment_dir(root, experiment_id) / "experiment.json"
 
 
 def metrics_path(root: Path, experiment_id: str) -> Path:
+    """Legacy (pre-Phase-75) flat location -- see `experiment_path`."""
     return experiment_dir(root, experiment_id) / "metrics.jsonl"
+
+
+def experiment_manifest_path(root: Path, experiment_id: str) -> Path:
+    return experiment_dir(root, experiment_id) / "manifest.json"
+
+
+def experiment_run_dir(root: Path, experiment_id: str, version: int) -> Path:
+    return experiment_dir(root, experiment_id) / f"v{version}"

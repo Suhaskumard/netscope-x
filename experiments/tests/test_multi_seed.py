@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from experiments.artifacts.paths import experiment_path, packets_path
+from experiments.artifacts.paths import experiment_run_dir, packets_path
 from experiments.matrix_runner import run_matrix_cell
 from experiments.multi_seed import (
     DEFAULT_SEEDS,
@@ -95,7 +95,7 @@ def test_multi_seed_matrix_runs_every_cell_and_persists_every_seed(tmp_path: Pat
         tag = (s.ablation or "baseline") + (f"-{s.variant}" if s.variant else "")
         for seed in seeds:
             exp_id = f"matrix-small-{str(s.completeness).replace('.', 'p')}-{tag}-{seed}"
-            assert experiment_path(root, exp_id).exists()
+            assert (experiment_run_dir(root, exp_id, 1) / "experiment.json").exists()
 
 
 def test_format_summary_and_table() -> None:

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from experiments.artifacts.paths import experiment_path
+from experiments.artifacts.paths import experiment_run_dir
 from experiments.matrix_runner import (
     ABLATIONS,
     SENSITIVITY_SWEEP,
@@ -68,7 +68,7 @@ def test_full_matrix_persists_sweep_cells_and_can_skip_them(tmp_path: Path) -> N
     with_sweep = run_full_matrix(tmp_path / "a", topology_levels=["small"], completeness_levels=[1.0, 0.5], seed=4)
     assert len(with_sweep) == 2 + len(ABLATIONS) + 2
     for completeness in ("1p0", "0p5"):
-        assert experiment_path(tmp_path / "a", f"matrix-small-{completeness}-baseline-lowvol-4").exists()
+        assert (experiment_run_dir(tmp_path / "a", f"matrix-small-{completeness}-baseline-lowvol-4", 1) / "experiment.json").exists()
     table = format_sensitivity_table(with_sweep).splitlines()
     assert table[0] == "| topology | metric | c=1 | c=0.5 |"
     assert len(table) == 2 + 4  # one row per reported metric for the one topology

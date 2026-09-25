@@ -12,6 +12,10 @@ on every read (spec Phase 10). `write_ground_truth_generation`/
 so re-running a ground-truth generator never silently overwrites a prior
 generation (spec Phase 17: "version and hash ground-truth artifacts;
 prevent accidental contamination of inference").
+
+`write_experiment_run`/`read_experiment_run` apply the same numbered-generation convention to
+experiment results (spec addendum Phase 75): re-running a matrix cell either refuses or writes a
+new `v<N>/` run, never overwriting an earlier run's `experiment.json`/`metrics.jsonl`.
 """
 
 from __future__ import annotations
@@ -19,12 +23,21 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Literal, Type, TypeVar, Union
+from typing import Dict, Iterable, List, Literal, Optional, Tuple, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
+from backend.app.models import Experiment, MetricResult
+from experiments.artifacts.experiment_manifest import ExperimentManifest, ExperimentManifestEntry
 from experiments.artifacts.ground_truth_manifest import GroundTruthManifest, GroundTruthManifestEntry
-from experiments.artifacts.paths import ground_truth_generation_dir, ground_truth_manifest_path
+from experiments.artifacts.paths import (
+    experiment_manifest_path,
+    experiment_path,
+    experiment_run_dir,
+    ground_truth_generation_dir,
+    ground_truth_manifest_path,
+    metrics_path,
+)
 
 M = TypeVar("M", bound=BaseModel)
 
@@ -167,3 +180,153 @@ def read_ground_truth_generation(
             )
         result[filename] = model
     return result
+
+
+# --- experiment runs (spec addendum Phase 75) ---
+
+OnExisting = Literal["version", "refuse"]
+EXPERIMENT_FILENAME = "experiment.json"
+METRICS_FILENAME = "metrics.jsonl"
+
+
+class ExperimentExistsError(Exception):
+    """Raised when persisting a run for an experiment_id that already has one, under the
+    `"refuse"` policy -- or when asked to write a run version that is already taken."""
+
+
+class ExperimentIntegrityError(Exception):
+    """Raised when a recorded experiment run's file no longer matches the manifest's hash."""
+
+
+def _read_experiment_manifest_if_exists(root: Path, experiment_id: str) -> Optional[ExperimentManifest]:
+    path = experiment_manifest_path(root, experiment_id)
+    if not path.exists():
+        return None
+    return read_ground_truth(path, ExperimentManifest)
+
+
+def _has_legacy_run(root: Path, experiment_id: str) -> bool:
+    return experiment_path(root, experiment_id).is_file()
+
+
+def next_experiment_version(root: Path, experiment_id: str, on_existing: OnExisting = "version") -> int:
+    """The run number the next persisted run of `experiment_id` will get: `1` if none exists yet,
+    else one past the latest (a legacy pre-Phase-75 flat run counts as version 1). Raises
+    `ExperimentExistsError` under `on_existing="refuse"` if any run already exists. Read-only."""
+    if on_existing not in ("version", "refuse"):
+        raise ValueError(f"unknown on_existing policy {on_existing!r}; choose 'version' or 'refuse'")
+    manifest = _read_experiment_manifest_if_exists(root, experiment_id)
+    if manifest is not None and manifest.runs:
+        existing = manifest.latest_version
+    elif _has_legacy_run(root, experiment_id):
+        existing = 1
+    else:
+        return 1
+    if on_existing == "refuse":
+        raise ExperimentExistsError(
+            f"experiment_id={experiment_id!r} already has run v{existing}; refusing to persist another"
+        )
+    return existing + 1
+
+
+def _write_run_files(run_dir: Path, contents: Dict[str, str]) -> Dict[str, str]:
+    run_dir.mkdir(parents=True, exist_ok=False)
+    files: Dict[str, str] = {}
+    for filename, text in contents.items():
+        (run_dir / filename).write_text(text, encoding="utf-8")
+        files[filename] = _sha256_of_text(text)
+    return files
+
+
+def _adopt_legacy_run(root: Path, experiment_id: str) -> ExperimentManifest:
+    """Copies (never moves or edits) a legacy flat run into `v1/` and records it as version 1."""
+    contents = {EXPERIMENT_FILENAME: experiment_path(root, experiment_id).read_text(encoding="utf-8")}
+    if metrics_path(root, experiment_id).is_file():
+        contents[METRICS_FILENAME] = metrics_path(root, experiment_id).read_text(encoding="utf-8")
+    files = _write_run_files(experiment_run_dir(root, experiment_id, 1), contents)
+    entry = ExperimentManifestEntry(
+        version=1, recorded_at=datetime.now(timezone.utc), capture_id=experiment_id, files=files
+    )
+    return ExperimentManifest(experiment_id=experiment_id, runs=[entry])
+
+
+def write_experiment_run(
+    root: Path,
+    experiment: Experiment,
+    metrics: Iterable[MetricResult],
+    capture_id: Optional[str] = None,
+    on_existing: OnExisting = "version",
+    version: Optional[int] = None,
+) -> ExperimentManifestEntry:
+    """Persists one run of `experiment` as a new numbered `v<N>/` directory and records it in the
+    experiment's hash-protected manifest, without touching any earlier run.
+
+    `version` is normally left `None` (resolved via `next_experiment_version` under
+    `on_existing`); a caller that reserved it before running (`run_and_persist_cell`) passes it
+    explicitly, and it must still be unused -- `ExperimentExistsError` otherwise.
+    """
+    experiment_id = experiment.experiment_id
+    if version is None:
+        version = next_experiment_version(root, experiment_id, on_existing)
+
+    manifest = _read_experiment_manifest_if_exists(root, experiment_id)
+    if manifest is None:
+        manifest = (
+            _adopt_legacy_run(root, experiment_id)
+            if _has_legacy_run(root, experiment_id)
+            else ExperimentManifest(experiment_id=experiment_id, runs=[])
+        )
+    if any(r.version == version for r in manifest.runs) or experiment_run_dir(root, experiment_id, version).exists():
+        raise ExperimentExistsError(f"experiment_id={experiment_id!r} run v{version} already exists")
+
+    metrics_text = "".join(m.model_dump_json() + "\n" for m in metrics)
+    files = _write_run_files(
+        experiment_run_dir(root, experiment_id, version),
+        {EXPERIMENT_FILENAME: experiment.model_dump_json(indent=2), METRICS_FILENAME: metrics_text},
+    )
+    entry = ExperimentManifestEntry(
+        version=version, recorded_at=datetime.now(timezone.utc), capture_id=capture_id or experiment_id, files=files
+    )
+    manifest.runs.append(entry)
+    write_ground_truth(experiment_manifest_path(root, experiment_id), manifest)
+    return entry
+
+
+def read_experiment_manifest(root: Path, experiment_id: str) -> ExperimentManifest:
+    return read_ground_truth(experiment_manifest_path(root, experiment_id), ExperimentManifest)
+
+
+def read_experiment_run(
+    root: Path, experiment_id: str, version: Union[int, Literal["latest"]] = "latest"
+) -> Tuple[Experiment, List[MetricResult]]:
+    """Reads one recorded run, verifying each file against the manifest's recorded hash (the
+    manifest itself is sidecar-hash-verified). With no manifest, falls back to the legacy flat
+    layout, which only ever holds a single, unverified run (version 1 / "latest")."""
+    manifest = _read_experiment_manifest_if_exists(root, experiment_id)
+    if manifest is None:
+        if not _has_legacy_run(root, experiment_id) or version not in ("latest", 1):
+            raise ValueError(f"no run version={version!r} recorded for experiment_id={experiment_id!r}")
+        experiment = read_json(experiment_path(root, experiment_id), Experiment)
+        legacy_metrics = metrics_path(root, experiment_id)
+        return experiment, (read_jsonl(legacy_metrics, MetricResult) if legacy_metrics.is_file() else [])
+
+    resolved = manifest.latest_version if version == "latest" else version
+    entry = manifest.entry_for(resolved)
+    run_dir = experiment_run_dir(root, experiment_id, resolved)
+    texts: Dict[str, str] = {}
+    for filename, expected in entry.files.items():
+        text = (run_dir / filename).read_text(encoding="utf-8")
+        actual = _sha256_of_text(text)
+        if actual != expected:
+            raise ExperimentIntegrityError(
+                f"hash mismatch for {filename!r} in experiment_id={experiment_id!r} v{resolved}: "
+                f"manifest says {expected}, file is {actual}"
+            )
+        texts[filename] = text
+    experiment = Experiment.model_validate_json(texts[EXPERIMENT_FILENAME])
+    metrics = [
+        MetricResult.model_validate_json(line)
+        for line in texts.get(METRICS_FILENAME, "").splitlines()
+        if line.strip()
+    ]
+    return experiment, metrics

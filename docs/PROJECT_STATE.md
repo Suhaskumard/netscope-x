@@ -2231,5 +2231,21 @@ None yet — no experiments have been run.
   updated for the new cell count; full suite 658/658 passed (up from 652/652);
   `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 75 (Experiment Idempotency and Versioning, master spec addendum). Not started;
-  awaiting explicit request.
+- Experiment idempotency and versioning (Phase 75, master spec addendum) stops a re-run of the same
+  matrix cell from overwriting the first run. Each `experiment_id` now holds `v<N>/experiment.json` +
+  `metrics.jsonl` and a sha256-protected `manifest.json`, mirroring Phase 17's ground-truth
+  generations (`experiments/artifacts/experiment_manifest.py`, `io.write_experiment_run` /
+  `read_experiment_run`). `on_existing="version"` (default) adds a new run; `"refuse"` raises
+  `ExperimentExistsError` (CLI `--on-existing`). `run_and_persist_cell` resolves the version before
+  running, and run N >= 2 writes its capture under `<id>-v<N>`, so the first run's capture and
+  snapshots are untouched too. A legacy flat run is copied into `v1/` as-is. The API lists each
+  experiment's latest run only.
+  Real check: v1 file hashes identical before/after a second run; manifest lists v1 and v2; a third
+  call under `refuse` raised.
+  Verified: 9 new tests (8 in `experiments/tests/test_experiment_versioning.py`, 1 API); 4 existing
+  tests updated for the versioned layout; full suite 667/667 passed (up from 658/658);
+  `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean. Known limitations: no file
+  locking (single-process); direct `run_matrix_cell` calls still default the capture id to `<id>`.
+
+- Next: Phase 76 (Minimal Anomaly-Injection Dataset, master spec addendum). Not started; awaiting
+  explicit request.

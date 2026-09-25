@@ -631,3 +631,19 @@ def test_experiments_pagination() -> None:
     paged = client.get("/api/v1/experiments", params={"limit": 1, "offset": 0}).json()
     assert paged["total"] == 2
     assert len(paged["items"]) == 1
+
+
+def test_rerun_experiment_is_listed_once_as_its_latest_run() -> None:
+    from experiments.matrix_runner import run_and_persist_cell
+
+    settings = get_settings()
+    first = run_and_persist_cell(settings.artifact_root, "small", 1.0, seed=20)
+    second = run_and_persist_cell(settings.artifact_root, "small", 1.0, seed=20)
+    assert first.experiment.experiment_id == second.experiment.experiment_id
+
+    experiments_body = client.get("/api/v1/experiments").json()
+    assert experiments_body["total"] == 1
+    assert experiments_body["items"][0]["configuration"]["run_version"] == 2
+
+    metrics_body = client.get("/api/v1/metrics").json()
+    assert metrics_body["total"] == len(second.metrics)  # not doubled by the retained v1
