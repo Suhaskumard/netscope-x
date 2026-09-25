@@ -2315,5 +2315,22 @@ None yet — no experiments have been run.
   Verified: 16 new tests (9 discovery, 7 benchmark); full suite 724/724; `validate_data_contracts` 55/55;
   `check_ground_truth_boundary` clean.
 
-- Next: Phase 80 (Active-Learning Experiment Recommendation Policy, master spec addendum). Not started;
-  awaiting explicit request.
+- Active-learning experiment policy (Phase 80, master spec addendum) is built and benchmarked, and
+  rejected as a replacement for Phase 67's static ranking. `backend/dependency/experiment_policy.py`
+  adds a numpy LinUCB contextual bandit over structural twin features, `StaticPolicy` (Phase 67's
+  order) and `RandomPolicy` baselines, and `repair_twin`, which adds one flagged bridging edge per false
+  stranding revealed by a real experiment. The reward is the twin's real prediction error on each
+  experiment, `1 - affected-node F1` from Phase 63 (Phase 66 counterfactual F1 reported alongside, not
+  in the reward); nothing is synthesized. `experiments/experiment_policy_benchmark.py` compares the
+  policies on the matrix's low-volume twins, leave-one-topology-level-out, budget 4.
+  Real result (712 episodes, 178 per policy): accuracy gained per experiment static 0.014, linucb 0.009,
+  linucb_cold 0.008, random 0.006; static ran only 1.89 experiments (Phase 67 recommends few nodes) and
+  final accuracy is equal at a fixed budget (0.979 vs 0.981). Pre-training made no measurable difference.
+  Held-out (untested-node) gain is about 0 for every policy, and only 13-18% of bridges were a real edge,
+  so the twin's gain does not generalize; the repair also slightly lowers Phase 66 counterfactual F1.
+  Details are in `docs/architecture/experiment_policy.md`.
+  Verified: 17 new tests (10 policy, 7 benchmark); full suite 741/741; `validate_data_contracts` 55/55;
+  `check_ground_truth_boundary` clean.
+
+- Next: Phase 81 (Cross-Topology Transfer Learning, master spec addendum). Not started; awaiting
+  explicit request.
