@@ -2348,5 +2348,28 @@ None yet — no experiments have been run.
   Verified: 10 new tests; full suite 751/751; `validate_data_contracts` 55/55; `check_ground_truth_boundary`
   clean.
 
-- Next: Phase 82 (Automated Constant Calibration, master spec addendum). Not started; awaiting
-  explicit request.
+- Automated constant calibration (Phase 82, master spec addendum) is built and run; no constant was adopted.
+  `experiments/calibration/` tunes the "provisional, pending Phase 68" constants by a numpy Gaussian-process
+  Bayesian optimizer on train seeds and scores baseline vs tuned on disjoint validation seeds under a
+  pre-registered rule (gain must exceed baseline seed spread; no guard metric may regress). `run_matrix_cell`
+  gained an optional `constants` argument (None is bit-identical to before).
+  Real result (6144 cells): topology F1 0.9433 -> 0.9433, causal F1 0.0370 -> 0.0370 (temporal group tuned to
+  bucket 18.8 s / lag 9 lowered it to 0.0222); all defaults kept. `_DEFAULT_LATENCY_COST_SCALE` cannot be
+  calibrated on the matrix (only LATENCY_INJECTION uses it). Details are in
+  `docs/architecture/constant_calibration.md`.
+
+- End-to-end uncertainty quantification (Phase 83, master spec addendum) is built and measured; nothing is wired
+  into the pipeline. `experiments/uncertainty.py` bootstraps the observed packets through the real pipeline so
+  topology, dependency and PathForge bands come from one joint model; `experiments/uncertainty_benchmark.py`
+  scores it on the matrix.
+  Real result (90 cells, 20 draws): combined 90% band widens from 0.068 (completeness 1.0) to 0.139 (0.25), wider
+  on 18 of 18 (topology, seed) pairs, so the pre-registered criterion is met; but topology drives it (18/18,
+  rho +0.53), while dependency (11 wider / 7 narrower) and PathForge (7 wider / 11 ties) are not significant.
+  Bootstrap affected-node probability has lower Brier than the point prediction at every level. Blind spot: edges
+  never observed cannot be resampled (rate 0 at default volume; low-volume sweep not yet measured). Details are in
+  `docs/architecture/uncertainty_quantification.md`.
+  Verified: 20 new tests (11 calibration, 9 uncertainty); full suite 771/771; `validate_data_contracts` 55/55;
+  `check_ground_truth_boundary` clean.
+
+- Next: Phase 84 (Adversarial Robustness Evaluation, master spec addendum). Not started; awaiting explicit
+  request.
