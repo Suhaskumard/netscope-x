@@ -108,7 +108,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 
@@ -137,6 +137,8 @@ from backend.flowmind.anomaly.node_anomaly import detect_node_anomalies
 from backend.flowmind.baseline.node_baseline import build_node_baseline
 from experiments.anomaly_fingerprints import build_epoch_fingerprints
 from experiments.anomaly_injection import AnomalyDataset, generate_anomaly_dataset
+if TYPE_CHECKING:
+    from experiments.calibration.constants import CalibrationConstants
 from experiments.artifacts.experiment_manifest import ExperimentManifestEntry
 from experiments.artifacts.io import OnExisting, next_experiment_version, write_experiment_run, write_jsonl
 from experiments.artifacts.paths import packets_path
@@ -549,6 +551,8 @@ def run_matrix_cell(
     pulse_cycles: int = _PULSE_CYCLES,
     variant: Optional[str] = None,
     capture_id: Optional[str] = None,
+    constants: Optional["CalibrationConstants"] = None,
+    evaluate_anomaly: bool = True,
 ) -> MatrixCellResult:
     """Runs one (topology_level, completeness[, ablation]) cell of the
     experimental matrix for real: generates a scenario, synthesizes and
@@ -558,6 +562,11 @@ def run_matrix_cell(
 
     `capture_id` (default: the experiment_id) is where this run's packets/flows/snapshots are
     written; `run_and_persist_cell` passes a per-run-version one (Phase 75).
+
+    `constants` (Phase 82): the provisional pipeline constants under calibration. `None` (the default) passes
+    nothing extra, so every function runs with its own default -- bit-identical to pre-Phase-82 runs.
+    `evaluate_anomaly=False` skips the anomaly_detection context (which no calibrated constant touches) so a
+    calibration sweep does not pay for it; the official matrix always leaves it on.
     """
     if topology_level not in TOPOLOGY_LEVELS:
         raise KeyError(f"unknown topology_level {topology_level!r}; choose from {sorted(TOPOLOGY_LEVELS)}")
@@ -585,14 +594,29 @@ def run_matrix_cell(
     flows = reconstruct_flows(root, capture_id)
 
     edge_confidence_signal_strength = 0.0 if ablation == "without_confidence_modeling" else 0.3
+    edge_kwargs: Dict[str, Any] = {}
+    dependency_kwargs: Dict[str, Any] = {}
+    candidate_kwargs: Dict[str, Any] = {}
+    if constants is not None:
+        edge_kwargs = {"edge_confidence_packet_scale": constants.edge_confidence_packet_scale}
+        if ablation != "without_confidence_modeling":
+            edge_confidence_signal_strength = constants.edge_confidence_signal_strength
+        dependency_kwargs = {
+            "dependency_frequency_scale": constants.dependency_frequency_scale,
+            "dependency_persistence_scale": constants.dependency_persistence_scale,
+            "dependency_signal_strength": constants.dependency_signal_strength,
+            "dependency_temporal_bucket_seconds": constants.dependency_temporal_bucket_seconds,
+            "dependency_temporal_max_lag_buckets": constants.dependency_temporal_max_lag_buckets,
+        }
+        candidate_kwargs = {"strength_threshold": constants.causal_candidate_strength_threshold}
 
     wave1_cutoff = _BASE_TIME + timedelta(seconds=_WAVE_GAP_SECONDS / 2)
     wave2_end = _BASE_TIME + timedelta(seconds=_WAVE_GAP_SECONDS + 60)
-    snap_early = create_snapshot(root, capture_id, captured_at=wave1_cutoff, edge_confidence_signal_strength=edge_confidence_signal_strength)
-    snap_late = create_snapshot(root, capture_id, captured_at=wave2_end, edge_confidence_signal_strength=edge_confidence_signal_strength)
+    snap_early = create_snapshot(root, capture_id, captured_at=wave1_cutoff, edge_confidence_signal_strength=edge_confidence_signal_strength, **edge_kwargs)
+    snap_late = create_snapshot(root, capture_id, captured_at=wave2_end, edge_confidence_signal_strength=edge_confidence_signal_strength, **edge_kwargs)
     history_events = diff_snapshots(root, capture_id, snap_early, snap_late)
 
-    graph = build_topology_graph(root, capture_id, graph_id=f"{capture_id}-final", edge_confidence_signal_strength=edge_confidence_signal_strength)
+    graph = build_topology_graph(root, capture_id, graph_id=f"{capture_id}-final", edge_confidence_signal_strength=edge_confidence_signal_strength, **edge_kwargs)
     ground_truth_graph = build_ground_truth_graph(roles, edges, ip_by_name, graph_id=f"{capture_id}-gt")
     gt_nx = _ground_truth_nx(roles, edges)
     name_to_node_id = _name_to_node_id(graph.nodes, ip_by_name)
@@ -660,12 +684,14 @@ def run_matrix_cell(
         metrics.append(_to_metric_result(MetricContext.TEMPORAL_ANALYSIS, experiment_id, temporal_eval))
 
     # --- dependencies / causal_analysis ---
-    dependencies = estimate_dependency_strength(root, capture_id, edge_confidence_signal_strength=edge_confidence_signal_strength)
+    dependencies = estimate_dependency_strength(
+        root, capture_id, edge_confidence_signal_strength=edge_confidence_signal_strength, **edge_kwargs, **dependency_kwargs
+    )
     if ablation == "without_dependency_weighting":
         dependencies = [d.model_copy(update={"strength": 1.0 if d.frequency > 0 else 0.0}) for d in dependencies]
     elif ablation == "without_temporal":
         dependencies = [d.model_copy(update={"temporal_precedence_score": 0.0}) for d in dependencies]
-    candidates = generate_causal_candidates(dependencies)
+    candidates = generate_causal_candidates(dependencies, **candidate_kwargs)
 
     ground_truth_dependency_pairs = [
         (name_to_node_id[e.source], name_to_node_id[e.target])
@@ -677,7 +703,7 @@ def run_matrix_cell(
     metrics.append(_to_metric_result(MetricContext.CAUSAL_ANALYSIS, experiment_id, causal_eval))
 
     # --- anomaly_detection (Phase 76; baseline cells only -- no ablation touches this path) ---
-    if ablation is None:
+    if ablation is None and evaluate_anomaly:
         anomaly_dataset = generate_anomaly_dataset(
             roles, edges, ip_by_name, capture_id, seed, packets_per_edge=packets_per_edge
         )
