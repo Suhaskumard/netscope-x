@@ -33,6 +33,7 @@ export class NetscopeClient {
   behavior(nodeId: string): Promise<any>;
   simulate(scenario: object): Promise<any>;
   counterfactual(scenario: object): Promise<any>;
+  askCounterfactual(captureId: string, question: string): Promise<any>;
   createExperiment(experiment: object): Promise<any>;
   paginate(method: "flows" | "dependencies" | "history" | "experiments" | "metrics" | "anomalies", ...args: any[]): AsyncGenerator<any>;
 }

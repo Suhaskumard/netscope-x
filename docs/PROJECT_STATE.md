@@ -2513,4 +2513,14 @@ None yet — no experiments have been run.
   removal was exercised; hash layout is crowded; small demo only. Details are in `docs/architecture/topology_explorer.md`.
   Verified: 4 new tests; full suite 924/924 (one SDK retry test failed once in an earlier run while the dev servers were up, passed on 4 reruns); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 98 (Natural-Language Counterfactual Interface, Arc E). Not started; awaiting explicit request.
+- Natural-language counterfactual interface (Phase 98, master spec addendum) is built; the LLM guardrails are verified with a
+  scripted LLM, but BEHAVIOR WITH A REAL LLM IS NOT VERIFIED (no API key in this environment; the user will supply one).
+  `backend/nlq/` + `POST /counterfactual/ask`: the model only translates a question into a Phase 64 scenario over the capture's
+  real ids (unknown ids refused, ambiguity returns real candidates, ids/timestamps assigned by code) and words the real Phase
+  65/66 result; explanations are accepted only if every sentence cites facts and every number/identifier is in the cited facts,
+  else the deterministic template is returned. No key -> 503 `llm_unavailable`. `scripts/run_nlq_check.py` is the real-LLM
+  evaluation and prints NOT RUN without a key. Limits: lexical fact check, no role model via the API, single-action questions.
+  Details are in `docs/architecture/nl_counterfactual.md`.
+  Verified: 27 new tests; full suite 953/953; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 99 (Explainable Causal Attribution UI, Arc E). Not started; awaiting explicit request.

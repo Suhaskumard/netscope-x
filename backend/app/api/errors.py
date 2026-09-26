@@ -34,6 +34,7 @@ from backend.app.auth.deps import AuthenticationError, AuthorizationError
 from backend.app.tenancy.deps import TenantAccessError
 from backend.app.core.logging import get_logger, log_exception
 from backend.archaeology.snapshots import SnapshotNotFoundError
+from backend.nlq.llm import LLMUnavailableError
 from backend.dependency.errors import DependencyNotFoundError
 from backend.nettrace.capture.errors import CaptureNotFoundError, InvalidPcapError, UnauthorizedInterfaceError
 
@@ -103,6 +104,13 @@ def register_exception_handlers(app: FastAPI) -> None:
                 detail=str(exc),
                 request_id=get_request_id(),
             ).model_dump(),
+        )
+
+    @app.exception_handler(LLMUnavailableError)
+    async def _llm_unavailable_handler(request: Request, exc: LLMUnavailableError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=ErrorResponse(error="llm_unavailable", detail=str(exc), request_id=get_request_id()).model_dump(),
         )
 
     @app.exception_handler(SnapshotNotFoundError)

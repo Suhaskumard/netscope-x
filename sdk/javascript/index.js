@@ -101,6 +101,7 @@ export class NetscopeClient {
 
   simulate(scenario) { return this._request("POST", "/simulation", undefined, scenario); }
   counterfactual(scenario) { return this._request("POST", "/counterfactual", undefined, scenario); }
+  askCounterfactual(captureId, question) { return this._request("POST", "/counterfactual/ask", undefined, { capture_id: captureId, question }); }
   createExperiment(experiment) { return this._request("POST", "/experiments", undefined, experiment); }
 
   /** Async iterator over every item of a paginated list method, e.g. `client.paginate("flows", captureId)`. */

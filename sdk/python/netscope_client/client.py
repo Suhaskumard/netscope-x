@@ -161,6 +161,10 @@ class NetscopeClient:
     def counterfactual(self, scenario: dict) -> dict:
         return self._request("POST", "/counterfactual", body=scenario)
 
+    def ask_counterfactual(self, capture_id: str, question: str) -> dict:
+        """Natural-language what-if (Phase 98). 503 `llm_unavailable` (ServerError) when the server has no LLM key."""
+        return self._request("POST", "/counterfactual/ask", body={"capture_id": capture_id, "question": question})
+
     def create_experiment(self, experiment: dict) -> dict:
         return self._request("POST", "/experiments", body=experiment)
 
