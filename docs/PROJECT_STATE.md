@@ -2492,4 +2492,15 @@ None yet — no experiments have been run.
   `docs/architecture/flow_export_ingestion.md`.
   Verified: 15 new tests; full suite 914/914; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 96 (Client SDKs, Arc D). Not started; awaiting explicit request.
+- Client SDKs (Phase 96, master spec addendum) are built and verified against a real server: `sdk/python/netscope_client`
+  (stdlib) and `sdk/javascript` (ESM, zero dependencies) wrap every `/api/v1` route with typed errors (401/403/404/422/501),
+  Bearer and `X-Tenant-Key` support, pagination iterators and retry of idempotent reads only.
+  Real result (`python -m scripts.run_sdk_e2e`, a real uvicorn subprocess + real pcap, no mocks): 28/28 checks; Python SDK
+  answers equal raw httpx and the backend functions on the same artifacts; the JS SDK (under node) matches the Python SDK;
+  auth/tenancy enforced through both (401, 403, cross-tenant 404). Limits: blocking Python client, dict responses, not
+  published, JS tested on Node only. Details are in `docs/SDK.md`.
+  Environment finding: `backend/app/main.py` (Phase 94) imports `opentelemetry`, which is not in `requirements.txt` and was
+  missing from the venv, so the app could not start; installed `opentelemetry-api`/`-sdk` into the venv to run this.
+  Verified: 2 new tests; full suite 916/916; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 97 (Interactive Topology Explorer, Arc E). Not started; awaiting explicit request.

@@ -1,0 +1,10 @@
+{
+  "name": "netscope-client",
+  "version": "0.1.0",
+  "description": "JavaScript client for the NETSCOPE-X REST API (/api/v1)",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "engines": { "node": ">=18" },
+  "files": ["index.js", "index.d.ts"]
+}
