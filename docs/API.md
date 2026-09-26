@@ -26,6 +26,7 @@ Base path: `/api/v1`. Every response uses one of two shapes:
 | `GET /history/snapshots/{version}/topology?capture_id=` | The topology graph exactly as recorded at that snapshot (Phase 97) | `version` (path), `capture_id` | Read back, never recomputed; 404 `snapshot_not_found`. |
 | `POST /counterfactual/ask` | Natural-language what-if (Phase 98): `{capture_id, question}` | body | Returns `status` answered / needs_clarification / rejected; answered carries the real scenario, facts, and a verified explanation (`explanation_source` llm or template). 503 `llm_unavailable` without `ANTHROPIC_API_KEY`. |
 | `POST /investigation/report` | Cited investigation report for one dependency (Phase 100): `{capture_id, dependency_id, failed_node_id?}` | body | Returns `markdown`, `source` (`llm` verified draft or `template`), `citations[]` (fact id, source path, value, text), `violations`. Works without an LLM key (template). 404 for an unknown dependency or node. |
+| `POST /investigation/root-cause` | Root-cause ranking (Phase 101): `{capture_id, failed_node_id, max_candidates?}` | body | Each ranked item is a really executed Phase 64-66 counterfactual (`scenario_id`, `prevented_node_ids`, `score`, `explanation`) plus a structural-only `caveat`. 404 for an unknown node. |
 | `GET /experiments` | List recorded experiments | `limit`, `offset` | Reads real `Experiment` records written by `experiments/matrix_runner.py`. |
 | `GET /metrics?context=` | List recorded metric results | `context` (optional `MetricContext` filter), `limit`, `offset` | |
 

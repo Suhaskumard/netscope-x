@@ -26,6 +26,7 @@ from backend.nettrace.topology.edges import discover_edges
 from backend.nettrace.topology.graph import build_topology_graph
 from backend.nlq.llm import AnthropicClient, LLMClient, LLMUnavailableError
 from backend.nlq.report import generate_report
+from backend.nlq.rootcause import rank_root_causes
 
 router = APIRouter(prefix="/investigation", tags=["investigation"])
 
@@ -70,3 +71,31 @@ def investigation_report(
     candidates = generate_causal_candidates(dependencies, strength_threshold=settings.causal_candidate_strength_threshold)
     candidate = next((c for c in candidates if c.dependency_id == body.dependency_id), None)
     return generate_report(graph, dependencies[index], edge.confidence, candidate, body.failed_node_id, settings, llm, candidates)
+
+
+class RootCauseRequest(BaseModel):
+    capture_id: str = Field(..., pattern=CAPTURE_ID_PATTERN)
+    failed_node_id: str = Field(..., min_length=1, max_length=300)
+    max_candidates: int = Field(default=50, ge=1, le=500)
+
+
+@router.post("/root-cause")
+def investigation_root_cause(body: RootCauseRequest, scope: TenantScope = Depends(get_tenant_scope)) -> Dict[str, Any]:
+    """Phase 101: candidates ranked by what removing them would have prevented, from really executed counterfactuals."""
+    settings = get_settings()
+    ensure_packets(scope.root, body.capture_id)
+    reconstruct_flows(scope.root, body.capture_id, udp_session_idle_timeout_seconds=settings.udp_session_idle_timeout_seconds)
+    kwargs = dict(edge_confidence_packet_scale=settings.edge_confidence_packet_scale,
+                  edge_confidence_signal_strength=settings.edge_confidence_signal_strength)
+    graph = build_topology_graph(scope.root, body.capture_id, graph_id=body.capture_id, **kwargs)
+    if body.failed_node_id not in {n.node_id for n in graph.nodes}:
+        raise DependencyNotFoundError(f"failed_node_id {body.failed_node_id!r} is not a node of capture {body.capture_id!r}")
+    dependencies = estimate_dependency_strength(
+        scope.root, body.capture_id, dependency_frequency_scale=settings.dependency_frequency_scale,
+        dependency_persistence_scale=settings.dependency_persistence_scale,
+        dependency_signal_strength=settings.dependency_signal_strength,
+        dependency_temporal_bucket_seconds=settings.dependency_temporal_bucket_seconds,
+        dependency_temporal_max_lag_buckets=settings.dependency_temporal_max_lag_buckets, **kwargs,
+    )
+    candidates = generate_causal_candidates(dependencies, strength_threshold=settings.causal_candidate_strength_threshold)
+    return rank_root_causes(graph, body.failed_node_id, candidates, body.max_candidates)

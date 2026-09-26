@@ -104,6 +104,7 @@ export class NetscopeClient {
   counterfactual(scenario) { return this._request("POST", "/counterfactual", undefined, scenario); }
   askCounterfactual(captureId, question) { return this._request("POST", "/counterfactual/ask", undefined, { capture_id: captureId, question }); }
   investigationReport(captureId, dependencyId, failedNodeId) { return this._request("POST", "/investigation/report", undefined, { capture_id: captureId, dependency_id: dependencyId, ...(failedNodeId ? { failed_node_id: failedNodeId } : {}) }); }
+  rootCause(captureId, failedNodeId, maxCandidates = 50) { return this._request("POST", "/investigation/root-cause", undefined, { capture_id: captureId, failed_node_id: failedNodeId, max_candidates: maxCandidates }); }
   createExperiment(experiment) { return this._request("POST", "/experiments", undefined, experiment); }
 
   /** Async iterator over every item of a paginated list method, e.g. `client.paginate("flows", captureId)`. */

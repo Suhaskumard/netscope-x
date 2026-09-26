@@ -176,6 +176,10 @@ class NetscopeClient:
             body["failed_node_id"] = failed_node_id
         return self._request("POST", "/investigation/report", body=body)
 
+    def root_cause(self, capture_id: str, failed_node_id: str, max_candidates: int = 50) -> dict:
+        """Root-cause ranking (Phase 101): each item is a really executed counterfactual removal."""
+        return self._request("POST", "/investigation/root-cause", body={"capture_id": capture_id, "failed_node_id": failed_node_id, "max_candidates": max_candidates})
+
     def create_experiment(self, experiment: dict) -> dict:
         return self._request("POST", "/experiments", body=experiment)
 

@@ -2545,4 +2545,12 @@ None yet — no experiments have been run.
   real model untested. Details are in `docs/architecture/investigation_reports.md`.
   Verified: 12 new tests; full suite 975/975; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 101 (Root-Cause Ranking with Counterfactual Explanations, Arc E). Not started; awaiting explicit request.
+- Root-cause ranking with counterfactual explanations (Phase 101, master spec addendum) is built. `backend/nlq/rootcause.py` +
+  `POST /investigation/root-cause`: Y is the real Phase 61 newly-unreachable set for a failed node; for each candidate X (node or
+  edge) a real Phase 64-66 counterfactual removal is executed and compared, the same failure is re-run on the counterfactual graph,
+  and Y_prevented is read from that result (never estimated; X is never counted as prevented). Ranked by prevented fraction, then
+  least collateral. Structural on the reconstructed graph only (a caveat is always returned); Y covers routing reachability, not causal
+  propagation. Details are in `docs/architecture/root_cause_ranking.md`.
+  Verified: 4 new tests (independent re-execution of every ranked scenario); full suite 981/981; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 102 (Experiment Lab frontend, Arc E). Not started; awaiting explicit request.
