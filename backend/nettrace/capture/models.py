@@ -25,7 +25,7 @@ class CaptureManifest(BaseModel):
     """Ingestion record for one `captures/<capture_id>/raw.pcap` artifact."""
 
     capture_id: str
-    source: Literal["pcap_upload", "live_interface"]
+    source: Literal["pcap_upload", "live_interface", "flow_export"]
     original_filename: Optional[str] = Field(
         default=None, description="Set when source == pcap_upload."
     )

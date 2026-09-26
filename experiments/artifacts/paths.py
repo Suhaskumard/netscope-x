@@ -52,6 +52,10 @@ def pcap_path(root: Path, capture_id: str) -> Path:
     return capture_dir(root, capture_id) / "raw.pcap"
 
 
+def flowexport_path(root: Path, capture_id: str) -> Path:
+    return capture_dir(root, capture_id) / "flowexport.bin"
+
+
 def capture_manifest_path(root: Path, capture_id: str) -> Path:
     return capture_dir(root, capture_id) / "manifest.json"
 

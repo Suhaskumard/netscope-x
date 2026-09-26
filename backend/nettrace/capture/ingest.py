@@ -21,9 +21,9 @@ from scapy.utils import PcapReader
 
 from backend.nettrace.capture.errors import InvalidPcapError
 from backend.nettrace.capture.models import CaptureManifest
-from experiments.artifacts.io import write_json
+from experiments.artifacts.io import write_json, write_jsonl
 from experiments.artifacts.io import atomic_write_bytes
-from experiments.artifacts.paths import capture_manifest_path, pcap_path
+from experiments.artifacts.paths import capture_manifest_path, flowexport_path, packets_path, pcap_path
 
 
 def validate_pcap_bytes(data: bytes) -> int:
@@ -80,6 +80,42 @@ def ingest_pcap(
         original_filename=original_filename,
         interface=interface,
         packet_count=packet_count,
+        size_bytes=len(data),
+        ingested_at=datetime.now(timezone.utc),
+    )
+    write_json(capture_manifest_path(root, capture_id), manifest)
+    return manifest
+
+
+def ingest_flow_export(
+    source_path: Path,
+    root: Path,
+    capture_id: str,
+    fmt: str,
+    original_filename: Optional[str] = None,
+) -> CaptureManifest:
+    """Spec Phase 95: alternate capture source. Validates `source_path` as a real NetFlow v5 / IPFIX export by
+    decoding it, stores it as `captures/<capture_id>/flowexport.bin`, expands its records into Packets at
+    `packets_path` (so normalize is skipped and the rest of the pipeline is unchanged) and writes a CaptureManifest.
+    """
+    from backend.nettrace.flowexport import FlowExportError, decode, records_to_packets
+
+    data = source_path.read_bytes()
+    try:
+        records = decode(data, fmt)
+    except FlowExportError as exc:
+        raise InvalidPcapError(f"not a valid {fmt} flow export: {exc}") from exc
+    packets = records_to_packets(records, capture_id)
+    if not packets:
+        raise InvalidPcapError(f"{fmt} flow export contains no packets")
+
+    atomic_write_bytes(flowexport_path(root, capture_id), data)
+    write_jsonl(packets_path(root, capture_id), packets)
+    manifest = CaptureManifest(
+        capture_id=capture_id,
+        source="flow_export",
+        original_filename=original_filename,
+        packet_count=len(packets),
         size_bytes=len(data),
         ingested_at=datetime.now(timezone.utc),
     )

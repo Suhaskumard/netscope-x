@@ -2482,4 +2482,14 @@ None yet — no experiments have been run.
   installed), metrics flushed on demand/shutdown, pipeline stages inside a cell not individually spanned.
   Details are in `docs/architecture/platform_observability.md`.
 
-- Next: Phase 95 (Real Observability-Standard Ingestion: NetFlow/sFlow/IPFIX, Arc D). Not started; awaiting explicit request.
+- Observability-standard ingestion (Phase 95, master spec addendum) is built and tested: NetFlow v5 and IPFIX as an alternate
+  capture source (`POST /capture source=netflow_upload`), `backend/nettrace/flowexport/` (codecs, record -> Packet expansion, a
+  software exporter) and `ensure_packets` so flows/topology run the unchanged downstream code. sFlow and NetFlow v9 are NOT done.
+  Real result (6 topologies x 2 seeds x v5/IPFIX x 2 traffic variants = 48 runs): the same pcap via flow export gives identical
+  nodes, edges (F1 1.000) and flow keys in 48/48; edge confidence identical for one-packet flows, and lower by 0.011-0.026 mean where
+  handshake evidence mattered (a record keeps only OR'd flags). Limits: exporter is ours (no vendor device), v5 checked against
+  Scapy's decoder, IPFIX only against our own encoder, no per-packet timing/TLS/flags. Details are in
+  `docs/architecture/flow_export_ingestion.md`.
+  Verified: 15 new tests; full suite 914/914; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 96 (Client SDKs, Arc D). Not started; awaiting explicit request.

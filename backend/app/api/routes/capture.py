@@ -28,13 +28,19 @@ from backend.app.core.config import get_settings
 from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.nettrace.capture.authorized_interfaces import is_authorized_interface
 from backend.nettrace.capture.errors import InvalidPcapError, UnauthorizedInterfaceError
-from backend.nettrace.capture.ingest import ingest_pcap
+from backend.nettrace.capture.ingest import ingest_flow_export, ingest_pcap
 
 router = APIRouter(prefix="/capture", tags=["capture"])
 
 
 class CaptureRequest(BaseModel):
-    source: Literal["pcap_upload", "live_interface"]
+    source: Literal["pcap_upload", "live_interface", "netflow_upload"]
+    flow_filename: Optional[str] = Field(
+        default=None, description="Required when source == netflow_upload (a NetFlow v5 / IPFIX export file)."
+    )
+    flow_format: Optional[Literal["v5", "ipfix"]] = Field(
+        default=None, description="Required when source == netflow_upload."
+    )
     pcap_filename: Optional[str] = Field(
         default=None, description="Required when source == pcap_upload."
     )
@@ -52,6 +58,11 @@ class CaptureRequest(BaseModel):
             # never escape upload_staging_dir (e.g. "../../etc/passwd").
             if self.pcap_filename != Path(self.pcap_filename).name:
                 raise ValueError("pcap_filename must not contain a path")
+        if self.source == "netflow_upload":
+            if not self.flow_filename or not self.flow_format:
+                raise ValueError("flow_filename and flow_format are required when source == netflow_upload")
+            if self.flow_filename != Path(self.flow_filename).name:
+                raise ValueError("flow_filename must not contain a path")
         if self.source == "live_interface" and not self.interface:
             raise ValueError("interface is required when source == live_interface")
         return self
@@ -84,6 +95,16 @@ def start_capture(request: CaptureRequest, scope: TenantScope = Depends(get_tena
             capture_id,
             source="pcap_upload",
             original_filename=request.pcap_filename,
+        )
+        return CaptureAccepted(capture_id=capture_id, status="accepted", packet_count=manifest.packet_count)
+
+    if request.source == "netflow_upload":
+        assert request.flow_filename is not None and request.flow_format is not None
+        source_path = scope.inbox / request.flow_filename
+        if not source_path.is_file():
+            raise InvalidPcapError(f"no staged upload found for flow_filename={request.flow_filename!r}")
+        manifest = ingest_flow_export(
+            source_path, scope.root, capture_id, request.flow_format, original_filename=request.flow_filename
         )
         return CaptureAccepted(capture_id=capture_id, status="accepted", packet_count=manifest.packet_count)
 

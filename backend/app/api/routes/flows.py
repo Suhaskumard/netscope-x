@@ -16,7 +16,7 @@ from backend.app.core.config import get_settings
 from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import Flow
 from backend.nettrace.capture.errors import CaptureNotFoundError
-from backend.nettrace.normalize import normalize_pcap
+from backend.nettrace.capture.packets import ensure_packets
 from backend.nettrace.reconstruct import reconstruct_flows
 from experiments.artifacts.paths import pcap_path
 
@@ -32,10 +32,7 @@ def list_flows(
     scope: TenantScope = Depends(get_tenant_scope),
 ) -> PaginatedResponse[Flow]:
     settings = get_settings()
-    if not pcap_path(scope.root, capture_id).is_file():
-        raise CaptureNotFoundError(f"no ingested capture found for capture_id={capture_id!r}")
-
-    normalize_pcap(scope.root, capture_id)
+    ensure_packets(scope.root, capture_id)
     flows = reconstruct_flows(
         scope.root,
         capture_id,

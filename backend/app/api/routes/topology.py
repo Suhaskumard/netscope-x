@@ -26,7 +26,7 @@ from backend.app.core.config import get_settings
 from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import TopologyGraph
 from backend.nettrace.capture.errors import CaptureNotFoundError
-from backend.nettrace.normalize import normalize_pcap
+from backend.nettrace.capture.packets import ensure_packets
 from backend.nettrace.reconstruct import reconstruct_flows
 from backend.nettrace.topology.graph import build_topology_graph
 from experiments.artifacts.io import write_json
@@ -43,10 +43,7 @@ def get_topology(
     scope: TenantScope = Depends(get_tenant_scope),
 ) -> TopologyGraph:
     settings = get_settings()
-    if not pcap_path(scope.root, capture_id).is_file():
-        raise CaptureNotFoundError(f"no ingested capture found for capture_id={capture_id!r}")
-
-    normalize_pcap(scope.root, capture_id)
+    ensure_packets(scope.root, capture_id)
     reconstruct_flows(
         scope.root,
         capture_id,
