@@ -2462,4 +2462,15 @@ None yet — no experiments have been run.
   Details are in `docs/architecture/api_authentication.md`.
   Verified: 32 new tests; full suite 885/885.
 
-- Next: Phase 93 (High-Availability Deployment Architecture, Arc D). Not started; awaiting explicit request.
+- High-availability deployment (Phase 93, master spec addendum) is built and tested; off unless `NETSCOPE_REPLICA_ROOTS`
+  is set. Artifact writes are atomic (temp+fsync+rename); `backend/app/storage/replicated.py` (`ReplicatedStore`)
+  mirrors each committed request into replica roots (data first, manifests last, hash records, quorum -> 503 not false
+  success) and repairs missing/corrupt copies on startup. Replicated deployment: two backends mirroring each other
+  (`docker-compose.ha.yml`, not run here).
+  Real failover (two uvicorn processes, hard-kill mid-commit, 3/3 runs): the killed request was not acknowledged,
+  the survivor served all acknowledged data byte-identically, held no partial file, kept accepting writes, and a restart
+  repaired both roots. Limits: no consensus (one writer per file), unacknowledged data-without-manifest sets can remain
+  until repair, GET-derived files other than topology not replicated, reads not per-request verified.
+  Details are in `docs/architecture/high_availability.md`.
+
+- Next: Phase 94 (Platform Self-Observability, Arc D). Not started; awaiting explicit request.

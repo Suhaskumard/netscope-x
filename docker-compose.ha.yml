@@ -1,0 +1,27 @@
+# Phase 93: two replicated backend instances. Each writes to its own volume and mirrors every committed artifact
+# into the other's volume (NETSCOPE_REPLICA_ROOTS), so either instance alone holds all acknowledged data.
+# The nginx proxy is a single point of failure by itself; put a real load balancer / VIP in front for production.
+services:
+  backend_a:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    environment:
+      NETSCOPE_ARTIFACT_ROOT: /data/a
+      NETSCOPE_REPLICA_ROOTS: /data/b
+    volumes: [store_a:/data/a, store_b:/data/b]
+  backend_b:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    environment:
+      NETSCOPE_ARTIFACT_ROOT: /data/b
+      NETSCOPE_REPLICA_ROOTS: /data/a
+    volumes: [store_b:/data/b, store_a:/data/a]
+  proxy:
+    image: nginx:1.27-alpine
+    ports: ["8000:80"]
+    depends_on: [backend_a, backend_b]
+    command: >
+      sh -c "printf 'upstream be { server backend_a:8000 max_fails=1 fail_timeout=5s; server backend_b:8000 backup; }
+      server { listen 80; location / { proxy_pass http://be; proxy_next_upstream error timeout http_502 http_503; } }'
+      > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+volumes:
+  store_a:
+  store_b:

@@ -55,6 +55,19 @@ class Settings(BaseSettings):
         default=REPO_ROOT / "experiments_data" / "inbox",
         description="Where an already-uploaded pcap_filename (POST /capture, source=pcap_upload) is read from.",
     )
+    replica_roots: str = Field(
+        default="",
+        description=(
+            "Phase 93: comma-separated directories every committed artifact is mirrored into (other volumes, or "
+            "another instance's artifact_root). Empty = no replication, as before."
+        ),
+    )
+    replica_min_writes: int = Field(
+        default=0, ge=0, description="Phase 93: replicas a commit must reach (0 = all); fewer -> HTTP 503."
+    )
+    replication_commit_delay_seconds: float = Field(
+        default=0.0, ge=0, description="Phase 93 test hook: pause after each replicated file (widens a kill window)."
+    )
     auth_enabled: bool = Field(
         default=False,
         description=(

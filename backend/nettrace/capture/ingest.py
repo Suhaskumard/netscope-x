@@ -22,6 +22,7 @@ from scapy.utils import PcapReader
 from backend.nettrace.capture.errors import InvalidPcapError
 from backend.nettrace.capture.models import CaptureManifest
 from experiments.artifacts.io import write_json
+from experiments.artifacts.io import atomic_write_bytes
 from experiments.artifacts.paths import capture_manifest_path, pcap_path
 
 
@@ -71,8 +72,7 @@ def ingest_pcap(
     packet_count = validate_pcap_bytes(data)
 
     destination = pcap_path(root, capture_id)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(data)
+    atomic_write_bytes(destination, data)
 
     manifest = CaptureManifest(
         capture_id=capture_id,

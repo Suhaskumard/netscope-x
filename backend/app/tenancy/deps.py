@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 
 from backend.app.auth.deps import get_principal
 from backend.app.auth.store import Principal
@@ -33,11 +33,13 @@ class TenantScope:
 
 
 def get_tenant_scope(
+    request: Request,
     x_tenant_key: Optional[str] = Header(default=None),
     principal: Optional[Principal] = Depends(get_principal),
 ) -> TenantScope:
     settings = get_settings()
     if not settings.tenancy_enabled:
+        request.state.scope_root = settings.artifact_root
         return TenantScope(None, settings.artifact_root, settings.upload_staging_dir)
     if principal is not None:  # Phase 92: the credential names the tenant; X-Tenant-Key is ignored
         tenant_id = principal.tenant_id
@@ -49,6 +51,7 @@ def get_tenant_scope(
         tenant_id = TenantRegistry(settings.artifact_root).resolve_key(x_tenant_key)
     if tenant_id is None:
         raise TenantAccessError("unrecognized tenant key")
+    request.state.scope_root = tenant_root(settings.artifact_root, tenant_id)
     return TenantScope(
         tenant_id,
         tenant_root(settings.artifact_root, tenant_id),

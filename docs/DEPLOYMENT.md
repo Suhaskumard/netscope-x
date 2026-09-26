@@ -60,3 +60,10 @@ documented there, none hardcoded in the algorithm modules themselves.
 `scripts.validate_observatory` gate, were exercised successfully during Phase 06/20 in a session that
 had Docker available. This Phase 69 session does not have Docker access — no deployment step above was
 re-verified here. See `docs/LIMITATIONS.md`.
+
+## Replicated deployment (Phase 93)
+
+`docker-compose.ha.yml` runs two backends that mirror each other's artifact volume; see
+`docs/architecture/high_availability.md`. Configure any instance with `NETSCOPE_REPLICA_ROOTS` (comma list) and
+optionally `NETSCOPE_REPLICA_MIN_WRITES`. The compose file has not been run in this environment (no Docker exercised);
+the failover behavior is verified with two real uvicorn processes in `backend/tests/test_ha_failover.py`.

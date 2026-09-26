@@ -21,6 +21,8 @@ new `v<N>/` run, never overwriting an earlier run's `experiment.json`/`metrics.j
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Literal, Optional, Tuple, Type, TypeVar, Union
@@ -42,9 +44,23 @@ from experiments.artifacts.paths import (
 M = TypeVar("M", bound=BaseModel)
 
 
-def write_json(path: Path, model: BaseModel) -> None:
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write via temp file + fsync + os.replace, so a killed process never leaves a partial file (Phase 93)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(model.model_dump_json(indent=2), encoding="utf-8")
+    tmp = path.with_name(path.name + ".tmp-repl")
+    with tmp.open("wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"))
+
+
+def write_json(path: Path, model: BaseModel) -> None:
+    atomic_write_text(path, model.model_dump_json(indent=2))
 
 
 def read_json(path: Path, model_cls: Type[M]) -> M:
@@ -52,11 +68,7 @@ def read_json(path: Path, model_cls: Type[M]) -> M:
 
 
 def write_jsonl(path: Path, models: Iterable[BaseModel]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for model in models:
-            f.write(model.model_dump_json())
-            f.write("\n")
+    atomic_write_text(path, "".join(model.model_dump_json() + "\n" for model in models))
 
 
 def read_jsonl(path: Path, model_cls: Type[M]) -> List[M]:
@@ -87,9 +99,9 @@ def write_ground_truth(path: Path, model: BaseModel) -> str:
     """Writes the ground-truth JSON plus a `<name>.sha256` sidecar. Returns the hash."""
     path.parent.mkdir(parents=True, exist_ok=True)
     content = model.model_dump_json(indent=2)
-    path.write_text(content, encoding="utf-8")
+    atomic_write_text(path, content)
     digest = _sha256_of_text(content)
-    _sidecar_path(path).write_text(digest, encoding="utf-8")
+    atomic_write_text(_sidecar_path(path), digest)
     return digest
 
 
@@ -233,7 +245,7 @@ def _write_run_files(run_dir: Path, contents: Dict[str, str]) -> Dict[str, str]:
     run_dir.mkdir(parents=True, exist_ok=False)
     files: Dict[str, str] = {}
     for filename, text in contents.items():
-        (run_dir / filename).write_text(text, encoding="utf-8")
+        atomic_write_text(run_dir / filename, text)
         files[filename] = _sha256_of_text(text)
     return files
 
@@ -276,7 +288,10 @@ def write_experiment_run(
             if _has_legacy_run(root, experiment_id)
             else ExperimentManifest(experiment_id=experiment_id, runs=[])
         )
-    if any(r.version == version for r in manifest.runs) or experiment_run_dir(root, experiment_id, version).exists():
+    run_dir = experiment_run_dir(root, experiment_id, version)
+    if run_dir.exists() and not any(r.version == version for r in manifest.runs):
+        shutil.rmtree(run_dir)  # orphan of a run interrupted before its manifest entry (the commit point)
+    if any(r.version == version for r in manifest.runs) or run_dir.exists():
         raise ExperimentExistsError(f"experiment_id={experiment_id!r} run v{version} already exists")
 
     metrics_text = "".join(m.model_dump_json() + "\n" for m in metrics)
