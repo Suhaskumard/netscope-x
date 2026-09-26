@@ -2570,4 +2570,13 @@ None yet — no experiments have been run.
   `docs/architecture/real_trace_validation.md`.
   Verified: 8 new tests on Scapy-written pcaps (not real-world data); full suite 1001/1001; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 104 (Formal Statistical Significance Testing, Arc F). Not started; awaiting explicit request.
+- Formal significance testing of the ablation effects (Phase 104, master spec addendum) is built and was run for real (10 seeds,
+  6 topologies). `experiments/significance.py` + `python -m scripts.run_significance_analysis`: baseline vs ablation paired by
+  (topology, seed) with shared packets; paired t-test, seeded bootstrap 95% CI, minimum detectable difference at 80% power, Holm
+  correction; all-zero differences reported as `identical`. Result: only `without_temporal` has any effect (pooled Holm-significant:
+  causal F1 -0.038, pathforge F1 +0.053, an improvement that was not investigated); the other three ablations are identical to
+  baseline on every metric; effects exist only in the `dynamic` and `large` topologies. n = 10 seeds, traffic-generation variance
+  only, synthetic data. Details are in `docs/architecture/statistical_significance.md`.
+  Verified: 8 new tests (statistics checked against hand formula/scipy, Holm known vector, planted effect vs noise, one real run); full suite 1009/1009; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 105 (Longitudinal Drift Study, Arc F). Not started; awaiting explicit request.

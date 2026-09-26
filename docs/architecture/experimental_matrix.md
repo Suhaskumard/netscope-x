@@ -718,3 +718,5 @@ real volume spread, onset equals the first injected packet, labels follow the pa
 prior edge, spike multiplies volume, skipped rather than faked, real scored cell, ablations do not re-score);
 `test_matrix_runner.py` updated to expect 7 contexts. Full suite 676/676 at that point;
 `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+Formal significance tests of these ablation effects (paired t-test, bootstrap CI, Holm): `docs/architecture/statistical_significance.md` (Phase 104).
