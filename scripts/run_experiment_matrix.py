@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from backend.app.telemetry import setup as telemetry
 from experiments.artifacts.io import ExperimentExistsError
 from experiments.matrix_runner import format_sensitivity_table, format_target_report, run_full_matrix
 from experiments.multi_seed import format_markdown_table, run_multi_seed_matrix
@@ -53,6 +54,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path("experiments_data"))
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--telemetry-dir", type=Path, default=None,
+                        help="Phase 94: emit OpenTelemetry traces/metrics of this run to <dir>/{traces,metrics}.jsonl.")
     parser.add_argument("--no-ablations", action="store_true", help="Skip the 4 ablation studies.")
     parser.add_argument("--targets", action="store_true", help="Phase 73: print the per-failure-target report.")
     parser.add_argument("--no-sensitivity-sweep", action="store_true", help="Phase 74: skip the low-volume sweep.")
@@ -65,10 +68,14 @@ def main() -> None:
     seeds_group.add_argument("--seeds", type=int, nargs="+", help="Phase 72: run every cell once per listed seed.")
     seeds_group.add_argument("--n-seeds", type=int, help="Phase 72: run every cell for seeds --seed .. --seed+N-1.")
     args = parser.parse_args()
+    if args.telemetry_dir:
+        telemetry.configure_telemetry(args.telemetry_dir, service_name="netscope-x-matrix")
     try:
         _run(args)
     except ExperimentExistsError as exc:
         raise SystemExit(f"error: {exc} (--on-existing refuse)")
+    finally:
+        telemetry.shutdown_telemetry()
 
 
 def _run(args: argparse.Namespace) -> None:

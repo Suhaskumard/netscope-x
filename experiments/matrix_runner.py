@@ -105,6 +105,8 @@ preserved losslessly in `Experiment.results`, never discarded.
 
 from __future__ import annotations
 
+import time
+
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -112,6 +114,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 
 import networkx as nx
 
+from backend.app.telemetry import setup as telemetry
 from backend.app.models.behavior import ObservationWindow, ServiceRole
 from backend.app.models.experiment import Experiment
 from backend.app.models.failure import FailureScenario, FailureType
@@ -846,11 +849,20 @@ def run_and_persist_cell(
     run's experiment record and capture untouched. `cell_kwargs` pass through to `run_matrix_cell`."""
     experiment_id = cell_experiment_id(topology_level, completeness, seed, ablation, variant)
     version = next_experiment_version(root, experiment_id, on_existing)
-    cell = run_matrix_cell(
-        root, topology_level, completeness, seed=seed, ablation=ablation, variant=variant,
-        capture_id=cell_capture_id(experiment_id, version), **cell_kwargs,
-    )
-    persist_cell(root, cell, version=version)
+    attrs = {"topology_level": topology_level, "completeness": completeness, "seed": seed,
+             "ablation": ablation or "", "variant": variant or "", "experiment_id": experiment_id, "version": version}
+    started = time.perf_counter()
+    with telemetry.tracer().start_as_current_span("matrix.cell", attributes=attrs):  # Phase 94 self-observability
+        with telemetry.tracer().start_as_current_span("matrix.cell.run"):
+            cell = run_matrix_cell(
+                root, topology_level, completeness, seed=seed, ablation=ablation, variant=variant,
+                capture_id=cell_capture_id(experiment_id, version), **cell_kwargs,
+            )
+        with telemetry.tracer().start_as_current_span("matrix.cell.persist"):
+            persist_cell(root, cell, version=version)
+    telemetry.count("netscope.matrix.cells", 1, topology_level=topology_level)
+    telemetry.record("netscope.matrix.cell.duration_ms", (time.perf_counter() - started) * 1000.0,
+                     topology_level=topology_level)
     return cell
 
 
@@ -873,6 +885,16 @@ def run_full_matrix(
     completeness) pair. Persists every cell as it completes, as a new run
     version of its experiment_id (`on_existing`, Phase 75).
     """
+    with telemetry.tracer().start_as_current_span("matrix.run", attributes={"seed": seed}) as span:
+        results = _run_full_matrix(
+            root, topology_levels, completeness_levels, run_ablations, seed, run_sensitivity_sweep, on_existing
+        )
+        span.set_attribute("cells", len(results))
+    return results
+
+
+def _run_full_matrix(root, topology_levels, completeness_levels, run_ablations, seed, run_sensitivity_sweep,
+                     on_existing) -> List[MatrixCellResult]:
     levels = topology_levels or list(TOPOLOGY_LEVELS)
     completenesses = completeness_levels or OBSERVATION_COMPLETENESS_LEVELS
 

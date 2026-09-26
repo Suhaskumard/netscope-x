@@ -25,6 +25,7 @@ from backend.app.core.config import get_settings
 from backend.app.core.context import request_context
 from backend.app.core.logging import configure_logging, get_logger
 from backend.app.core.timing import Timer
+from backend.app.telemetry import setup as telemetry
 from backend.app.storage.replicated import QuorumError, ReplicatedStore
 
 settings = get_settings()
@@ -36,12 +37,29 @@ app.include_router(api_router)
 register_exception_handlers(app)
 
 
+telemetry.configure_from_env()  # Phase 94: no-op unless NETSCOPE_TELEMETRY_DIR is set
+
+
+@app.on_event("shutdown")
+def _flush_telemetry() -> None:
+    telemetry.flush()
+
+
 @app.middleware("http")
 async def observability_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
     with request_context() as request_id:
-        with Timer(f"{request.method} {request.url.path}", logger=logger) as timer:
+        with Timer(f"{request.method} {request.url.path}", logger=logger) as timer, \
+                telemetry.tracer().start_as_current_span(
+                    f"{request.method} {request.url.path}", attributes={"http.method": request.method}) as span:
             logger.info(f"request started: {request.method} {request.url.path}")
             response: Response = await call_next(request)
+            route = getattr(request.scope.get("route"), "path", "unmatched")
+            span.set_attribute("http.route", route)
+            span.set_attribute("http.status_code", response.status_code)
+            span.set_attribute("request_id", request_id)
+        telemetry.count("netscope.http.requests", 1, method=request.method, route=route,
+                        status_code=response.status_code)
+        telemetry.record("netscope.http.duration_ms", timer.duration_ms or 0.0, method=request.method, route=route)
         response.headers["X-Request-ID"] = request_id
         logger.info(
             f"request completed: {request.method} {request.url.path} -> {response.status_code}",
@@ -82,7 +100,8 @@ async def replication_middleware(request: Request, call_next: RequestResponseEnd
     if store is None or root is None or not writes or response.status_code >= 400:
         return response
     try:
-        await run_in_threadpool(store.commit, root)
+        with telemetry.tracer().start_as_current_span("replication.commit"):
+            await run_in_threadpool(store.commit, root)
     except (QuorumError, OSError) as exc:
         logger.error(f"replication commit failed: {exc}")
         return JSONResponse(

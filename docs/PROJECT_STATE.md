@@ -2473,4 +2473,13 @@ None yet — no experiments have been run.
   until repair, GET-derived files other than topology not replicated, reads not per-request verified.
   Details are in `docs/architecture/high_availability.md`.
 
-- Next: Phase 94 (Platform Self-Observability, Arc D). Not started; awaiting explicit request.
+- Platform self-observability (Phase 94, master spec addendum) is built and tested; off unless `NETSCOPE_TELEMETRY_DIR`
+  / `--telemetry-dir`. `backend/app/telemetry/` configures OpenTelemetry SDK providers writing spans (`traces.jsonl`) and
+  cumulative metrics (`metrics.jsonl`), with a query API; API requests, replication commits and matrix runs/cells
+  (`matrix.run` > `matrix.cell` > `run`/`persist`) are instrumented.
+  Real result: a real small `run_full_matrix` yields one root span with one child per cell, nested positive durations,
+  counter == cells run; an HTTP request yields a span + counter. Limits: no OTLP collector exercised (exporter not
+  installed), metrics flushed on demand/shutdown, pipeline stages inside a cell not individually spanned.
+  Details are in `docs/architecture/platform_observability.md`.
+
+- Next: Phase 95 (Real Observability-Standard Ingestion: NetFlow/sFlow/IPFIX, Arc D). Not started; awaiting explicit request.
