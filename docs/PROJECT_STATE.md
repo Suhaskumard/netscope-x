@@ -2409,5 +2409,16 @@ None yet — no experiments have been run.
   Details are in `docs/architecture/streaming_anomaly_detection.md`.
   Verified: 8 new tests; full suite 803/803; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 87 (Streaming Dependency and Causal-Candidate Updates, master spec addendum). Not started; awaiting
-  explicit request.
+- Continuous digital-twin synchronization daemon (Phase 88, master spec addendum) is built and measured; not wired
+  into the pipeline. `backend/digital_twin/daemon.py` (`TwinSyncDaemon`) runs Phase 58's unchanged
+  `sync_digital_twin` on a worker thread with a bounded queue (block/reject backpressure, counted refusals), a token
+  bucket rate limit, optional coalescing, error isolation and out-of-order rejection.
+  Real result (3 topologies x 2 seeds x 4 configs = 24 runs): final twin equals a manual on-demand sync chain 24/24
+  and a direct build at the last snapshot 24/24; queue bound respected 24/24; rate caps 1/2/3 per s achieved
+  1.1/2.1/2.9 per s. Cost is Phase 58's full twin rebuild: large topology ~1.9-2.3 s per sync (0.4-0.5 syncs/s), so it
+  falls behind a fast producer (latency median ~8 s queued back to back); coalescing cuts syncs 7 -> 2, same twin.
+  Details are in `docs/architecture/twin_sync_daemon.md`.
+  Verified: 10 new tests; full suite 822/822; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 89 (Real-Time Resilience Monitoring Backend, master spec addendum). Not started; awaiting explicit
+  request.
