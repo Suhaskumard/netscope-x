@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # so simulator/capture/live.py can share the exact same check without
     # needing Pydantic installed inside its lab container.
 
+    # Phase 102 -- live experiment runs via POST /experiments (off by default: each run is CPU-heavy).
+    enable_experiment_runs: bool = Field(default=False, description="Allow POST /experiments to start a real matrix cell run.")
+    experiment_runs_per_hour: int = Field(default=5, ge=1, description="Per-tenant limit on started runs in a sliding hour.")
+
     # Phase 25 -- UDP session modeling (ties to NFR-4).
     udp_session_idle_timeout_seconds: float = Field(
         default=30.0,

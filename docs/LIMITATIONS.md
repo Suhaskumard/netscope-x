@@ -31,7 +31,7 @@ from.
   (501) even though their backing computation (anomaly detection, role classification, failure
   injection, counterfactual execution, and experiment construction respectively) is real and unit
   tested. See `docs/acceptance_testing.md` FR-1.41 row for the full list and reasoning for why this
-  phase did not wire them.
+  phase did not wire them. (Update: Phase 102 wired `POST /experiments` and built the Experiment Lab frontend.)
 - **SEC-5 — no resource limits.** `POST /capture`, `POST /simulation`, and `POST /counterfactual` have
   no request size limit, timeout, or concurrency cap. Not fixed this phase: choosing real limits
   without a load-testing basis would itself be an unjustified magic number (NFR-4/NFR-9).

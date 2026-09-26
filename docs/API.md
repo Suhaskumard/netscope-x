@@ -27,6 +27,10 @@ Base path: `/api/v1`. Every response uses one of two shapes:
 | `POST /counterfactual/ask` | Natural-language what-if (Phase 98): `{capture_id, question}` | body | Returns `status` answered / needs_clarification / rejected; answered carries the real scenario, facts, and a verified explanation (`explanation_source` llm or template). 503 `llm_unavailable` without `ANTHROPIC_API_KEY`. |
 | `POST /investigation/report` | Cited investigation report for one dependency (Phase 100): `{capture_id, dependency_id, failed_node_id?}` | body | Returns `markdown`, `source` (`llm` verified draft or `template`), `citations[]` (fact id, source path, value, text), `violations`. Works without an LLM key (template). 404 for an unknown dependency or node. |
 | `POST /investigation/root-cause` | Root-cause ranking (Phase 101): `{capture_id, failed_node_id, max_candidates?}` | body | Each ranked item is a really executed Phase 64-66 counterfactual (`scenario_id`, `prevented_node_ids`, `score`, `explanation`) plus a structural-only `caveat`. 404 for an unknown node. |
+| `POST /experiments` | Start one whitelisted matrix-cell run (Phase 102): `{topology_level, completeness, ablation?, seed}` | body | 202 `{job_id}`. Off unless `NETSCOPE_ENABLE_EXPERIMENT_RUNS=true` (403); one run at a time and `NETSCOPE_EXPERIMENT_RUNS_PER_HOUR` (default 5) per tenant, else 429 + `Retry-After`; 422 for values outside the whitelist. |
+| `GET /experiments/jobs/{job_id}` , `/events` | Job status; SSE progress stream (`queued`, `started`, `progress` heartbeats, `done`/`error`) | - | Coarse stages only: the runner is one blocking call. Tenant-scoped. |
+| `GET /experiments/{id}` | Experiment, setup, result and metrics as stored | - | `hypothesis` is null: records have no hypothesis field. |
+| `GET /experiments/compare?a=&b=` | Metric deltas (b - a) between two stored runs | `a`, `b` | Only metrics present in both. |
 | `GET /experiments` | List recorded experiments | `limit`, `offset` | Reads real `Experiment` records written by `experiments/matrix_runner.py`. |
 | `GET /metrics?context=` | List recorded metric results | `context` (optional `MetricContext` filter), `limit`, `offset` | |
 
@@ -42,7 +46,6 @@ see `docs/LIMITATIONS.md` for why this phase did not close the gap.
 | `GET /behaviors/{node_id}` | `backend/flowmind/classification/role_classifier.py`, `backend/flowmind/fingerprints/` |
 | `POST /simulation` | `backend/simulation/failure_injection.py`, `failure_propagation_pipeline.py` |
 | `POST /counterfactual` | `backend/simulation/counterfactual_engine.py`, `counterfactual_comparison.py` |
-| `POST /experiments` | `experiments/matrix_runner.py` (live-triggering via API is a separate, riskier concern than the batch `scripts/run_experiment_matrix.py` path) |
 
 ## Identifier constraints
 

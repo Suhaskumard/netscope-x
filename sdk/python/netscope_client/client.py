@@ -180,8 +180,15 @@ class NetscopeClient:
         """Root-cause ranking (Phase 101): each item is a really executed counterfactual removal."""
         return self._request("POST", "/investigation/root-cause", body={"capture_id": capture_id, "failed_node_id": failed_node_id, "max_candidates": max_candidates})
 
-    def create_experiment(self, experiment: dict) -> dict:
-        return self._request("POST", "/experiments", body=experiment)
+    def create_experiment(self, run: dict) -> dict:
+        """Start a whitelisted run (Phase 102): {topology_level, completeness, ablation, seed}. Returns {job_id, status}."""
+        return self._request("POST", "/experiments", body=run)
+
+    def experiment(self, experiment_id: str) -> dict:
+        return self._request("GET", f"/experiments/{experiment_id}")
+
+    def experiment_job(self, job_id: str) -> dict:
+        return self._request("GET", f"/experiments/jobs/{job_id}")
 
     # -- helpers -----------------------------------------------------------------------------------------
     def paginate(self, method: str, *args: Any, page_size: int = 100, **kwargs: Any) -> Iterator[Any]:

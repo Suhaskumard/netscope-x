@@ -2553,4 +2553,12 @@ None yet — no experiments have been run.
   propagation. Details are in `docs/architecture/root_cause_ranking.md`.
   Verified: 4 new tests (independent re-execution of every ranked scenario); full suite 981/981; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 102 (Experiment Lab frontend, Arc E). Not started; awaiting explicit request.
+- Experiment Lab frontend and live experiment runs (Phase 102, master spec addendum) are built. `?view=experiments` shows real
+  experiment/setup/result/metrics and run-vs-run metric deltas from the persisted Phase 68 records (no hypothesis field exists, so it
+  says "not recorded"). `POST /experiments` (501 since Phase 68) now starts a real whitelisted single-cell run: opt-in
+  (`NETSCOPE_ENABLE_EXPERIMENT_RUNS`), one at a time, per-tenant hourly limit, tenant-scoped jobs, SSE progress (coarse: the runner is
+  one blocking call). THE REACT UI WAS NOT EXERCISED IN A BROWSER (extension not connected); the type check/build and the live HTTP flow
+  were verified. Job state is per-process memory. Details are in `docs/architecture/experiment_lab.md`.
+  Verified: 5 new tests; full suite 986/986; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Arc F, Phase 103 (Cross-Domain Validation Against Real Traces). Not started; awaiting explicit request.

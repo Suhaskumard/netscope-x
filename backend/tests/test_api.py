@@ -8,8 +8,8 @@ path. `POST /capture` (Phase 21), `GET /flows` (Phase 23),
 `GET /dependencies` (Phase 51), `GET /causal/{dependency_id}` (Phase 56),
 and `GET /experiments`/`GET /metrics` (Phase 68) are no longer in the 501
 list -- their real behavior is covered by the dedicated tests at the
-bottom of this file. `POST /experiments` stays 501 -- see
-`backend/app/api/routes/experiments.py`'s own docstring.
+bottom of this file. `POST /experiments` was wired in Phase 102 (see
+`backend/tests/test_experiment_runs.py`).
 """
 
 from __future__ import annotations
@@ -74,21 +74,6 @@ def _assert_error_envelope(response, expected_status: int) -> None:
                     "isolated_graph_id": "g1-cf1",
                     "target_node_id": "n1",
                     "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat(),
-                }
-            ),
-        ),
-        (
-            "post",
-            "/api/v1/experiments",
-            dict(
-                json={
-                    "experiment_id": "exp1",
-                    "dataset_version": "v1",
-                    "code_version": "abc123",
-                    "configuration": {},
-                    "random_seed": 1,
-                    "timestamp": datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat(),
-                    "environment": "docker-lab",
                 }
             ),
         ),
