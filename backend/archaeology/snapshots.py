@@ -30,6 +30,10 @@ from experiments.artifacts.io import read_json, write_json
 from experiments.artifacts.paths import snapshot_path, snapshots_dir, topology_path
 
 
+class SnapshotNotFoundError(Exception):
+    """No persisted snapshot with the requested version for this capture (GET /history/snapshots/{version}/topology)."""
+
+
 def list_snapshots(root: Path, capture_id: str) -> List[NetworkSnapshot]:
     """Reads every persisted `NetworkSnapshot` for `capture_id` back from
     disk, ordered by `version` ascending. Returns `[]` for a capture with

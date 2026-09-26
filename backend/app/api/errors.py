@@ -33,6 +33,7 @@ from backend.app.core.context import get_request_id
 from backend.app.auth.deps import AuthenticationError, AuthorizationError
 from backend.app.tenancy.deps import TenantAccessError
 from backend.app.core.logging import get_logger, log_exception
+from backend.archaeology.snapshots import SnapshotNotFoundError
 from backend.dependency.errors import DependencyNotFoundError
 from backend.nettrace.capture.errors import CaptureNotFoundError, InvalidPcapError, UnauthorizedInterfaceError
 
@@ -102,6 +103,13 @@ def register_exception_handlers(app: FastAPI) -> None:
                 detail=str(exc),
                 request_id=get_request_id(),
             ).model_dump(),
+        )
+
+    @app.exception_handler(SnapshotNotFoundError)
+    async def _snapshot_not_found_handler(request: Request, exc: SnapshotNotFoundError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=ErrorResponse(error="snapshot_not_found", detail=str(exc), request_id=get_request_id()).model_dump(),
         )
 
     @app.exception_handler(AuthenticationError)

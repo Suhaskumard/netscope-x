@@ -25,6 +25,8 @@ export class NetscopeClient {
   dependencies(captureId: string, opts?: PageOptions): Promise<Page>;
   causal(dependencyId: string, captureId: string): Promise<any>;
   history(captureId: string, start: string | Date, end: string | Date, opts?: PageOptions): Promise<Page>;
+  snapshots(captureId: string, opts?: PageOptions): Promise<Page>;
+  snapshotTopology(captureId: string, version: number): Promise<any>;
   experiments(opts?: PageOptions): Promise<Page>;
   metrics(opts?: PageOptions & { context?: string }): Promise<Page>;
   anomalies(opts?: PageOptions & { nodeId?: string }): Promise<Page>;

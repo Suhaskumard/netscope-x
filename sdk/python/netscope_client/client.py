@@ -136,6 +136,12 @@ class NetscopeClient:
         return self._request("GET", "/history", {"capture_id": capture_id, "start": start, "end": end,
                                                  "limit": limit, "offset": offset})
 
+    def snapshots(self, capture_id: str, limit: int = 50, offset: int = 0) -> dict:
+        return self._request("GET", "/history/snapshots", {"capture_id": capture_id, "limit": limit, "offset": offset})
+
+    def snapshot_topology(self, capture_id: str, version: int) -> dict:
+        return self._request("GET", f"/history/snapshots/{int(version)}/topology", {"capture_id": capture_id})
+
     def experiments(self, limit: int = 50, offset: int = 0) -> dict:
         return self._request("GET", "/experiments", {"limit": limit, "offset": offset})
 

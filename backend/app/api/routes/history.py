@@ -21,10 +21,38 @@ from fastapi import APIRouter, Depends, Query
 from backend.app.api.schemas import CAPTURE_ID_PATTERN, PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
 from backend.app.tenancy.deps import TenantScope, get_tenant_scope
-from backend.app.models import GraphChangeEvent
+from backend.app.models import GraphChangeEvent, NetworkSnapshot, TopologyGraph
+from backend.archaeology.snapshots import SnapshotNotFoundError, list_snapshots, read_snapshot_graph
 from backend.archaeology.timeline import build_topology_event_timeline
 
 router = APIRouter(prefix="/history", tags=["history"])
+
+
+@router.get("/snapshots", response_model=PaginatedResponse[NetworkSnapshot])
+def list_history_snapshots(
+    capture_id: str = Query(..., description="Capture session to list snapshots for.", pattern=CAPTURE_ID_PATTERN),
+    page: PageParams = Depends(get_page_params),
+    scope: TenantScope = Depends(get_tenant_scope),
+) -> PaginatedResponse[NetworkSnapshot]:
+    """Phase 97: the recorded snapshots (version order) the time-travel explorer scrubs through. Same "unknown capture
+    means empty" convention as GET /history."""
+    snapshots = list_snapshots(scope.root, capture_id)
+    return PaginatedResponse[NetworkSnapshot](
+        items=snapshots[page.offset : page.offset + page.limit], limit=page.limit, offset=page.offset, total=len(snapshots)
+    )
+
+
+@router.get("/snapshots/{version}/topology", response_model=TopologyGraph)
+def get_snapshot_topology(
+    version: int,
+    capture_id: str = Query(..., description="Capture session the snapshot belongs to.", pattern=CAPTURE_ID_PATTERN),
+    scope: TenantScope = Depends(get_tenant_scope),
+) -> TopologyGraph:
+    """Phase 97: the topology graph exactly as recorded at snapshot `version` (read back, never recomputed)."""
+    snapshot = next((s for s in list_snapshots(scope.root, capture_id) if s.version == version), None)
+    if snapshot is None:
+        raise SnapshotNotFoundError(f"capture {capture_id!r} has no snapshot version {version}")
+    return read_snapshot_graph(scope.root, capture_id, snapshot)
 
 
 @router.get("", response_model=PaginatedResponse[GraphChangeEvent])

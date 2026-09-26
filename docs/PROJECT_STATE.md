@@ -2503,4 +2503,14 @@ None yet — no experiments have been run.
   missing from the venv, so the app could not start; installed `opentelemetry-api`/`-sdk` into the venv to run this.
   Verified: 2 new tests; full suite 916/916; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 97 (Interactive Topology Explorer, Arc E). Not started; awaiting explicit request.
+- Interactive topology explorer with time-travel (Phase 97, master spec addendum) is built and verified in a real Chrome.
+  New read-only routes `GET /history/snapshots` and `/history/snapshots/{version}/topology` (recorded graph read back, tenant
+  scoped; SDKs updated) and a React/cytoscape explorer (`frontend/src/`): snapshot slider, change overlay, recorded change
+  events, node/edge evidence. Real result (`scripts/verify_explorer_in_chrome.mjs`, headless Chrome over CDP, seeded real pcap
+  with 4 snapshots, expectations read from the persisted graph files): 6/6 visits (v4,v1,v3,v2,v1,v4, back in time included)
+  render exactly the recorded nodes, edges, counts and confidences (2/1, 3/2, 5/4, 5/4 + a 0.637 -> 0.993 change); no console
+  errors. Limits: the Claude-in-Chrome extension was not connected (CDP used instead); snapshots are cumulative so no real
+  removal was exercised; hash layout is crowded; small demo only. Details are in `docs/architecture/topology_explorer.md`.
+  Verified: 4 new tests; full suite 924/924 (one SDK retry test failed once in an earlier run while the dev servers were up, passed on 4 reruns); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 98 (Natural-Language Counterfactual Interface, Arc E). Not started; awaiting explicit request.

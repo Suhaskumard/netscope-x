@@ -92,6 +92,8 @@ export class NetscopeClient {
   dependencies(captureId, { limit = 50, offset = 0 } = {}) { return this._request("GET", "/dependencies", { capture_id: captureId, limit, offset }); }
   causal(dependencyId, captureId) { return this._request("GET", `/causal/${encodeURIComponent(dependencyId)}`, { capture_id: captureId }); }
   history(captureId, start, end, { limit = 50, offset = 0 } = {}) { return this._request("GET", "/history", { capture_id: captureId, start, end, limit, offset }); }
+  snapshots(captureId, { limit = 50, offset = 0 } = {}) { return this._request("GET", "/history/snapshots", { capture_id: captureId, limit, offset }); }
+  snapshotTopology(captureId, version) { return this._request("GET", `/history/snapshots/${Number(version)}/topology`, { capture_id: captureId }); }
   experiments({ limit = 50, offset = 0 } = {}) { return this._request("GET", "/experiments", { limit, offset }); }
   metrics({ context, limit = 50, offset = 0 } = {}) { return this._request("GET", "/metrics", { context, limit, offset }); }
   anomalies({ nodeId, limit = 50, offset = 0 } = {}) { return this._request("GET", "/anomalies", { node_id: nodeId, limit, offset }); }
