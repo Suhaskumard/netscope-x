@@ -2561,4 +2561,13 @@ None yet — no experiments have been run.
   were verified. Job state is per-process memory. Details are in `docs/architecture/experiment_lab.md`.
   Verified: 5 new tests; full suite 986/986; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Arc F, Phase 103 (Cross-Domain Validation Against Real Traces). Not started; awaiting explicit request.
+- Cross-domain validation harness (Phase 103, master spec addendum) is built; NO REAL-WORLD TRACE HAS BEEN RUN (none supplied; it
+  prints NOT RUN). `experiments/real_trace_validation.py` + `python -m scripts.run_real_trace_validation --traces-dir <pcaps>` runs the
+  full pipeline on user-supplied pcaps and reports proxy metrics only, because real traces have no ground-truth topology: pipeline
+  accounting vs an independent frame count (unexplained drops), edge recovery vs the flow record, port-labeler role agreement beside a
+  majority baseline, and subsampling stability shown next to the same function on a synthetic capture with every real-worse case
+  flagged. Unparseable and oversize files are reported FAILED/REFUSED. Whole-file ingest (200 MB default cap). Details are in
+  `docs/architecture/real_trace_validation.md`.
+  Verified: 8 new tests on Scapy-written pcaps (not real-world data); full suite 1001/1001; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 104 (Formal Statistical Significance Testing, Arc F). Not started; awaiting explicit request.
