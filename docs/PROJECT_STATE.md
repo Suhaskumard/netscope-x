@@ -2432,5 +2432,19 @@ None yet — no experiments have been run.
   Details are in `docs/architecture/resilience_monitoring.md`.
   Verified: 13 new tests; full suite 835/835; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 90 (Distributed Multi-Collector Capture Architecture, master spec addendum). Not started; awaiting
-  explicit request.
+- Distributed multi-collector capture (Phase 90, master spec addendum; completes Arc C) is built and measured; not
+  wired into the pipeline. `backend/nettrace/collectors/multi.py` (`MultiCollectorPipeline`) feeds several vantage points
+  into one Phase 85 `IncrementalTopology`: cross-collector packet de-duplication (tolerance-based, a collector's own
+  repeats never merged), evidence-pooling resolution (confidence recomputed from pooled packets, not averaged), an optional
+  quorum guard against a lone collector's edge, and a `Resolution` record per fused edge.
+  Real result (4 topologies x 2 seeds): the fused graph equals the full-capture graph exactly (edges and confidences to
+  1e-9) in 96/96 runs (N=2-4, in-order and interleaved, skew within tolerance). Pooled confidence error vs full capture
+  0.0 vs 0.016 naive, 0.023 union-max, 0.033 mean (no loss); under 80% loss fusion recovers edges (F1 1.000 vs best
+  single 0.984). Failure cases measured: skew beyond tolerance doubles counted packets (2.0x, error up to 0.056); a wide
+  tolerance merges genuine repeats (60/120); a fabricated edge survives pooling and is removed by quorum only with >= 3
+  collectors; quorum cuts recall to 0.5 when collectors see disjoint segments; collusion untested. Cost 1.6-2.9x a
+  single collector. Details are in `docs/architecture/multi_collector.md`.
+  Verified: 12 new tests; full suite 847/847; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 91 (Multi-Tenant Network Isolation, Arc D - Production-Grade Platform, master spec addendum). Not started;
+  awaiting explicit request.
