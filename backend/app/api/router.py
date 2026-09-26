@@ -18,6 +18,7 @@ from backend.app.api.routes import (
     experiments,
     flows,
     history,
+    investigation,
     metrics,
     simulation,
     topology,
@@ -38,5 +39,6 @@ for _module in (
     counterfactual,
     experiments,
     metrics,
+    investigation,
 ):
     api_router.include_router(_module.router, dependencies=[Depends(get_principal), Depends(get_tenant_scope)])

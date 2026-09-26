@@ -37,6 +37,7 @@ class Fact:
     text: str  # built by code from the real result; the ONLY source of wording the model may reuse
     entities: FrozenSet[str] = frozenset()
     numbers: FrozenSet[str] = frozenset()
+    source: str = ""  # where the value lives in the real result (Phase 100 citations)
 
 
 @dataclass(frozen=True)
@@ -122,7 +123,7 @@ def template_explanation(facts: List[Fact]) -> str:
 def verify_explanation(text: str, facts: List[Fact], known_entities: List[str]) -> List[str]:
     by_id = {f.fact_id: f for f in facts}
     problems: List[str] = []
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?\]])\s+(?!\[F)|\n+", text) if s.strip()]
+    sentences = [s.strip() for s in re.split(r"(?<!e\.g\.)(?<!i\.e\.)(?<=[.!?\]])\s+(?!\[F)|\n+", text) if s.strip()]
     if not sentences:
         return ["empty explanation"]
     for s in sentences:
@@ -146,7 +147,8 @@ def verify_explanation(text: str, facts: List[Fact], known_entities: List[str]) 
         allowed_n = set().union(*(f.numbers for f in cited))
         if nums - allowed_n:
             problems.append(f"number not in cited facts: {sorted(nums - allowed_n)}")
-        if _NUMBER_WORDS.search(s):
+        cited_words = {w.lower() for f in cited for w in _NUMBER_WORDS.findall(f.text)}  # verbatim quotes may contain them
+        if {w.lower() for w in _NUMBER_WORDS.findall(s)} - cited_words:
             problems.append(f"number word not allowed (write figures that match the facts): {s[:80]!r}")
         if _CAUSAL.search(s) and not any(f.kind == "propagation" for f in cited):
             problems.append(f"causal/certainty wording without causal-propagation evidence: {s[:80]!r}")

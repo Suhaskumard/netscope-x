@@ -2382,7 +2382,7 @@ None yet — no experiments have been run.
   (node F1 0.708). Low-and-slow keeps recall but doubles false positives and raises latency 51 -> 88 s, unfixed.
   Clean spread is 0, so effect sizes matter more than the success rule. Details are in
   `docs/architecture/adversarial_robustness.md`.
-  Verified: 14 new tests; full suite 785/785; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+  Verified: 12 new tests; full suite 785/785; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
 - Incremental topology reconstruction (Phase 85, master spec addendum) is built and verified; not wired into the
   pipeline. `backend/nettrace/topology/incremental.py` (`IncrementalTopology`) ingests packets in memory and
@@ -2534,4 +2534,15 @@ None yet — no experiments have been run.
   capture. Details are in `docs/architecture/causal_attribution.md`.
   Verified: 6 new tests; full suite 961/961; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 100 (Automated Investigation Report Generation, Arc E). Not started; awaiting explicit request.
+- Automated investigation report generation (Phase 100, master spec addendum) is built; the citation guarantees are verified with
+  a scripted LLM, but REAL-LLM DRAFTS ARE NOT VERIFIED (no API key). `backend/nlq/report.py` + `POST /investigation/report`:
+  code builds numbered facts (each with a source path and value) from the real Phase 56 evidence report, Phase 99 attribution and
+  the real Phase 61/62 failure-propagation result; the deterministic template is a complete report (used with no key); an LLM
+  draft is accepted only if every sentence cites facts and every number/identifier is in them, else the template is returned; code
+  always appends the limitations and a correlational caveat. Real result (seeded capture, with and without a failed node): every
+  citation re-resolves to its value by an independent recomputation (equal to 1e-12); template passes the verifier; 6 adversarial
+  drafts, an LLM outage and a dropped-limitations attempt are all handled. Limits: lexical verifier, single dependency, no UI,
+  real model untested. Details are in `docs/architecture/investigation_reports.md`.
+  Verified: 12 new tests; full suite 975/975; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 101 (Root-Cause Ranking with Counterfactual Explanations, Arc E). Not started; awaiting explicit request.

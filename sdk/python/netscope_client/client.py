@@ -169,6 +169,13 @@ class NetscopeClient:
         """Natural-language what-if (Phase 98). 503 `llm_unavailable` (ServerError) when the server has no LLM key."""
         return self._request("POST", "/counterfactual/ask", body={"capture_id": capture_id, "question": question})
 
+    def investigation_report(self, capture_id: str, dependency_id: str, failed_node_id: str = None) -> dict:
+        """Cited investigation report (Phase 100). `source` is "llm" (verified draft) or "template" (deterministic)."""
+        body = {"capture_id": capture_id, "dependency_id": dependency_id}
+        if failed_node_id is not None:
+            body["failed_node_id"] = failed_node_id
+        return self._request("POST", "/investigation/report", body=body)
+
     def create_experiment(self, experiment: dict) -> dict:
         return self._request("POST", "/experiments", body=experiment)
 
