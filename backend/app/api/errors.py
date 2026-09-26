@@ -30,6 +30,7 @@ from fastapi.responses import JSONResponse
 
 from backend.app.api.schemas import ErrorResponse
 from backend.app.core.context import get_request_id
+from backend.app.auth.deps import AuthenticationError, AuthorizationError
 from backend.app.tenancy.deps import TenantAccessError
 from backend.app.core.logging import get_logger, log_exception
 from backend.dependency.errors import DependencyNotFoundError
@@ -101,6 +102,21 @@ def register_exception_handlers(app: FastAPI) -> None:
                 detail=str(exc),
                 request_id=get_request_id(),
             ).model_dump(),
+        )
+
+    @app.exception_handler(AuthenticationError)
+    async def _authentication_handler(request: Request, exc: AuthenticationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Bearer"},
+            content=ErrorResponse(error="unauthenticated", detail=str(exc), request_id=get_request_id()).model_dump(),
+        )
+
+    @app.exception_handler(AuthorizationError)
+    async def _authorization_handler(request: Request, exc: AuthorizationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=ErrorResponse(error="forbidden", detail=str(exc), request_id=get_request_id()).model_dump(),
         )
 
     @app.exception_handler(TenantAccessError)

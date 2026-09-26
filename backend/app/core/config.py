@@ -55,6 +55,13 @@ class Settings(BaseSettings):
         default=REPO_ROOT / "experiments_data" / "inbox",
         description="Where an already-uploaded pcap_filename (POST /capture, source=pcap_upload) is read from.",
     )
+    auth_enabled: bool = Field(
+        default=False,
+        description=(
+            "Phase 92: when true every /api/v1 route requires a valid Bearer credential (401) with a sufficient "
+            "role (403). Off by default (anonymous access, as before)."
+        ),
+    )
     tenancy_enabled: bool = Field(
         default=False,
         description=(

@@ -2453,4 +2453,13 @@ None yet — no experiments have been run.
   tenant's tree hash unchanged, missing/invalid keys 401. Limits: a static key is not Phase 92's authn/authz; same
   process/host (no quotas); no twin persistence exists to scope. Details are in `docs/architecture/multi_tenancy.md`.
 
-- Next: Phase 92 (API Authentication and Authorization, Arc D). Not started; awaiting explicit request.
+- API authentication and authorization (Phase 92, master spec addendum) is built and tested; off by default
+  (`NETSCOPE_AUTH_ENABLED`). `backend/app/auth/` adds hashed bearer credentials with roles (reader/operator), optional
+  tenant binding, expiry and revocation, enforced by a router-level dependency on every `/api/v1` route (401 / 403);
+  with tenancy on, the credential selects the tenant. Tested over routes enumerated from the live app: all reject bad
+  credentials, readers are refused writes, and an authenticated session matches unauthenticated-mode responses.
+  Limits: static tokens (no OAuth/rotation/rate limiting/audit), `/health` and OpenAPI docs stay public, two roles.
+  Details are in `docs/architecture/api_authentication.md`.
+  Verified: 32 new tests; full suite 885/885.
+
+- Next: Phase 93 (High-Availability Deployment Architecture, Arc D). Not started; awaiting explicit request.

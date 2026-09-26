@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from backend.app.auth.deps import get_principal
 from backend.app.tenancy.deps import get_tenant_scope
 
 from backend.app.api.routes import (
@@ -38,4 +39,4 @@ for _module in (
     experiments,
     metrics,
 ):
-    api_router.include_router(_module.router, dependencies=[Depends(get_tenant_scope)])
+    api_router.include_router(_module.router, dependencies=[Depends(get_principal), Depends(get_tenant_scope)])
