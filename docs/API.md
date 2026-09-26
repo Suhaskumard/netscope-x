@@ -20,6 +20,7 @@ Base path: `/api/v1`. Every response uses one of two shapes:
 | `GET /topology?capture_id=` | Probabilistic topology graph | `capture_id` (required, same pattern) | Recomputes fresh on every call; `graph_id` always equals `capture_id`. |
 | `GET /dependencies?capture_id=` | Dependency-strength edges | `capture_id` (required, same pattern), `limit`, `offset` | |
 | `GET /causal/{dependency_id}?capture_id=` | Causal evidence report for one dependency or propagation edge | `dependency_id` (path), `capture_id` (required, same pattern) | 404 (`DependencyNotFoundError`) if `dependency_id` doesn't match any dependency/candidate computed for that `capture_id`. |
+| `GET /causal/{dependency_id}/attribution?capture_id=` | Per-signal Shapley breakdown of the dependency's strength (Phase 99) | `dependency_id` (path), `capture_id` | `signals[]` (raw, standalone probability, contribution, drop-one strength), `sum_of_contributions`, `residual`, plus the Phase 56 report; same 404 as `/causal`. |
 | `GET /history?capture_id=&start=&end=` | Topology change events in a time window | `capture_id` (required, same pattern), `start`, `end` (ISO datetimes) | |
 | `GET /history/snapshots?capture_id=` | Recorded topology snapshots, version order (Phase 97) | `capture_id`, `limit`, `offset` | Unknown capture -> empty list, like `/history`. |
 | `GET /history/snapshots/{version}/topology?capture_id=` | The topology graph exactly as recorded at that snapshot (Phase 97) | `version` (path), `capture_id` | Read back, never recomputed; 404 `snapshot_not_found`. |

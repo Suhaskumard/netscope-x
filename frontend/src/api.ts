@@ -106,3 +106,51 @@ export async function eventsBetween(captureId: string, toSnapshotId: string, opt
   }
   return out.filter((e) => e.to_snapshot_id === toSnapshotId);
 }
+
+export interface Dependency {
+  dependency_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  strength: number;
+}
+export interface SignalAttr {
+  signal: string;
+  label: string;
+  raw: number;
+  unit: string;
+  term: number;
+  contribution: number;
+  without: number;
+}
+export interface Report {
+  relationship: string;
+  evidence: string[];
+  confidence: number;
+  counter_evidence: string[];
+  limitations: string[];
+}
+export interface AttributionResult {
+  dependency_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  stored_strength: number;
+  strength: number;
+  sum_of_contributions: number;
+  residual: number;
+  signals: SignalAttr[];
+  parameters: Record<string, number>;
+  report: Report;
+}
+
+export async function listDependencies(captureId: string, opt: ApiOptions): Promise<Dependency[]> {
+  const out: Dependency[] = [];
+  for (let offset = 0; ; ) {
+    const page = await get<Page<Dependency>>("/dependencies", { capture_id: captureId, limit: 500, offset }, opt);
+    out.push(...page.items);
+    offset += page.items.length;
+    if (page.items.length === 0 || offset >= page.total) return out;
+  }
+}
+
+export const attribution = (captureId: string, dependencyId: string, opt: ApiOptions): Promise<AttributionResult> =>
+  get<AttributionResult>(`/causal/${encodeURIComponent(dependencyId)}/attribution`, { capture_id: captureId }, opt);

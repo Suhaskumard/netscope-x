@@ -132,6 +132,10 @@ class NetscopeClient:
     def causal(self, dependency_id: str, capture_id: str) -> dict:
         return self._request("GET", f"/causal/{urllib.parse.quote(dependency_id, safe='')}", {"capture_id": capture_id})
 
+    def attribution(self, dependency_id: str, capture_id: str) -> dict:
+        """Per-signal Shapley breakdown of a dependency's strength (Phase 99); contributions sum to `strength`."""
+        return self._request("GET", f"/causal/{urllib.parse.quote(dependency_id, safe='')}/attribution", {"capture_id": capture_id})
+
     def history(self, capture_id: str, start: Any, end: Any, limit: int = 50, offset: int = 0) -> dict:
         return self._request("GET", "/history", {"capture_id": capture_id, "start": start, "end": end,
                                                  "limit": limit, "offset": offset})

@@ -2523,4 +2523,15 @@ None yet — no experiments have been run.
   Details are in `docs/architecture/nl_counterfactual.md`.
   Verified: 27 new tests; full suite 953/953; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 99 (Explainable Causal Attribution UI, Arc E). Not started; awaiting explicit request.
+- Explainable causal attribution UI (Phase 99, master spec addendum) is built and verified in a real Chrome. New
+  `backend/dependency/attribution.py` + `GET /causal/{dependency_id}/attribution`: exact Shapley attribution of the five-signal
+  noisy-OR strength (the fifth signal, edge confidence, is shown because it feeds the score), contributions sum to strength
+  (residual reported), plus a React "Causal attribution" view (stacked bar, per-signal table with raw / standalone / Shapley /
+  drop-one, report limitations, an in-browser consistency badge). Real result (`scripts/verify_attribution_in_chrome.mjs`, headless
+  Chrome over CDP, real 31,234-packet pcap): 11/11 dependencies render contributions summing to the displayed strength, and both
+  strength and every contribution equal an independent recomputation (formula rewritten, Shapley over all 120 orderings); no console
+  errors. Limits: attribution explains the score, not causation; frequency dominates these captures; s = 0.3 uncalibrated; one
+  capture. Details are in `docs/architecture/causal_attribution.md`.
+  Verified: 6 new tests; full suite 961/961; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 100 (Automated Investigation Report Generation, Arc E). Not started; awaiting explicit request.

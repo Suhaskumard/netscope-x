@@ -24,6 +24,7 @@ export class NetscopeClient {
   topology(captureId: string): Promise<any>;
   dependencies(captureId: string, opts?: PageOptions): Promise<Page>;
   causal(dependencyId: string, captureId: string): Promise<any>;
+  attribution(dependencyId: string, captureId: string): Promise<any>;
   history(captureId: string, start: string | Date, end: string | Date, opts?: PageOptions): Promise<Page>;
   snapshots(captureId: string, opts?: PageOptions): Promise<Page>;
   snapshotTopology(captureId: string, version: number): Promise<any>;
