@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends
 from backend.app.api.errors import NotYetImplemented
 from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
+from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import Experiment
 from experiments.artifacts.io import read_experiment_run
 from experiments.artifacts.paths import experiment_manifest_path, experiment_path
@@ -33,9 +34,9 @@ def _list_experiments(root) -> list[Experiment]:
 
 
 @router.get("", response_model=PaginatedResponse[Experiment])
-def list_experiments(page: PageParams = Depends(get_page_params)) -> PaginatedResponse[Experiment]:
+def list_experiments(page: PageParams = Depends(get_page_params), scope: TenantScope = Depends(get_tenant_scope)) -> PaginatedResponse[Experiment]:
     settings = get_settings()
-    experiments = _list_experiments(settings.artifact_root)
+    experiments = _list_experiments(scope.root)
     page_items = experiments[page.offset : page.offset + page.limit]
     return PaginatedResponse[Experiment](
         items=page_items, limit=page.limit, offset=page.offset, total=len(experiments)

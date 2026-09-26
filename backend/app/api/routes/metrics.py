@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.app.api.schemas import PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
+from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import MetricContext, MetricResult
 from experiments.artifacts.io import read_experiment_run
 from experiments.artifacts.paths import experiment_manifest_path, experiment_path
@@ -37,9 +38,10 @@ def _list_metrics(root, context: Optional[MetricContext]) -> list[MetricResult]:
 def list_metrics(
     context: Optional[MetricContext] = Query(default=None),
     page: PageParams = Depends(get_page_params),
+    scope: TenantScope = Depends(get_tenant_scope),
 ) -> PaginatedResponse[MetricResult]:
     settings = get_settings()
-    metrics = _list_metrics(settings.artifact_root, context)
+    metrics = _list_metrics(scope.root, context)
     page_items = metrics[page.offset : page.offset + page.limit]
     return PaginatedResponse[MetricResult](
         items=page_items, limit=page.limit, offset=page.offset, total=len(metrics)

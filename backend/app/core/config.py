@@ -55,6 +55,13 @@ class Settings(BaseSettings):
         default=REPO_ROOT / "experiments_data" / "inbox",
         description="Where an already-uploaded pcap_filename (POST /capture, source=pcap_upload) is read from.",
     )
+    tenancy_enabled: bool = Field(
+        default=False,
+        description=(
+            "Phase 91: when true every API request must carry a registered X-Tenant-Key and is confined to "
+            "<artifact_root>/tenants/<tenant_id>. Off by default (single global root, as before)."
+        ),
+    )
     # Note: the authorized live-capture interface allowlist is NOT a Settings
     # field -- it lives in backend.nettrace.capture.authorized_interfaces
     # (stdlib-only, reads NETSCOPE_AUTHORIZED_CAPTURE_INTERFACES directly),

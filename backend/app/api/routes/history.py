@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.app.api.schemas import CAPTURE_ID_PATTERN, PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
+from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import GraphChangeEvent
 from backend.archaeology.timeline import build_topology_event_timeline
 
@@ -34,9 +35,10 @@ def query_history(
     start: datetime = Query(..., description="Start of the investigation window."),
     end: datetime = Query(..., description="End of the investigation window."),
     page: PageParams = Depends(get_page_params),
+    scope: TenantScope = Depends(get_tenant_scope),
 ) -> PaginatedResponse[GraphChangeEvent]:
     settings = get_settings()
-    events = build_topology_event_timeline(settings.artifact_root, capture_id)
+    events = build_topology_event_timeline(scope.root, capture_id)
     window = [event for event in events if start <= event.occurred_at <= end]
 
     page_items = window[page.offset : page.offset + page.limit]

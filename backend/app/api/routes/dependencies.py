@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.app.api.schemas import CAPTURE_ID_PATTERN, PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
+from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import DependencyEdge
 from backend.dependency.strength import estimate_dependency_strength
 
@@ -31,10 +32,11 @@ def list_dependencies(
         ..., description="Capture session to list dependencies for.", pattern=CAPTURE_ID_PATTERN
     ),
     page: PageParams = Depends(get_page_params),
+    scope: TenantScope = Depends(get_tenant_scope),
 ) -> PaginatedResponse[DependencyEdge]:
     settings = get_settings()
     dependencies = estimate_dependency_strength(
-        settings.artifact_root,
+        scope.root,
         capture_id,
         edge_confidence_packet_scale=settings.edge_confidence_packet_scale,
         edge_confidence_signal_strength=settings.edge_confidence_signal_strength,

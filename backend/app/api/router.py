@@ -3,7 +3,9 @@ versioned prefix (NFR-6, versioned APIs)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from backend.app.tenancy.deps import get_tenant_scope
 
 from backend.app.api.routes import (
     anomalies,
@@ -36,4 +38,4 @@ for _module in (
     experiments,
     metrics,
 ):
-    api_router.include_router(_module.router)
+    api_router.include_router(_module.router, dependencies=[Depends(get_tenant_scope)])

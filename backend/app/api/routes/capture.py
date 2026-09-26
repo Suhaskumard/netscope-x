@@ -21,10 +21,11 @@ import uuid
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter
+from fastapi import Depends, APIRouter
 from pydantic import BaseModel, Field, model_validator
 
 from backend.app.core.config import get_settings
+from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.nettrace.capture.authorized_interfaces import is_authorized_interface
 from backend.nettrace.capture.errors import InvalidPcapError, UnauthorizedInterfaceError
 from backend.nettrace.capture.ingest import ingest_pcap
@@ -68,18 +69,18 @@ class CaptureAccepted(BaseModel):
 
 
 @router.post("", response_model=CaptureAccepted, status_code=202)
-def start_capture(request: CaptureRequest) -> CaptureAccepted:
+def start_capture(request: CaptureRequest, scope: TenantScope = Depends(get_tenant_scope)) -> CaptureAccepted:
     settings = get_settings()
     capture_id = str(uuid.uuid4())
 
     if request.source == "pcap_upload":
         assert request.pcap_filename is not None  # enforced by _required_field_for_source
-        source_path = settings.upload_staging_dir / request.pcap_filename
+        source_path = scope.inbox / request.pcap_filename
         if not source_path.is_file():
             raise InvalidPcapError(f"no staged upload found for pcap_filename={request.pcap_filename!r}")
         manifest = ingest_pcap(
             source_path,
-            settings.artifact_root,
+            scope.root,
             capture_id,
             source="pcap_upload",
             original_filename=request.pcap_filename,

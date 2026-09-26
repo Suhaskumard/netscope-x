@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.app.api.schemas import CAPTURE_ID_PATTERN, PageParams, PaginatedResponse, get_page_params
 from backend.app.core.config import get_settings
+from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import Flow
 from backend.nettrace.capture.errors import CaptureNotFoundError
 from backend.nettrace.normalize import normalize_pcap
@@ -28,14 +29,15 @@ def list_flows(
         ..., description="Capture session to list flows for.", pattern=CAPTURE_ID_PATTERN
     ),
     page: PageParams = Depends(get_page_params),
+    scope: TenantScope = Depends(get_tenant_scope),
 ) -> PaginatedResponse[Flow]:
     settings = get_settings()
-    if not pcap_path(settings.artifact_root, capture_id).is_file():
+    if not pcap_path(scope.root, capture_id).is_file():
         raise CaptureNotFoundError(f"no ingested capture found for capture_id={capture_id!r}")
 
-    normalize_pcap(settings.artifact_root, capture_id)
+    normalize_pcap(scope.root, capture_id)
     flows = reconstruct_flows(
-        settings.artifact_root,
+        scope.root,
         capture_id,
         udp_session_idle_timeout_seconds=settings.udp_session_idle_timeout_seconds,
     )

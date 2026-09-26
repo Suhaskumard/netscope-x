@@ -21,10 +21,11 @@ paginated list routes)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import Depends, APIRouter, Query
 
 from backend.app.api.schemas import CAPTURE_ID_PATTERN
 from backend.app.core.config import get_settings
+from backend.app.tenancy.deps import TenantScope, get_tenant_scope
 from backend.app.models import CausalEvidenceReport
 from backend.dependency.causal_candidates import generate_causal_candidates
 from backend.dependency.causal_evidence import build_dependency_evidence_report
@@ -40,10 +41,11 @@ def get_causal_evidence(
     capture_id: str = Query(
         ..., description="Capture session dependency_id belongs to.", pattern=CAPTURE_ID_PATTERN
     ),
+    scope: TenantScope = Depends(get_tenant_scope),
 ) -> CausalEvidenceReport:
     settings = get_settings()
     dependencies = estimate_dependency_strength(
-        settings.artifact_root,
+        scope.root,
         capture_id,
         edge_confidence_packet_scale=settings.edge_confidence_packet_scale,
         edge_confidence_signal_strength=settings.edge_confidence_signal_strength,

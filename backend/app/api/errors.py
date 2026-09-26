@@ -30,6 +30,7 @@ from fastapi.responses import JSONResponse
 
 from backend.app.api.schemas import ErrorResponse
 from backend.app.core.context import get_request_id
+from backend.app.tenancy.deps import TenantAccessError
 from backend.app.core.logging import get_logger, log_exception
 from backend.dependency.errors import DependencyNotFoundError
 from backend.nettrace.capture.errors import CaptureNotFoundError, InvalidPcapError, UnauthorizedInterfaceError
@@ -97,6 +98,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             content=ErrorResponse(
                 error="dependency_not_found",
+                detail=str(exc),
+                request_id=get_request_id(),
+            ).model_dump(),
+        )
+
+    @app.exception_handler(TenantAccessError)
+    async def _tenant_access_handler(request: Request, exc: TenantAccessError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=ErrorResponse(
+                error="tenant_access_denied",
                 detail=str(exc),
                 request_id=get_request_id(),
             ).model_dump(),

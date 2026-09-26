@@ -2446,5 +2446,11 @@ None yet — no experiments have been run.
   single collector. Details are in `docs/architecture/multi_collector.md`.
   Verified: 12 new tests; full suite 847/847; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 91 (Multi-Tenant Network Isolation, Arc D - Production-Grade Platform, master spec addendum). Not started;
-  awaiting explicit request.
+- Multi-tenant network isolation (Phase 91, master spec addendum; opens Arc D) is built and tested; off by default
+  (`NETSCOPE_TENANCY_ENABLED`). `backend/app/tenancy/` adds a tenant registry (hashed API keys), per-tenant artifact
+  roots and inboxes, and a `get_tenant_scope` dependency on every `/api/v1` route; a caller sees only its own root.
+  Tested directly with two tenants through the API: cross-tenant reads 404, cross-tenant ingest refused, the other
+  tenant's tree hash unchanged, missing/invalid keys 401. Limits: a static key is not Phase 92's authn/authz; same
+  process/host (no quotas); no twin persistence exists to scope. Details are in `docs/architecture/multi_tenancy.md`.
+
+- Next: Phase 92 (API Authentication and Authorization, Arc D). Not started; awaiting explicit request.
