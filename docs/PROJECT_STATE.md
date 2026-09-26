@@ -2420,5 +2420,17 @@ None yet — no experiments have been run.
   Details are in `docs/architecture/twin_sync_daemon.md`.
   Verified: 10 new tests; full suite 822/822; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 89 (Real-Time Resilience Monitoring Backend, master spec addendum). Not started; awaiting explicit
-  request.
+- Real-time resilience monitoring backend (Phase 89, master spec addendum) is built and measured; not wired into the
+  pipeline. `backend/simulation/resilience_monitor.py` (`ResilienceMonitor`, `ResilienceMonitorDaemon`) evaluates the
+  live twin: a state reading (connectivity / reachable ratio vs a healthy reference, Phase 62's formulas, tested equal
+  to `compute_resilience_indicators`) plus an optional what-if sweep through the real Phase 61/62 pipeline; edge-triggered
+  alerts with hysteresis to memory, callbacks and JSONL. Default thresholds are provisional.
+  Real result (16 controlled node-removal failures through the Phase 88 sync daemon): 0 false alerts on healthy state;
+  alert fired iff the independently computed connectivity ratio was < 0.8 in 16/16 (6 crossings detected, value equal
+  6/6, all resolved on restoration, all in the JSONL file); submit-to-alert latency median 0.01 s, max 0.04 s on these
+  small captures. Sweep cost 13 ms/scenario (large: 44 scenarios 0.58 s) and noisy on healthy graphs, so off by default.
+  Details are in `docs/architecture/resilience_monitoring.md`.
+  Verified: 13 new tests; full suite 835/835; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 90 (Distributed Multi-Collector Capture Architecture, master spec addendum). Not started; awaiting
+  explicit request.
