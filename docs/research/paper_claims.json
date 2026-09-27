@@ -1,0 +1,152 @@
+{
+ "C1": {
+  "phase": 72,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Real result (seeds 42-51, 540 runs, 411 s): topology reconstruction and temporal F1 are 1.000 ± 0.000 everywhere."
+ },
+ "C2": {
+  "phase": 74,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Real result (10 seeds, 840 runs, 236 s): sweep topology F1 at c=1.0 -> 0.25 falls on every level, e.g. `large` 1.000 -> 0.619 ± 0.085."
+ },
+ "C3": {
+  "phase": 77,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "default traffic F1 heuristic 1.000, GNN 0.998; low-volume traffic F1 heuristic 0.912 ± 0.152, GNN 0.877 ± 0.165, thresholded heuristic 0.489."
+ },
+ "C4": {
+  "phase": 90,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "the fused graph equals the full-capture graph exactly (edges and confidences to 1e-9) in 96/96 runs"
+ },
+ "C5": {
+  "phase": 85,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "after every chunk the graph and flows equal a from-scratch batch rebuild exactly (in-order 3418/3418 prefixes"
+ },
+ "C6": {
+  "phase": 71,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "in-sample accuracy 0.75-1.0 vs held-out 0.0 (small), 0.714 (medium), 0.583 (large), 0.2 (multi_path), 0.818 (multi_service), 0.25 (dynamic)"
+ },
+ "C7": {
+  "phase": 72,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "`large` is 0.375 ± 0.281 [0.0, 0.75], so Phase 71's single-seed 0.583 was a favourable seed."
+ },
+ "C8": {
+  "phase": 81,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "role accuracy collapses zero-shot on 4 of 6 archetypes (0.43-0.54 on chain, multi_path, redundant, dynamic; ECE up to 0.56; star 0.815, multi_tier holds at 0.972)"
+ },
+ "C9": {
+  "phase": 84,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Real result (456 cells, 5 topologies x 3 seeds): 6 of 8 attacks succeed."
+ },
+ "C10": {
+  "phase": 76,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "recall 0.979-1.000 at every completeness level, but precision only 0.289 at completeness 1.0 and 0.143-0.158 below it, with a clean-epoch false-alarm rate of 0.074 at 1.0 that jumps to 0.216 at 0.9."
+ },
+ "C11": {
+  "phase": 78,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "MAD recall 0.994, precision 0.246, F1 0.384, clean-epoch false-alarm rate 0.145; LSTM recall 0.144, precision 0.226, F1 0.149, false-alarm rate 0.025."
+ },
+ "C12": {
+  "phase": 86,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "detection latency in stream time 1.6-2.6 s vs ~59.8 s batch."
+ },
+ "C13": {
+  "phase": 86,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "topology (11,530 pkts) does NOT keep up at any tested rate (10-27 s behind, latency p50 5.9-11.5 s)"
+ },
+ "C14": {
+  "phase": 105,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Result: NO measurable drift of the defaults (topology and temporal F1 stay 1.0, at the ceiling; causal F1 ~0 and noisy; role calibration error noisy, no significant trend)"
+ },
+ "C15": {
+  "phase": 105,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "`dependency_temporal_bucket_seconds` 10 -> 2 raises causal F1 (0.007 -> 0.100 at week 0; +0.098 / +0.117 carried to weeks 6 / 11, guards unchanged)"
+ },
+ "C16": {
+  "phase": 104,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "only `without_temporal` has any effect (pooled Holm-significant: causal F1 -0.038, pathforge F1 +0.053, an improvement that was not investigated); the other three ablations are identical to baseline on every metric"
+ },
+ "C17": {
+  "phase": 104,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "n = 10 seeds, traffic-generation variance only, synthetic data."
+ },
+ "C18": {
+  "phase": 72,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Phase 70's `multi_path` causal claim is revised: 0.057 ± 0.120, not reliably positive. Only `dynamic` (0.143 at every seed) is."
+ },
+ "C19": {
+  "phase": 79,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "pooled directed F1 on Phase 70 traffic PC 0.252 versus Phase 53 0.033; on the control dataset 0.240 versus 0.049."
+ },
+ "C20": {
+  "phase": 79,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "precision is only about 0.3 (about 6 spurious pairs per capture; a stricter alpha does not fix it)"
+ },
+ "C21": {
+  "phase": 82,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "topology F1 0.9433 -> 0.9433, causal F1 0.0370 -> 0.0370 (temporal group tuned to bucket 18.8 s / lag 9 lowered it to 0.0222); all defaults kept."
+ },
+ "C22": {
+  "phase": 73,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "PathForge F1 at completeness 1.0: small 1.000, medium 0.917, large 0.792 ± 0.081, multi_path 1.000, multi_service 0.950, dynamic 0.889."
+ },
+ "C23": {
+  "phase": 73,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "This supersedes all earlier pathforge/counterfactual numbers"
+ },
+ "C24": {
+  "phase": 74,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Role accuracy (`medium` 0.857 -> 0.583) and PathForge (`dynamic` 1.000 -> 0.721) fall too."
+ },
+ "C25": {
+  "phase": 73,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Counterfactual F1: 0.733 / 0.795 / 0.289 / 0.450 / 0.810 / 0.340 (low on non-articulation targets because the connectivity-only ground truth cannot confirm service-level impacts)."
+ },
+ "C26": {
+  "phase": 101,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "Structural on the reconstructed graph only (a caveat is always returned); Y covers routing reachability, not causal propagation."
+ },
+ "C27": {
+  "phase": 80,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "accuracy gained per experiment static 0.014, linucb 0.009, linucb_cold 0.008, random 0.006"
+ },
+ "C28": {
+  "phase": 103,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "NO REAL-WORLD TRACE HAS BEEN RUN (none supplied; it prints NOT RUN)"
+ },
+ "C29": {
+  "phase": 98,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "BEHAVIOR WITH A REAL LLM IS NOT VERIFIED (no API key in this environment; the user will supply one)."
+ },
+ "C30": {
+  "phase": 106,
+  "source": "docs/PROJECT_STATE.md",
+  "quote": "(663 / 264 / 91 = 1018 tests, contracts 55/55, boundary clean)"
+ }
+}

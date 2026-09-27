@@ -2599,4 +2599,13 @@ None yet — no experiments have been run.
   Verified: 4 new tests; the runner was run end to end locally (result below). The Docker container path and the fresh-clone check were
   NOT exercised: the Docker daemon was not running in this environment.
 
-- Next: Phase 107 (Research Paper Draft, Arc F). Not started; awaiting explicit request.
+- Research paper draft (Phase 107, master spec addendum) is written: `docs/research/paper_draft.md`, structured per RQ1-RQ7 (abstract,
+  methods, results, limitations, reproducibility). Every number is tied to a ledger entry in `docs/research/paper_claims.json` (30 claims, each
+  an exact quotation from `docs/PROJECT_STATE.md`), and `python -m scripts.check_paper_claims` fails if a number in the paper is uncited,
+  is not in its cited quotes, or if a quote is not in its source. It reports negative results as such (held-out role accuracy, causal F1,
+  anomaly precision, rejected GNN/LSTM/policy models). No real-world trace result exists and the paper says so. Limits: the check is
+  lexical (it proves numbers trace to recorded results, not that prose interpretation is correct), unnumbered qualitative statements are
+  not machine-checked, and the draft is Markdown, not a typeset paper.
+  Verified: 5 new tests; `repro/expected_results.json` experiments count 264 -> 269 (total 1023); full run result below.
+
+- Next: Phase 108 (Final Cross-Phase Acceptance Audit, Arc F). Not started; awaiting explicit request.

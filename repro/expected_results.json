@@ -1,7 +1,7 @@
 {
   "layers": {
     "backend/tests": {"passed": 663, "failed": 0, "skipped": 0, "errors": 0},
-    "experiments/tests": {"passed": 264, "failed": 0, "skipped": 0, "errors": 0},
+    "experiments/tests": {"passed": 269, "failed": 0, "skipped": 0, "errors": 0},
     "simulator/tests": {"passed": 91, "failed": 0, "skipped": 0, "errors": 0}
   },
   "gates": {"data_contracts": {"passed": 55, "total": 55}, "ground_truth_boundary": {"clean": true}}
