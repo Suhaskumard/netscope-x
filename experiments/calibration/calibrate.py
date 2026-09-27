@@ -189,6 +189,7 @@ def calibrate(
     n_init: int = 6,
     n_iter: int = 18,
     seed: int = 0,
+    evaluator: Optional[Evaluator] = None,
 ) -> CalibrationReport:
     train_seeds = list(train_seeds if train_seeds is not None else TRAIN_SEEDS)
     validation_seeds = list(validation_seeds if validation_seeds is not None else VALIDATION_SEEDS)
@@ -198,7 +199,7 @@ def calibrate(
     validation_cells = list(
         validation_cells if validation_cells is not None else cell_set(completeness=OBSERVATION_COMPLETENESS_LEVELS)
     )
-    evaluator = Evaluator(root / "calibration_scratch")
+    evaluator = evaluator if evaluator is not None else Evaluator(root / "calibration_scratch")
     baseline = CalibrationConstants()
     current = baseline
     reports: List[GroupReport] = []

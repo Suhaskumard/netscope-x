@@ -2579,4 +2579,16 @@ None yet — no experiments have been run.
   only, synthetic data. Details are in `docs/architecture/statistical_significance.md`.
   Verified: 8 new tests (statistics checked against hand formula/scipy, Holm known vector, planted effect vs noise, one real run); full suite 1009/1009; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 105 (Longitudinal Drift Study, Arc F). Not started; awaiting explicit request.
+- Longitudinal drift study (Phase 105, master spec addendum) is built and was run for real (12 simulated weeks, 8 -> 12 services,
+  5 seeds). `experiments/drift_study.py` + `python -m scripts.run_drift_study`: a seeded weekly change process feeds the real pipeline
+  (`run_matrix_cell` gained an optional `scenario=`; `calibrate` an optional `evaluator=`; None/default are unchanged) with default
+  constants, and the real Phase 82 `calibrate()` runs at weeks 0/6/11. Result: NO measurable drift of the defaults (topology and
+  temporal F1 stay 1.0, at the ceiling; causal F1 ~0 and noisy; role calibration error noisy, no significant trend), but recalibration
+  is supported at all three checkpoints for a static reason, not drift: `dependency_temporal_bucket_seconds` 10 -> 2 raises causal F1
+  (0.007 -> 0.100 at week 0; +0.098 / +0.117 carried to weeks 6 / 11, guards unchanged), while the tuner alone missed it at weeks 6/11
+  (small search budget), so the report also applies the Phase 82 rule to carried-over constants. This differs from Phase 82's
+  static-matrix result (nothing adopted). Nothing was applied to `Settings`. Synthetic evolution, one seed, 3 checkpoints. Details are
+  in `docs/architecture/longitudinal_drift.md`.
+  Verified: 5 new tests; full suite 1014/1014; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
+- Next: Phase 106 (Full Reproducibility Package, Arc F). Not started; awaiting explicit request.

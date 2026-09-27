@@ -556,6 +556,7 @@ def run_matrix_cell(
     capture_id: Optional[str] = None,
     constants: Optional["CalibrationConstants"] = None,
     evaluate_anomaly: bool = True,
+    scenario: Optional[Tuple[Dict[str, ServiceRole], List[ScenarioEdge]]] = None,
 ) -> MatrixCellResult:
     """Runs one (topology_level, completeness[, ablation]) cell of the
     experimental matrix for real: generates a scenario, synthesizes and
@@ -570,8 +571,12 @@ def run_matrix_cell(
     nothing extra, so every function runs with its own default -- bit-identical to pre-Phase-82 runs.
     `evaluate_anomaly=False` skips the anomaly_detection context (which no calibrated constant touches) so a
     calibration sweep does not pay for it; the official matrix always leaves it on.
+
+    `scenario` (Phase 105): an explicit `(roles, edges)` declaration used instead of the `TOPOLOGY_LEVELS` lookup, so an
+    evolving topology can be run through the same pipeline; `topology_level` is then only a label. `None` (the default)
+    is bit-identical to before.
     """
-    if topology_level not in TOPOLOGY_LEVELS:
+    if scenario is None and topology_level not in TOPOLOGY_LEVELS:
         raise KeyError(f"unknown topology_level {topology_level!r}; choose from {sorted(TOPOLOGY_LEVELS)}")
     if ablation is not None and ablation not in ABLATIONS:
         raise ValueError(f"unknown ablation {ablation!r}; choose from {ABLATIONS}")
@@ -581,7 +586,7 @@ def run_matrix_cell(
     raw_evaluations: Dict[str, Any] = {}
     metrics: List[MetricResult] = []
 
-    roles, edges = TOPOLOGY_LEVELS[topology_level]()
+    roles, edges = scenario if scenario is not None else TOPOLOGY_LEVELS[topology_level]()
     names = list(roles.keys())
     ip_by_name = assign_ips(names)
     wave_2_edges = max(1, len(edges) // 4)
