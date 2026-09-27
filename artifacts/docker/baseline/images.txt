@@ -1,0 +1,8 @@
+IMAGE                        ID             DISK USAGE   CONTENT SIZE   EXTRA
+alpine:3.20                  d9e853e87e55       12.2MB         3.71MB        
+netscope-x-backend:latest    e47eec331b89        682MB          156MB        
+netscope-x-frontend:latest   e024928be6b0        601MB          139MB        
+nginx:1.27-alpine            65645c7bb6a0       74.5MB         21.9MB        
+postgres:16-alpine           cf78e76683b9        420MB          117MB   U    
+python:3.12-alpine           b64631e04e49       83.5MB         21.3MB        
+redis:7-alpine               ff02b58f971e       57.8MB         16.8MB        

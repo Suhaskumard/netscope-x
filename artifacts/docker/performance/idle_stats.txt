@@ -1,0 +1,14 @@
+NAME                        CPU %     MEM USAGE / LIMIT
+netscope-x-backend-1        0.18%     80.4MiB / 7.57GiB
+netscope-x-frontend-1       0.19%     71.51MiB / 7.57GiB
+docker-gateway-1            0.00%     2.191MiB / 7.57GiB
+docker-load-balancer-2-1    0.00%     2.184MiB / 7.57GiB
+docker-load-balancer-1      0.00%     2.105MiB / 7.57GiB
+docker-api-2-1              0.02%     15.88MiB / 7.57GiB
+docker-api-1-1              0.01%     14.86MiB / 7.57GiB
+docker-worker-1             0.00%     14.75MiB / 7.57GiB
+docker-external-service-1   0.00%     23.82MiB / 7.57GiB
+docker-client-1             0.00%     42.12MiB / 7.57GiB
+docker-dns-1                0.00%     1.246MiB / 7.57GiB
+docker-database-1           4.68%     35.97MiB / 7.57GiB
+docker-redis-1              4.17%     5.926MiB / 7.57GiB

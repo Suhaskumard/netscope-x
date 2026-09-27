@@ -1,0 +1,5 @@
+NETWORK ID     NAME                   DRIVER    SCOPE
+2dd22fb8d257   bridge                 bridge    local
+9de5aea3ec3e   host                   host      local
+422dec899213   insightforge_default   bridge    local
+53335fdb8cf7   none                   null      local

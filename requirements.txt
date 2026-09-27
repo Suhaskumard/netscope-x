@@ -8,3 +8,8 @@ pandas==2.2.3
 scipy==1.14.1
 PyYAML==6.0.2
 scapy==2.6.1
+# Phase 94 telemetry (backend/app/telemetry/) imports these directly; found missing here during Phase 96
+# (worked around by installing into the local venv only) and again during the Docker validation pass
+# (backend container's ModuleNotFoundError: No module named 'opentelemetry') -- this is the real fix.
+opentelemetry-api==1.45.0
+opentelemetry-sdk==1.45.0

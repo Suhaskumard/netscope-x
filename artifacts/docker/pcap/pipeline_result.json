@@ -1,0 +1,2 @@
+{"capture_id":"docker-lab-live-1","manifest_packet_count":44,"normalized_packets":40,"flows":4,"nodes":2,"edges":1,
+ "node_ips":["172.20.0.2","172.20.0.4"],"edge_confidence":0.931,"source":"real Scapy capture inside docker-client-1, eth0, cap_add NET_RAW/NET_ADMIN"}

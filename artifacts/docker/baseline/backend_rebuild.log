@@ -1,0 +1,62 @@
+ Image netscope-x-backend Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 500B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 756B 0.0s done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.12-slim
+#3 DONE 1.1s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 136B 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 ...
+
+#6 [1/6] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#6 resolve docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f 0.1s done
+#6 DONE 0.1s
+
+#5 [internal] load build context
+#5 transferring context: 2.58MB 0.3s done
+#5 DONE 0.3s
+
+#7 [3/6] COPY requirements.txt .
+#7 CACHED
+
+#8 [2/6] WORKDIR /app
+#8 CACHED
+
+#9 [4/6] RUN pip install --no-cache-dir -r requirements.txt
+#9 CACHED
+
+#10 [5/6] COPY backend/ backend/
+#10 DONE 0.1s
+
+#11 [6/6] COPY experiments/ experiments/
+#11 DONE 0.1s
+
+#12 exporting to image
+#12 exporting layers
+#12 exporting layers 0.3s done
+#12 exporting manifest sha256:293d880c8072811a93d2e0cd33e1e834bed3e5eac37dd83f23ac5bf81d734b71 0.0s done
+#12 exporting config sha256:c2d934cdbae98c89f01be2c8d0f630f4215b3c6d11e4bd4a4d8de6f9155f1361 0.0s done
+#12 exporting attestation manifest sha256:e1b535be6568d07e3c66e01d6d65f1a7c2cb03b7931b59dfd77d88cb8799815f 0.0s done
+#12 exporting manifest list sha256:5b0362d7c3d0134d04acce1ab40a44bd51a72de3037b3b28392b85bc7296b101 0.0s done
+#12 naming to docker.io/library/netscope-x-backend:latest
+#12 naming to docker.io/library/netscope-x-backend:latest done
+#12 unpacking to docker.io/library/netscope-x-backend:latest
+#12 unpacking to docker.io/library/netscope-x-backend:latest 0.2s done
+#12 DONE 0.7s
+
+#13 resolving provenance for metadata file
+#13 DONE 0.0s
+ Image netscope-x-backend Built 
+
+real	0m3.984s
+user	0m0.076s
+sys	0m0.091s

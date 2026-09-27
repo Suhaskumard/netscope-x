@@ -1,0 +1,105 @@
+ Image netscope-x-backend_a Building 
+ Image netscope-x-backend_b Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 929B done
+#1 DONE 0.0s
+
+#2 [backend_a internal] load build definition from Dockerfile
+#2 transferring dockerfile: 887B 0.0s done
+#2 DONE 0.0s
+
+#3 [backend_a internal] load metadata for docker.io/library/python:3.12-slim
+#3 DONE 1.1s
+
+#4 [backend_b internal] load .dockerignore
+#4 transferring context: 136B done
+#4 DONE 0.0s
+
+#5 [backend_b 1/7] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#5 resolve docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f 0.1s done
+#5 DONE 0.1s
+
+#6 [backend_a internal] load build context
+#6 transferring context: 70.40kB 0.1s done
+#6 DONE 0.1s
+
+#7 [backend_b 3/7] COPY requirements.txt .
+#7 CACHED
+
+#8 [backend_b 4/7] RUN pip install --no-cache-dir -r requirements.txt
+#8 CACHED
+
+#9 [backend_b 5/7] COPY backend/ backend/
+#9 CACHED
+
+#10 [backend_b 2/7] WORKDIR /app
+#10 CACHED
+
+#11 [backend_b 6/7] COPY experiments/ experiments/
+#11 CACHED
+
+#12 [backend_b 7/7] COPY simulator/ simulator/
+#12 CACHED
+
+#13 [backend_a] exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:e867edbd8e2675381dc1e667bfe373620e6c68d1af13eae8da770a28cd4cd31f 0.0s done
+#13 exporting config sha256:0bad912186d9a5ba619ef0e741853b5b66c48137bac61febb660990e30fe8cc9 0.0s done
+#13 exporting attestation manifest sha256:417b19e145322ddb03f495977a796b84558fab543006852bbb1b7e85b89574af
+#13 exporting attestation manifest sha256:417b19e145322ddb03f495977a796b84558fab543006852bbb1b7e85b89574af 0.0s done
+#13 exporting manifest list sha256:f74183159bff7b313187d446f3d40abdda9560f11cb6a65c25c117a0431946fd 0.0s done
+#13 naming to docker.io/library/netscope-x-backend_a:latest done
+#13 unpacking to docker.io/library/netscope-x-backend_a:latest 0.0s done
+#13 DONE 0.2s
+
+#14 [backend_b] exporting to image
+#14 exporting layers done
+#14 exporting manifest sha256:9b4a06c864d9572606e2b780defa19f45772e76b967dc24153a92693676bd23a 0.0s done
+#14 exporting config sha256:2f20764077b2df96e1a50dfef939aca10bd54c7ae1e537eeda0d88d10ece0e42 0.0s done
+#14 exporting attestation manifest sha256:e5f910cfcd1d06e8d4d94f82a9a37e8a09d89e655fc3d3865834021cc1596e8b 0.0s done
+#14 exporting manifest list sha256:1e0434d30355d8dc37e557fb0583ced4b70a8b5391810be3795d1e1d8b3b5f62 0.0s done
+#14 naming to docker.io/library/netscope-x-backend_b:latest done
+#14 unpacking to docker.io/library/netscope-x-backend_b:latest 0.0s done
+#14 DONE 0.2s
+
+#15 [backend_a] resolving provenance for metadata file
+#15 DONE 0.0s
+
+#16 [backend_b] resolving provenance for metadata file
+#16 DONE 0.0s
+ Image netscope-x-backend_a Built 
+ Image netscope-x-backend_b Built 
+time="2026-09-27T13:35:49+05:30" level=warning msg="Found orphan containers (netscope-x-backend-1, netscope-x-frontend-1) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Volume netscope-x_store_a Creating 
+ Volume netscope-x_store_b Creating 
+ Volume netscope-x_store_a Creating 
+ Volume netscope-x_store_b Creating 
+ Volume netscope-x_store_a Created 
+ Volume netscope-x_store_a Created 
+ Volume netscope-x_store_b Created 
+ Volume netscope-x_store_b Created 
+ Container netscope-x-backend_b-1 Creating 
+ Container netscope-x-backend_a-1 Creating 
+ Container netscope-x-backend_b-1 Created 
+ Container netscope-x-backend_a-1 Created 
+ Container netscope-x-proxy-1 Creating 
+ Container netscope-x-proxy-1 Created 
+ Container netscope-x-backend_a-1 Starting 
+ Container netscope-x-backend_b-1 Starting 
+ Container netscope-x-backend_a-1 Started 
+ Container netscope-x-backend_b-1 Started 
+ Container netscope-x-proxy-1 Starting 
+Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint netscope-x-proxy-1 (780bfda515af9c3fdfd3d43ddb08489d926574bd069bc05c29c9b9b3f1f309ba): Bind for 0.0.0.0:8000 failed: port is already allocated
+
+real	0m4.399s
+user	0m0.076s
+sys	0m0.107s
+time="2026-09-27T13:35:59+05:30" level=warning msg="Found orphan containers (netscope-x-backend-1, netscope-x-frontend-1) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container netscope-x-backend_b-1 Running 
+ Container netscope-x-backend_a-1 Running 
+ Container netscope-x-proxy-1 Starting 
+ Container netscope-x-proxy-1 Started 
+
+real	0m0.692s
+user	0m0.030s
+sys	0m0.045s

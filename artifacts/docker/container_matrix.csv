@@ -1,0 +1,12 @@
+service,image,created_at,state,health,ports,networks
+api-1,python:3.12-alpine,2026-09-27 13:19:37 +0530 IST,running,,[],"netscope-x-lab-app,netscope-x-lab-data,netscope-x-lab-external"
+api-2,python:3.12-alpine,2026-09-27 13:19:37 +0530 IST,running,,[],"netscope-x-lab-app,netscope-x-lab-data,netscope-x-lab-external"
+client,alpine:3.20,2026-09-27 13:19:36 +0530 IST,running,,[],netscope-x-lab-edge
+database,postgres:16-alpine,2026-09-27 13:19:36 +0530 IST,running,healthy,"[{'URL': '', 'TargetPort': 5432, 'PublishedPort': 0, 'Protocol': 'tcp'}]",netscope-x-lab-data
+dns,alpine:3.20,2026-09-27 13:19:36 +0530 IST,running,,[],netscope-x-lab-edge
+external-service,nginx:1.27-alpine,2026-09-27 13:19:37 +0530 IST,running,,"[{'URL': '', 'TargetPort': 80, 'PublishedPort': 0, 'Protocol': 'tcp'}]",netscope-x-lab-external
+gateway,nginx:1.27-alpine,2026-09-27 13:19:37 +0530 IST,running,,"[{'URL': '', 'TargetPort': 80, 'PublishedPort': 0, 'Protocol': 'tcp'}]","netscope-x-lab-app,netscope-x-lab-edge"
+load-balancer,nginx:1.27-alpine,2026-09-27 13:19:37 +0530 IST,running,,"[{'URL': '', 'TargetPort': 80, 'PublishedPort': 0, 'Protocol': 'tcp'}]",netscope-x-lab-app
+load-balancer-2,nginx:1.27-alpine,2026-09-27 13:19:37 +0530 IST,running,,"[{'URL': '', 'TargetPort': 80, 'PublishedPort': 0, 'Protocol': 'tcp'}]",netscope-x-lab-app
+redis,redis:7-alpine,2026-09-27 13:19:36 +0530 IST,running,healthy,"[{'URL': '', 'TargetPort': 6379, 'PublishedPort': 0, 'Protocol': 'tcp'}]",netscope-x-lab-data
+worker,python:3.12-alpine,2026-09-27 13:19:37 +0530 IST,running,,[],"netscope-x-lab-app,netscope-x-lab-data"

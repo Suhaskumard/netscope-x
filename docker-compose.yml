@@ -16,5 +16,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "4173:4173"
+    environment:
+      # frontend/vite.config.ts's /api proxy defaults to 127.0.0.1:8000, which inside this container is itself,
+      # not the backend service -- found during the Docker validation pass (GET /api/... returned 500).
+      NETSCOPE_API_TARGET: http://backend:8000
     depends_on:
       - backend

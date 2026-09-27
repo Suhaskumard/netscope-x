@@ -1,0 +1,5 @@
+phase,scenario,workload,packets,flows,nodes,edges,cpu_pct_max_observed,ram_max_observed,runtime_s,notes
+21-32,real docker-lab capture+pipeline (1x),1 capture session,44,4,2,1,not isolated (shared client container),80.4MiB (backend idle+this run),n/a (sub-second pipeline),full ingest->normalize->reconstruct->topology chain on a genuinely captured pcap
+gateway-routing,1x gateway requests,5 sequential curl,n/a,n/a,n/a,n/a,0.00% (gateway/lb),~2-4MiB per nginx container,0.419,baseline
+gateway-routing,2x gateway requests,10 sequential curl,n/a,n/a,n/a,n/a,0.00%,~2-4MiB,0.452,linear-ish, nginx is not the bottleneck at this scale
+gateway-routing,5x gateway requests,25 sequential curl,n/a,n/a,n/a,n/a,0.00%,~4MiB,0.750,still no measurable CPU on nginx tier at this scale

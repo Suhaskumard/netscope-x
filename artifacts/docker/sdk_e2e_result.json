@@ -1,0 +1,11 @@
+{"backend_container":"netscope-x-backend-1","checks":[
+ {"call":"GET /health","result":"200 {\"status\":\"ok\"}"},
+ {"call":"experiments()","result":"empty list, total 0"},
+ {"call":"metrics()","result":"empty list, total 0"},
+ {"call":"topology('does-not-exist')","result":"NotFoundError 404 capture_not_found (typed SDK error)"},
+ {"call":"upload_pcap + flows + topology","result":"real Docker-captured pcap -> capture_id 9e5c4f3b...; 4 flows; 2 nodes 1 edge conf 0.931 -- matches the direct-pipeline run"}
+],"bugs_found_and_fixed":[
+ "backend/Dockerfile never COPYed experiments/ (ModuleNotFoundError: experiments)",
+ "requirements.txt missing opentelemetry-api/opentelemetry-sdk (backend/app/telemetry imports them; Phase 96 had only patched the local venv)",
+ "backend/Dockerfile never COPYed simulator/ (experiments/synthetic_traffic.py imports simulator.scenarios.topologies)"
+]}

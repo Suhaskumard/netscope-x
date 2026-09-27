@@ -1,0 +1,9 @@
+{
+  "capture_id": "docker-lab-live-1",
+  "source": "live_interface",
+  "original_filename": null,
+  "interface": "eth0",
+  "packet_count": 44,
+  "size_bytes": 5048,
+  "ingested_at": "2026-09-27T07:55:51.087285Z"
+}

@@ -1,0 +1,67 @@
+ Image netscope-x-backend Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 500B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 887B 0.0s done
+#2 DONE 0.0s
+
+#3 [auth] library/python:pull token for registry-1.docker.io
+#3 DONE 0.0s
+
+#4 [internal] load metadata for docker.io/library/python:3.12-slim
+#4 DONE 1.7s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 136B done
+#5 DONE 0.0s
+
+#6 [1/7] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#6 resolve docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f 0.0s done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 647.87kB 0.2s done
+#7 DONE 0.2s
+
+#8 [2/7] WORKDIR /app
+#8 CACHED
+
+#9 [3/7] COPY requirements.txt .
+#9 CACHED
+
+#10 [4/7] RUN pip install --no-cache-dir -r requirements.txt
+#10 CACHED
+
+#11 [5/7] COPY backend/ backend/
+#11 DONE 0.1s
+
+#12 [6/7] COPY experiments/ experiments/
+#12 DONE 0.1s
+
+#13 [7/7] COPY simulator/ simulator/
+#13 DONE 0.1s
+
+#14 exporting to image
+#14 exporting layers
+#14 exporting layers 0.3s done
+#14 exporting manifest sha256:81566aa250dbdcba985d558d497619d165c87a6fbc3bfda607e55d02df2ba76e 0.0s done
+#14 exporting config sha256:9529a370613c1d3a2c9b4546b39e4fe201612ed494d92be6f8898bfb39203296 0.0s done
+#14 exporting attestation manifest sha256:59d1c82efd29ef39554f2b7c2e3a092caf52280dc68d6edafc79ed348bee5751 0.0s done
+#14 exporting manifest list sha256:37886caf6f26c181e0899d6dcba561d2c3d3c270ca74d22a9685ec793f560829 0.0s done
+#14 naming to docker.io/library/netscope-x-backend:latest done
+#14 unpacking to docker.io/library/netscope-x-backend:latest
+#14 unpacking to docker.io/library/netscope-x-backend:latest 0.2s done
+#14 DONE 0.7s
+
+#15 resolving provenance for metadata file
+#15 DONE 0.0s
+ Image netscope-x-backend Built 
+
+real	0m3.966s
+user	0m0.045s
+sys	0m0.122s

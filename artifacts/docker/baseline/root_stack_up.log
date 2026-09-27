@@ -1,0 +1,399 @@
+ Image netscope-x-frontend Building 
+ Image netscope-x-backend Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 928B done
+#1 DONE 0.0s
+
+#2 [backend internal] load build definition from Dockerfile
+#2 transferring dockerfile: 446B 0.0s done
+#2 DONE 0.0s
+
+#3 [frontend internal] load build definition from Dockerfile
+#3 transferring dockerfile: 446B 0.0s done
+#3 DONE 0.1s
+
+#4 [frontend internal] load metadata for docker.io/library/node:22-slim
+#4 ...
+
+#5 [auth] library/python:pull token for registry-1.docker.io
+#5 DONE 0.0s
+
+#6 [auth] library/node:pull token for registry-1.docker.io
+#6 DONE 0.0s
+
+#7 [backend internal] load metadata for docker.io/library/python:3.12-slim
+#7 ...
+
+#4 [frontend internal] load metadata for docker.io/library/node:22-slim
+#4 DONE 4.1s
+
+#7 [backend internal] load metadata for docker.io/library/python:3.12-slim
+#7 DONE 4.1s
+
+#8 [frontend internal] load .dockerignore
+#8 transferring context: 2B done
+#8 DONE 0.0s
+
+#9 [backend internal] load .dockerignore
+#9 transferring context: 136B done
+#9 DONE 0.0s
+
+#10 [frontend internal] load build context
+#10 DONE 0.0s
+
+#11 [backend internal] load build context
+#11 transferring context: 5.53MB 0.9s done
+#11 DONE 0.9s
+
+#12 [backend 1/5] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#12 resolve docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f 0.1s done
+#12 sha256:06ad939ed42b51caafb25b14810875d14e0ee0c441d3e2e5e46475fb8c150bca 249B / 249B 0.4s done
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 0B / 12.12MB 0.5s
+#12 sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 0B / 1.29MB 0.5s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 0B / 29.83MB 0.5s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 0B / 12.12MB 5.5s
+#12 sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 0B / 1.29MB 5.5s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 0B / 29.83MB 5.5s
+#12 ...
+
+#10 [frontend internal] load build context
+#10 transferring context: 84.87MB 7.9s done
+#10 DONE 8.1s
+
+#12 [backend 1/5] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#12 ...
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 resolve docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c 0.1s done
+#13 sha256:dc40c63c08b5453854c13da6d72b3182737b2e223156b786c67779e0d6f4e8e0 446B / 446B 0.4s done
+#13 sha256:8d9d84ee31888adba85837fbf8f0e6eca99263904b2ba04d79e7d4fc1da40056 0B / 1.71MB 6.9s
+#13 ...
+
+#12 [backend 1/5] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 0B / 12.12MB 10.6s
+#12 sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 0B / 1.29MB 10.6s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 0B / 29.83MB 10.6s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 0B / 12.12MB 15.7s
+#12 sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 0B / 1.29MB 15.7s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 0B / 29.83MB 15.7s
+#12 ...
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 sha256:8d9d84ee31888adba85837fbf8f0e6eca99263904b2ba04d79e7d4fc1da40056 1.71MB / 1.71MB 16.1s done
+#13 sha256:61592f5b60306b96e5208206668cdf0fa62d3cda3a3baeed26efdcd1a21aaba5 0B / 49.84MB 1.1s
+#13 ...
+
+#12 [backend 1/5] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 0B / 12.12MB 20.8s
+#12 sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 0B / 1.29MB 20.8s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 2.10MB / 29.83MB 20.8s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 4.19MB / 29.83MB 22.6s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 6.29MB / 29.83MB 24.0s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 1.05MB / 12.12MB 25.0s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 8.39MB / 29.83MB 24.9s
+#12 sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 1.05MB / 1.29MB 25.8s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 10.49MB / 29.83MB 25.8s
+#12 sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 1.29MB / 1.29MB 26.1s done
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 2.10MB / 12.12MB 26.5s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 12.58MB / 29.83MB 26.5s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 14.68MB / 29.83MB 27.3s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 3.15MB / 12.12MB 27.4s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 16.78MB / 29.83MB 28.0s
+#12 ...
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 sha256:61592f5b60306b96e5208206668cdf0fa62d3cda3a3baeed26efdcd1a21aaba5 27.26MB / 49.84MB 11.4s
+#13 sha256:8ab8fd6c944526e5da2ca93b1663b2ab6f4bb8d4ea7b50a90d53c9fdcc5b0b9e 3.31kB / 3.31kB 0.8s done
+#13 sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150 0B / 28.24MB 1.4s
+#13 ...
+
+#12 [backend 1/5] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 4.19MB / 12.12MB 28.9s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 18.87MB / 29.83MB 29.1s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 5.24MB / 12.12MB 30.0s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 20.97MB / 29.83MB 30.3s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 6.29MB / 12.12MB 31.6s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 23.07MB / 29.83MB 31.6s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 25.17MB / 29.83MB 32.7s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 7.34MB / 12.12MB 33.0s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 27.26MB / 29.83MB 33.7s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 8.39MB / 12.12MB 34.0s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 9.44MB / 12.12MB 35.1s
+#12 sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 29.83MB / 29.83MB 35.3s done
+#12 extracting sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 10.49MB / 12.12MB 36.0s
+#12 extracting sha256:6b37362b3da78869050b894b799ad4df04f1f3b52774087db0d81151570244c8 1.1s done
+#12 extracting sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70
+#12 extracting sha256:3764a9a7d1e8a98213ab2201a41dbf3da9c60240ea35a5ea96ab994555070a70 0.1s done
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 11.53MB / 12.12MB 36.7s
+#12 sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 12.12MB / 12.12MB 37.2s done
+#12 extracting sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0
+#12 extracting sha256:b0dc7f87bef15c2536cb182d6c48b52f90a0522884ec9eb222f833fa97ffebf0 0.5s done
+#12 DONE 38.2s
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 sha256:61592f5b60306b96e5208206668cdf0fa62d3cda3a3baeed26efdcd1a21aaba5 49.84MB / 49.84MB 20.3s done
+#13 sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150 23.07MB / 28.24MB 10.6s
+#13 ...
+
+#12 [backend 1/5] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#12 extracting sha256:06ad939ed42b51caafb25b14810875d14e0ee0c441d3e2e5e46475fb8c150bca 0.0s done
+#12 DONE 38.2s
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 ...
+
+#14 [backend 2/5] WORKDIR /app
+#14 DONE 0.2s
+
+#15 [backend 3/5] COPY requirements.txt .
+#15 DONE 0.1s
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150 25.17MB / 28.24MB 11.1s
+#13 sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150 27.26MB / 28.24MB 11.5s
+#13 sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150 28.24MB / 28.24MB 11.7s done
+#13 extracting sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150
+#13 extracting sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150 1.1s done
+#13 DONE 40.3s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 2.464 Collecting fastapi==0.115.5 (from -r requirements.txt (line 1))
+#16 2.965   Downloading fastapi-0.115.5-py3-none-any.whl.metadata (27 kB)
+#16 3.070 Collecting uvicorn==0.32.1 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#16 3.106   Downloading uvicorn-0.32.1-py3-none-any.whl.metadata (6.6 kB)
+#16 3.313 Collecting pydantic==2.9.2 (from -r requirements.txt (line 3))
+#16 3.348   Downloading pydantic-2.9.2-py3-none-any.whl.metadata (149 kB)
+#16 3.469 Collecting pydantic-settings==2.6.1 (from -r requirements.txt (line 4))
+#16 ...
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 extracting sha256:8ab8fd6c944526e5da2ca93b1663b2ab6f4bb8d4ea7b50a90d53c9fdcc5b0b9e 0.0s done
+#13 extracting sha256:61592f5b60306b96e5208206668cdf0fa62d3cda3a3baeed26efdcd1a21aaba5 1.7s done
+#13 extracting sha256:8d9d84ee31888adba85837fbf8f0e6eca99263904b2ba04d79e7d4fc1da40056 0.1s done
+#13 DONE 42.1s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 3.512   Downloading pydantic_settings-2.6.1-py3-none-any.whl.metadata (3.5 kB)
+#16 ...
+
+#13 [frontend 1/6] FROM docker.io/library/node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+#13 extracting sha256:dc40c63c08b5453854c13da6d72b3182737b2e223156b786c67779e0d6f4e8e0 0.0s done
+#13 DONE 42.1s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 3.601 Collecting networkx==3.4.2 (from -r requirements.txt (line 5))
+#16 3.639   Downloading networkx-3.4.2-py3-none-any.whl.metadata (6.3 kB)
+#16 ...
+
+#17 [frontend 2/6] WORKDIR /app
+#17 DONE 0.2s
+
+#18 [frontend 3/6] COPY package.json package-lock.json ./
+#18 DONE 0.1s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 4.031 Collecting numpy==2.1.3 (from -r requirements.txt (line 6))
+#16 4.071   Downloading numpy-2.1.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (62 kB)
+#16 4.296 Collecting pandas==2.2.3 (from -r requirements.txt (line 7))
+#16 4.331   Downloading pandas-2.2.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (89 kB)
+#16 4.562 Collecting scipy==1.14.1 (from -r requirements.txt (line 8))
+#16 4.604   Downloading scipy-1.14.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (60 kB)
+#16 4.713 Collecting PyYAML==6.0.2 (from -r requirements.txt (line 9))
+#16 4.745   Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+#16 4.792 Collecting scapy==2.6.1 (from -r requirements.txt (line 10))
+#16 4.834   Downloading scapy-2.6.1-py3-none-any.whl.metadata (5.6 kB)
+#16 4.907 Collecting starlette<0.42.0,>=0.40.0 (from fastapi==0.115.5->-r requirements.txt (line 1))
+#16 4.940   Downloading starlette-0.41.3-py3-none-any.whl.metadata (6.0 kB)
+#16 5.002 Collecting typing-extensions>=4.8.0 (from fastapi==0.115.5->-r requirements.txt (line 1))
+#16 5.035   Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+#16 5.091 Collecting click>=7.0 (from uvicorn==0.32.1->uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#16 5.133   Downloading click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
+#16 5.184 Collecting h11>=0.8 (from uvicorn==0.32.1->uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#16 5.222   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+#16 5.273 Collecting annotated-types>=0.6.0 (from pydantic==2.9.2->-r requirements.txt (line 3))
+#16 5.331   Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+#16 6.734 Collecting pydantic-core==2.23.4 (from pydantic==2.9.2->-r requirements.txt (line 3))
+#16 6.850   Downloading pydantic_core-2.23.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.6 kB)
+#16 6.971 Collecting python-dotenv>=0.21.0 (from pydantic-settings==2.6.1->-r requirements.txt (line 4))
+#16 7.052   Downloading python_dotenv-1.2.3-py3-none-any.whl.metadata (29 kB)
+#16 7.207 Collecting python-dateutil>=2.8.2 (from pandas==2.2.3->-r requirements.txt (line 7))
+#16 7.349   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+#16 7.511 Collecting pytz>=2020.1 (from pandas==2.2.3->-r requirements.txt (line 7))
+#16 7.629   Downloading pytz-2026.4-py2.py3-none-any.whl.metadata (22 kB)
+#16 7.872 Collecting tzdata>=2022.7 (from pandas==2.2.3->-r requirements.txt (line 7))
+#16 8.313   Downloading tzdata-2026.4-py2.py3-none-any.whl.metadata (1.4 kB)
+#16 8.612 Collecting httptools>=0.6.3 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#16 8.828   Downloading httptools-0.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+#16 8.955 Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#16 9.001   Downloading uvloop-0.22.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (4.9 kB)
+#16 9.186 Collecting watchfiles>=0.13 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#16 9.232   Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+#16 9.425 Collecting websockets>=10.4 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#16 9.460   Downloading websockets-17.1-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.3 kB)
+#16 9.532 Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas==2.2.3->-r requirements.txt (line 7))
+#16 9.575   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+#16 9.645 Collecting anyio<5,>=3.4.0 (from starlette<0.42.0,>=0.40.0->fastapi==0.115.5->-r requirements.txt (line 1))
+#16 9.691   Downloading anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
+#16 9.765 Collecting idna>=2.8 (from anyio<5,>=3.4.0->starlette<0.42.0,>=0.40.0->fastapi==0.115.5->-r requirements.txt (line 1))
+#16 9.813   Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+#16 9.886 Downloading fastapi-0.115.5-py3-none-any.whl (94 kB)
+#16 9.958 Downloading uvicorn-0.32.1-py3-none-any.whl (63 kB)
+#16 10.00 Downloading pydantic-2.9.2-py3-none-any.whl (434 kB)
+#16 10.15 Downloading pydantic_settings-2.6.1-py3-none-any.whl (28 kB)
+#16 10.20 Downloading networkx-3.4.2-py3-none-any.whl (1.7 MB)
+#16 10.52    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 5.1 MB/s eta 0:00:00
+#16 10.57 Downloading numpy-2.1.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (16.0 MB)
+#16 ...
+
+#19 [frontend 4/6] RUN npm ci
+#19 9.380 
+#19 9.380 added 139 packages, and audited 140 packages in 9s
+#19 9.380 
+#19 9.380 26 packages are looking for funding
+#19 9.380   run `npm fund` for details
+#19 9.396 
+#19 9.396 3 vulnerabilities (2 moderate, 1 high)
+#19 9.396 
+#19 9.396 To address all issues (including breaking changes), run:
+#19 9.396   npm audit fix --force
+#19 9.396 
+#19 9.396 Run `npm audit` for details.
+#19 9.398 npm notice
+#19 9.398 npm notice New major version of npm available! 10.9.9 -> 12.1.0
+#19 9.398 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+#19 9.398 npm notice To update run: npm install -g npm@12.1.0
+#19 9.398 npm notice
+#19 DONE 9.6s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 13.35    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.0/16.0 MB 5.8 MB/s eta 0:00:00
+#16 13.39 Downloading pandas-2.2.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (12.7 MB)
+#16 ...
+
+#20 [frontend 5/6] COPY . .
+#20 DONE 0.9s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 ...
+
+#21 [frontend 6/6] RUN npm run build
+#21 0.490 
+#21 0.490 > netscope-x-frontend@0.1.0 build
+#21 0.490 > tsc --noEmit && vite build
+#21 0.490 
+#21 3.020 vite v5.4.21 building for production...
+#21 3.109 transforming...
+#21 5.501 ✓ 39 modules transformed.
+#21 5.890 rendering chunks...
+#21 5.908 computing gzip size...
+#21 5.931 dist/index.html                   0.40 kB │ gzip:   0.27 kB
+#21 5.931 dist/assets/index-BkuOF3fW.css   11.73 kB │ gzip:   3.00 kB
+#21 5.931 dist/assets/index-CuptcshN.js   549.32 kB │ gzip: 176.76 kB
+#21 5.932 
+#21 5.932 (!) Some chunks are larger than 500 kB after minification. Consider:
+#21 5.932 - Using dynamic import() to code-split the application
+#21 5.932 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+#21 5.932 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#21 5.932 ✓ built in 2.87s
+#21 DONE 6.0s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 15.14    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.7/12.7 MB 7.4 MB/s eta 0:00:00
+#16 15.19 Downloading scipy-1.14.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (40.8 MB)
+#16 ...
+
+#22 [frontend] exporting to image
+#22 exporting layers
+#22 exporting layers 5.2s done
+#22 exporting manifest sha256:81251c0c421093cb1b038900e71550b92aea48e501b57421fe78f7aa51aba515 0.0s done
+#22 exporting config sha256:fa7d3fc3fcfafb9f3b303e17e18e421db5c0e76177faecb5d2fb42a6cbe64ce2 0.0s done
+#22 exporting attestation manifest sha256:6b40bc33374ac2be334069350c4d6731670c1d9a31576ec116f480f26000eb65 0.0s done
+#22 exporting manifest list sha256:6e89a592c8a374f5210e8efdc02244cce7cce33b55f9d11cb405a7de5024a667 0.0s done
+#22 naming to docker.io/library/netscope-x-frontend:latest
+#22 naming to docker.io/library/netscope-x-frontend:latest done
+#22 unpacking to docker.io/library/netscope-x-frontend:latest
+#22 ...
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 22.56    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 40.8/40.8 MB 5.5 MB/s eta 0:00:00
+#16 22.60 Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (767 kB)
+#16 22.71    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 767.5/767.5 kB 7.6 MB/s eta 0:00:00
+#16 22.75 Downloading scapy-2.6.1-py3-none-any.whl (2.4 MB)
+#16 23.10    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.4/2.4 MB 6.7 MB/s eta 0:00:00
+#16 23.14 Downloading pydantic_core-2.23.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
+#16 23.42    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 7.7 MB/s eta 0:00:00
+#16 23.46 Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+#16 23.50 Downloading click-8.5.0-py3-none-any.whl (125 kB)
+#16 23.57 Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+#16 23.61 Downloading httptools-0.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (523 kB)
+#16 23.71 Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+#16 23.77 Downloading python_dotenv-1.2.3-py3-none-any.whl (22 kB)
+#16 23.81 Downloading pytz-2026.4-py2.py3-none-any.whl (506 kB)
+#16 23.94 Downloading starlette-0.41.3-py3-none-any.whl (73 kB)
+#16 23.99 Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+#16 24.03 Downloading tzdata-2026.4-py2.py3-none-any.whl (347 kB)
+#16 24.11 Downloading uvloop-0.22.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.4 MB)
+#16 24.61    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 9.0 MB/s eta 0:00:00
+#16 24.65 Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (458 kB)
+#16 24.73 Downloading websockets-17.1-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (224 kB)
+#16 24.78 Downloading anyio-4.15.1-py3-none-any.whl (132 kB)
+#16 24.84 Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+#16 24.88 Downloading idna-3.20-py3-none-any.whl (69 kB)
+#16 25.14 Installing collected packages: pytz, websockets, uvloop, tzdata, typing-extensions, six, scapy, PyYAML, python-dotenv, numpy, networkx, idna, httptools, h11, click, annotated-types, uvicorn, scipy, python-dateutil, pydantic-core, anyio, watchfiles, starlette, pydantic, pandas, pydantic-settings, fastapi
+#16 ...
+
+#22 [frontend] exporting to image
+#22 unpacking to docker.io/library/netscope-x-frontend:latest 2.6s done
+#22 DONE 8.0s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 ...
+
+#23 [frontend] resolving provenance for metadata file
+#23 DONE 0.0s
+
+#16 [backend 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#16 43.70 Successfully installed PyYAML-6.0.2 annotated-types-0.8.0 anyio-4.15.1 click-8.5.0 fastapi-0.115.5 h11-0.16.0 httptools-0.8.0 idna-3.20 networkx-3.4.2 numpy-2.1.3 pandas-2.2.3 pydantic-2.9.2 pydantic-core-2.23.4 pydantic-settings-2.6.1 python-dateutil-2.9.0.post0 python-dotenv-1.2.3 pytz-2026.4 scapy-2.6.1 scipy-1.14.1 six-1.17.0 starlette-0.41.3 typing-extensions-4.16.0 tzdata-2026.4 uvicorn-0.32.1 uvloop-0.22.1 watchfiles-1.3.0 websockets-17.1
+#16 43.70 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#16 43.90 
+#16 43.90 [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+#16 43.90 [notice] To update, run: pip install --upgrade pip
+#16 DONE 44.4s
+
+#24 [backend 5/5] COPY backend/ backend/
+#24 DONE 0.2s
+
+#25 [backend] exporting to image
+#25 exporting layers
+#25 exporting layers 17.9s done
+#25 exporting manifest sha256:a6ff85b0367569b1aa881565f0f9b20ee3d25c84e5b2fca6e66da607a35427ff 0.0s done
+#25 exporting config sha256:df3d61baa9d639f68ce251d06da41a87dfbf57e60a9f1f9012e0420e37a1daa7 0.0s done
+#25 exporting attestation manifest sha256:9c7afad3579e690c271f207bc6b600725094796415d40bdb55625dbce1c498ec 0.0s done
+#25 exporting manifest list sha256:529a6ee09c08d86adf129e50f383a470efed1984ea41518240d098769abe48f1 0.0s done
+#25 naming to docker.io/library/netscope-x-backend:latest
+#25 naming to docker.io/library/netscope-x-backend:latest done
+#25 unpacking to docker.io/library/netscope-x-backend:latest
+#25 unpacking to docker.io/library/netscope-x-backend:latest 4.2s done
+#25 DONE 22.2s
+
+#26 [backend] resolving provenance for metadata file
+#26 DONE 0.0s
+ Image netscope-x-backend Built 
+ Image netscope-x-frontend Built 
+ Network netscope-x_default Creating 
+ Network netscope-x_default Creating 
+ Network netscope-x_default Created 
+ Network netscope-x_default Created 
+ Container netscope-x-backend-1 Creating 
+ Container netscope-x-backend-1 Created 
+ Container netscope-x-frontend-1 Creating 
+ Container netscope-x-frontend-1 Created 
+ Container netscope-x-backend-1 Starting 
+ Container netscope-x-backend-1 Started 
+ Container netscope-x-frontend-1 Starting 
+ Container netscope-x-frontend-1 Started 
+
+real	1m52.376s
+user	0m0.137s
+sys	0m0.062s

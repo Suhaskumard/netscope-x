@@ -1,0 +1,22 @@
+edge_case,coverage,evidence,status
+missing packets,unit test suite (not Docker-specific),backend/tests/test_nettrace_reconstruct.py and topology discovery tests exercise partial/missing observation,PASS (via existing suite, re-run in Docker per Phase 106 repro package)
+duplicate packets,unit test suite,backend/tests (reconstruct/normalize dedup logic),PASS (via existing suite)
+out-of-order packets,unit test suite + Phase 85 incremental,backend/tests/test_nettrace_topology_incremental* and incremental.py's own real-vs-batch equivalence checks,PASS (via existing suite)
+partial flows / short flows / long flows,unit test suite,backend/tests/test_nettrace_reconstruct.py flow unit derivation tests,PASS (via existing suite)
+high-volume traffic,experiments matrix (54-6144 cells) + this pass's bounded 1x/2x/5x,docs/PROJECT_STATE.md Phase 68/72/82 real matrix runs; this pass's artifacts/docker/performance.csv,PASS (existing) / PARTIAL (this pass only bounded to 5x, not 20x)
+unknown protocols,unit test suite,backend/nettrace fingerprinting tests,PASS (via existing suite)
+NAT / dynamic endpoints / IP reuse,NOT covered by Docker-layer tests in this pass,not exercised,NOT VERIFIED (out of scope this pass)
+network partition,this pass (real),client/external-service DNS-isolation tests above; a full docker network disconnect/reconnect cycle was NOT separately exercised beyond the segmentation tests,PARTIAL
+DNS failure,this pass (real, incidental),SERVFAIL observed on out-of-network cross-service DNS lookups (real, unplanned finding),PASS (observed, not a planned test)
+route failure/recovery,this pass (real),load-balancer-1 stopped, gateway kept serving via load-balancer-2, restored,PASS
+container failure (redis),this pass (real),docker stop/start docker-redis-1, health starting->healthy in ~3s,PASS
+container failure (backend, HA),this pass (real),docker kill netscope-x-backend_a-1 mid-idle; proxy failed over to backend_b after a brief (1-2 request) gap; restart repaired backend_a's data,PARTIAL (failover works, not seamless)
+database/worker/gateway/load-balancer failure (beyond redis and load-balancer-1),NOT individually re-tested this pass,not exercised,NOT VERIFIED (out of scope this pass -- one representative per category was tested instead of every service)
+concurrent experiments,NOT exercised this pass,not exercised,NOT VERIFIED (out of scope this pass)
+slow consumer / fast producer (streaming),existing benchmark only,docs/architecture/streaming_anomaly_detection.md Phase 86 result (large topology falls behind at every tested rate) -- reused, not re-run in Docker this pass,PARTIAL (reused non-Docker evidence)
+collector conflict,existing benchmark only,docs/architecture/multi_collector.md Phase 90 result -- reused, not re-run in Docker this pass,PARTIAL (reused non-Docker evidence)
+tenant isolation,existing test suite,backend/tests tenancy tests (Phase 91) -- re-run via Phase 106 repro package in this session,PASS (via existing suite)
+authentication/authorization failure,existing test suite,backend/tests auth tests (Phase 92) -- re-run via Phase 106 repro package,PASS (via existing suite)
+SDK failure,this pass (real),NetscopeClient against does-not-exist capture_id -> typed NotFoundError 404,PASS
+frontend/Chrome failure,existing scripts only,scripts/verify_explorer_in_chrome.mjs / verify_attribution_in_chrome.mjs (not re-run against the Docker stack in this pass -- see traceability doc),NOT VERIFIED (out of scope this pass)
+corrupt/truncated PCAP,unit test suite,backend/nettrace/capture/ingest.py validate_pcap_bytes + its tests,PASS (via existing suite)

@@ -1,0 +1,4 @@
+netscope-x-lab-edge: subnet=172.20.0.0/16 containers=docker-client-1 docker-dns-1 docker-gateway-1 
+netscope-x-lab-app: subnet=172.21.0.0/16 containers=docker-load-balancer-2-1 docker-load-balancer-1 docker-api-2-1 docker-api-1-1 docker-gateway-1 docker-worker-1 
+netscope-x-lab-data: subnet=172.18.0.0/16 containers=docker-redis-1 docker-database-1 docker-api-2-1 docker-api-1-1 docker-worker-1 
+netscope-x-lab-external: subnet=172.22.0.0/16 containers=docker-external-service-1 docker-api-2-1 docker-api-1-1 

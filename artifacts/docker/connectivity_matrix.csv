@@ -1,0 +1,12 @@
+source,destination,expected,actual,protocol,port,result
+client,gateway,allow,http=200 (curl),TCP,80,PASS
+client,dns(dnsmasq),allow,resolves lab-internal names via dnsmasq on edge network,UDP/TCP,53,PASS (indirect: embedded docker DNS handled queries in this run)
+api-1,redis,allow,socket connect OK,TCP,6379,PASS
+api-1,database,allow (implied by healthy depends_on gating),not directly re-tested this pass (already gated healthy at startup),TCP,5432,PASS (startup-gated)
+api-1,external-service,allow,socket connect OK,TCP,80,PASS
+gateway,load-balancer,allow,nginx upstream (primary),HTTP,80,PASS
+gateway,load-balancer-2,allow,nginx upstream (backup/failover),HTTP,80,PASS (exercised via real load-balancer-1 stop/restore test)
+client,redis,DENY (edge vs data isolation),DNS resolution failed: [Errno -3] Try again,TCP,6379,PASS (correctly blocked)
+external-service,database,DENY (external vs data isolation),wget: bad address 'database:5432',TCP,5432,PASS (correctly blocked)
+host,backend(container),allow (published port),curl http=200 on :8000,HTTP,8000,PASS
+host,frontend(container),allow (published port),curl http=200 on :4173,HTTP,4173,PASS

@@ -1,0 +1,163 @@
+ Image netscope-x-backend Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 500B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 756B done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.12-slim
+#3 DONE 1.1s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 136B done
+#4 DONE 0.0s
+
+#5 [1/6] FROM docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+#5 resolve docker.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f 0.0s done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 62.94kB 0.1s done
+#6 DONE 0.1s
+
+#7 [2/6] WORKDIR /app
+#7 CACHED
+
+#8 [3/6] COPY requirements.txt .
+#8 DONE 0.0s
+
+#9 [4/6] RUN pip install --no-cache-dir -r requirements.txt
+#9 2.341 Collecting fastapi==0.115.5 (from -r requirements.txt (line 1))
+#9 2.925   Downloading fastapi-0.115.5-py3-none-any.whl.metadata (27 kB)
+#9 3.062 Collecting uvicorn==0.32.1 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#9 3.116   Downloading uvicorn-0.32.1-py3-none-any.whl.metadata (6.6 kB)
+#9 3.418 Collecting pydantic==2.9.2 (from -r requirements.txt (line 3))
+#9 3.447   Downloading pydantic-2.9.2-py3-none-any.whl.metadata (149 kB)
+#9 3.608 Collecting pydantic-settings==2.6.1 (from -r requirements.txt (line 4))
+#9 3.631   Downloading pydantic_settings-2.6.1-py3-none-any.whl.metadata (3.5 kB)
+#9 3.715 Collecting networkx==3.4.2 (from -r requirements.txt (line 5))
+#9 3.743   Downloading networkx-3.4.2-py3-none-any.whl.metadata (6.3 kB)
+#9 6.440 Collecting numpy==2.1.3 (from -r requirements.txt (line 6))
+#9 6.467   Downloading numpy-2.1.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (62 kB)
+#9 24.94 Collecting pandas==2.2.3 (from -r requirements.txt (line 7))
+#9 24.98   Downloading pandas-2.2.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (89 kB)
+#9 42.52 Collecting scipy==1.14.1 (from -r requirements.txt (line 8))
+#9 42.55   Downloading scipy-1.14.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (60 kB)
+#9 43.59 Collecting PyYAML==6.0.2 (from -r requirements.txt (line 9))
+#9 43.61   Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+#9 43.65 Collecting scapy==2.6.1 (from -r requirements.txt (line 10))
+#9 43.68   Downloading scapy-2.6.1-py3-none-any.whl.metadata (5.6 kB)
+#9 45.78 Collecting opentelemetry-api==1.45.0 (from -r requirements.txt (line 14))
+#9 45.82   Downloading opentelemetry_api-1.45.0-py3-none-any.whl.metadata (1.4 kB)
+#9 45.94 Collecting opentelemetry-sdk==1.45.0 (from -r requirements.txt (line 15))
+#9 45.97   Downloading opentelemetry_sdk-1.45.0-py3-none-any.whl.metadata (1.6 kB)
+#9 51.33 Collecting starlette<0.42.0,>=0.40.0 (from fastapi==0.115.5->-r requirements.txt (line 1))
+#9 51.36   Downloading starlette-0.41.3-py3-none-any.whl.metadata (6.0 kB)
+#9 51.95 Collecting typing-extensions>=4.8.0 (from fastapi==0.115.5->-r requirements.txt (line 1))
+#9 51.98   Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+#9 52.26 Collecting click>=7.0 (from uvicorn==0.32.1->uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#9 52.28   Downloading click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
+#9 52.34 Collecting h11>=0.8 (from uvicorn==0.32.1->uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#9 52.37   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+#9 52.42 Collecting annotated-types>=0.6.0 (from pydantic==2.9.2->-r requirements.txt (line 3))
+#9 52.45   Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+#9 58.84 Collecting pydantic-core==2.23.4 (from pydantic==2.9.2->-r requirements.txt (line 3))
+#9 59.22   Downloading pydantic_core-2.23.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.6 kB)
+#9 59.39 Collecting python-dotenv>=0.21.0 (from pydantic-settings==2.6.1->-r requirements.txt (line 4))
+#9 59.42   Downloading python_dotenv-1.2.3-py3-none-any.whl.metadata (29 kB)
+#9 59.57 Collecting python-dateutil>=2.8.2 (from pandas==2.2.3->-r requirements.txt (line 7))
+#9 59.59   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+#9 59.91 Collecting pytz>=2020.1 (from pandas==2.2.3->-r requirements.txt (line 7))
+#9 59.94   Downloading pytz-2026.4-py2.py3-none-any.whl.metadata (22 kB)
+#9 60.03 Collecting tzdata>=2022.7 (from pandas==2.2.3->-r requirements.txt (line 7))
+#9 60.05   Downloading tzdata-2026.4-py2.py3-none-any.whl.metadata (1.4 kB)
+#9 60.14 Collecting opentelemetry-semantic-conventions==0.66b0 (from opentelemetry-sdk==1.45.0->-r requirements.txt (line 15))
+#9 60.16   Downloading opentelemetry_semantic_conventions-0.66b0-py3-none-any.whl.metadata (2.4 kB)
+#9 60.36 Collecting httptools>=0.6.3 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#9 60.39   Downloading httptools-0.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+#9 60.65 Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#9 60.67   Downloading uvloop-0.22.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (4.9 kB)
+#9 61.46 Collecting watchfiles>=0.13 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#9 61.49   Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+#9 62.62 Collecting websockets>=10.4 (from uvicorn[standard]==0.32.1->-r requirements.txt (line 2))
+#9 62.65   Downloading websockets-17.1-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.3 kB)
+#9 62.74 Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas==2.2.3->-r requirements.txt (line 7))
+#9 62.81   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+#9 62.95 Collecting anyio<5,>=3.4.0 (from starlette<0.42.0,>=0.40.0->fastapi==0.115.5->-r requirements.txt (line 1))
+#9 62.98   Downloading anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
+#9 63.09 Collecting idna>=2.8 (from anyio<5,>=3.4.0->starlette<0.42.0,>=0.40.0->fastapi==0.115.5->-r requirements.txt (line 1))
+#9 63.14   Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+#9 63.19 Downloading fastapi-0.115.5-py3-none-any.whl (94 kB)
+#9 63.58 Downloading uvicorn-0.32.1-py3-none-any.whl (63 kB)
+#9 63.94 Downloading pydantic-2.9.2-py3-none-any.whl (434 kB)
+#9 65.69 Downloading pydantic_settings-2.6.1-py3-none-any.whl (28 kB)
+#9 65.81 Downloading networkx-3.4.2-py3-none-any.whl (1.7 MB)
+#9 73.14    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 256.1 kB/s eta 0:00:00
+#9 73.19 Downloading numpy-2.1.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (16.0 MB)
+#9 171.6    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.0/16.0 MB 189.5 kB/s eta 0:00:00
+#9 171.7 Downloading pandas-2.2.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (12.7 MB)
+#9 178.2    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.7/12.7 MB 2.3 MB/s eta 0:00:00
+#9 178.3 Downloading scipy-1.14.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (40.8 MB)
+#9 193.0    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 40.8/40.8 MB 2.8 MB/s eta 0:00:00
+#9 193.0 Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (767 kB)
+#9 193.6    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 767.5/767.5 kB 1.6 MB/s eta 0:00:00
+#9 193.6 Downloading scapy-2.6.1-py3-none-any.whl (2.4 MB)
+#9 194.7    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.4/2.4 MB 2.1 MB/s eta 0:00:00
+#9 194.8 Downloading opentelemetry_api-1.45.0-py3-none-any.whl (60 kB)
+#9 194.8 Downloading opentelemetry_sdk-1.45.0-py3-none-any.whl (140 kB)
+#9 194.9 Downloading opentelemetry_semantic_conventions-0.66b0-py3-none-any.whl (206 kB)
+#9 195.1 Downloading pydantic_core-2.23.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
+#9 196.1    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 2.0 MB/s eta 0:00:00
+#9 196.1 Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+#9 196.1 Downloading click-8.5.0-py3-none-any.whl (125 kB)
+#9 196.2 Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+#9 196.2 Downloading httptools-0.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (523 kB)
+#9 196.5 Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+#9 196.5 Downloading python_dotenv-1.2.3-py3-none-any.whl (22 kB)
+#9 196.6 Downloading pytz-2026.4-py2.py3-none-any.whl (506 kB)
+#9 196.8 Downloading starlette-0.41.3-py3-none-any.whl (73 kB)
+#9 196.9 Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+#9 196.9 Downloading tzdata-2026.4-py2.py3-none-any.whl (347 kB)
+#9 197.0 Downloading uvloop-0.22.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.4 MB)
+#9 198.6    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 2.8 MB/s eta 0:00:00
+#9 198.7 Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (458 kB)
+#9 198.8 Downloading websockets-17.1-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (224 kB)
+#9 198.9 Downloading anyio-4.15.1-py3-none-any.whl (132 kB)
+#9 199.0 Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+#9 199.0 Downloading idna-3.20-py3-none-any.whl (69 kB)
+#9 199.3 Installing collected packages: pytz, websockets, uvloop, tzdata, typing-extensions, six, scapy, PyYAML, python-dotenv, numpy, networkx, idna, httptools, h11, click, annotated-types, uvicorn, scipy, python-dateutil, pydantic-core, opentelemetry-api, anyio, watchfiles, starlette, pydantic, pandas, opentelemetry-semantic-conventions, pydantic-settings, opentelemetry-sdk, fastapi
+#9 219.0 Successfully installed PyYAML-6.0.2 annotated-types-0.8.0 anyio-4.15.1 click-8.5.0 fastapi-0.115.5 h11-0.16.0 httptools-0.8.0 idna-3.20 networkx-3.4.2 numpy-2.1.3 opentelemetry-api-1.45.0 opentelemetry-sdk-1.45.0 opentelemetry-semantic-conventions-0.66b0 pandas-2.2.3 pydantic-2.9.2 pydantic-core-2.23.4 pydantic-settings-2.6.1 python-dateutil-2.9.0.post0 python-dotenv-1.2.3 pytz-2026.4 scapy-2.6.1 scipy-1.14.1 six-1.17.0 starlette-0.41.3 typing-extensions-4.16.0 tzdata-2026.4 uvicorn-0.32.1 uvloop-0.22.1 watchfiles-1.3.0 websockets-17.1
+#9 219.0 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#9 219.6 
+#9 219.6 [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+#9 219.6 [notice] To update, run: pip install --upgrade pip
+#9 DONE 219.9s
+
+#10 [5/6] COPY backend/ backend/
+#10 DONE 0.2s
+
+#11 [6/6] COPY experiments/ experiments/
+#11 DONE 0.1s
+
+#12 exporting to image
+#12 exporting layers
+#12 exporting layers 18.2s done
+#12 exporting manifest sha256:a1b22411873c6fcd9847e70f6b51d7512de0c5a583e267e8d25c108ab670c465 0.0s done
+#12 exporting config sha256:e8fb2f8e5116af5031979ae6ef9ee8466e64c189f0e7753c0d73b3e884b585cf 0.0s done
+#12 exporting attestation manifest sha256:3a273348939a55b6f3dd7974d9525986c4620aa66bd62dd02bb03ca375152f1d 0.0s done
+#12 exporting manifest list sha256:e8651006738f49301c8e54957b7e7f0e4d78281c21793236377e19e81fa2dd6c 0.0s done
+#12 naming to docker.io/library/netscope-x-backend:latest
+#12 naming to docker.io/library/netscope-x-backend:latest done
+#12 unpacking to docker.io/library/netscope-x-backend:latest
+#12 unpacking to docker.io/library/netscope-x-backend:latest 4.3s done
+#12 DONE 22.7s
+
+#13 resolving provenance for metadata file
+#13 DONE 0.0s
+ Image netscope-x-backend Built 
+
+real	4m5.762s
+user	0m0.075s
+sys	0m0.107s

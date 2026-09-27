@@ -1,0 +1,25 @@
+
+Host Name:                     SUHAS
+OS Name:                       Microsoft Windows 11 Home Single Language
+OS Version:                    10.0.26200 N/A Build 26200
+OS Manufacturer:               Microsoft Corporation
+OS Configuration:              Standalone Workstation
+OS Build Type:                 Multiprocessor Free
+Registered Owner:              N/A
+Registered Organization:       N/A
+Product ID:                    00327-60000-00000-AA347
+Original Install Date:         09-09-2026, 7.47.24 PM
+System Boot Time:              27-09-2026, 8.31.23 AM
+System Manufacturer:           ASUSTeK COMPUTER INC.
+System Model:                  ASUS TUF Gaming F15 FX507ZC4_FX507ZC4
+System Type:                   x64-based PC
+Processor(s):                  1 Processor(s) Installed.
+                               [01]: Intel64 Family 6 Model 154 Stepping 3 GenuineIntel ~2500 Mhz
+BIOS Version:                  American Megatrends International, LLC. FX507ZC4.312, 03-12-2024
+Windows Directory:             C:\WINDOWS
+System Directory:              C:\WINDOWS\system32
+---
+16
+MemTotal:       16388972 kB
+MemFree:         2891788 kB
+HighTotal:             0 kB
