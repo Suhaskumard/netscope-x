@@ -1,5 +1,9 @@
 # NETSCOPE-X — Phase 69 Acceptance Testing
 
+**Superseded as the current-status reference by `docs/acceptance_testing_phase108.md`** (the Phase 108
+final cross-phase acceptance audit, re-verified against phases 1-107). This document is kept as the
+historical Phase 69 snapshot — do not read it as describing the system's current state.
+
 Phase 69 deliverable, per the master spec (`NETSCOPE (1).pdf`, §"PHASE 69 — FINAL HARDENING AND
 RELEASE"). This is a verification/report pass against `docs/requirements/system_requirements.md`
 (Phase 03) — it adds no new pipeline stage or algorithm. Every row below was checked against the

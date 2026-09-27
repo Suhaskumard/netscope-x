@@ -2409,6 +2409,22 @@ None yet — no experiments have been run.
   Details are in `docs/architecture/streaming_anomaly_detection.md`.
   Verified: 8 new tests; full suite 803/803; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
+- Streaming dependency-strength and causal-candidate updates (Phase 87, master spec addendum) are built and measured;
+  not wired into the pipeline. **This bullet was missing from this log and is backfilled by the Phase 108 audit, which
+  found the commit (`git show fa2924e`, "Phase 87") had no corresponding entry here — a real gap in the log itself,
+  not in the phases below.** `backend/dependency/streaming.py` (`StreamingDependencyEstimator`) replaces "re-read the
+  capture, rebuild every edge, recompute every pair" with per-pair sufficient statistics updated as packets arrive,
+  using the batch code's own formulas (`combine_dependency_strength`, `confidence_from_stats`, `precedence_from_times`)
+  so equivalence is checked against a from-scratch batch run, not assumed. A flow whose contribution changes (more
+  packets, TCP state, persistence) is retracted and re-added; temporal precedence recompute is scoped to pairs whose
+  inputs actually changed.
+  Real result (re-run this phase, `python -m scripts.run_streaming_dependency_benchmark --root <tmp> --levels small
+  medium`): 48 streams, 480 structure checks, 0 with a structural or candidate mismatch; values agree to floating-point
+  rounding (max diff 6.66e-16 to 2.00e-15, not bit-exact, as documented) across in-order and shuffled-arrival streams.
+  Limits, stated in the module: packets only (no pcap TLS), no `as_of`, state grows without bound. Never imports ground truth.
+  Verified: 9 new tests (`experiments/tests/test_streaming_dependency.py`); full suite 812/812 (803 + 9, consistent
+  with Phase 88's own logged starting point of 822 - 10); `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
+
 - Continuous digital-twin synchronization daemon (Phase 88, master spec addendum) is built and measured; not wired
   into the pipeline. `backend/digital_twin/daemon.py` (`TwinSyncDaemon`) runs Phase 58's unchanged
   `sync_digital_twin` on a worker thread with a bounded queue (block/reject backpressure, counted refusals), a token
@@ -2608,4 +2624,21 @@ None yet — no experiments have been run.
   not machine-checked, and the draft is Markdown, not a typeset paper.
   Verified: 5 new tests; `repro/expected_results.json` experiments count 264 -> 269 (total 1023); full run result below.
 
-- Next: Phase 108 (Final Cross-Phase Acceptance Audit, Arc F). Not started; awaiting explicit request.
+- Final cross-phase acceptance audit (Phase 108, master spec addendum) is complete: every FR/NFR/PERF/REL/SEC/REPRO in
+  `docs/requirements/system_requirements.md` re-verified against current code/tests, not restated from Phase 69 or any
+  phase's own log. Full report: `docs/acceptance_testing_phase108.md` (supersedes `docs/acceptance_testing.md` as the
+  current-status reference; that document is kept as the Phase 69 historical snapshot).
+  Since Phase 69: FR-1.41 gained 1 of 5 previously-unwired routes (`POST /experiments`, Phase 102); FR-1.42 gained 3 of 9
+  frontend screens (Phases 97/99/102); SEC-8 gained real, tested, OPT-IN auth + tenancy (Phases 91-92, off by default).
+  Unchanged: PERF-1..7 never benchmarked at the system level; SEC-5 has no resource limits outside `/experiments`;
+  REL-11 large-dataset stress test never run; REPRO-5's 8 datasets still generated on demand, not checked-in fixtures.
+  Two new findings, fixed by this audit rather than left silent: a real "Phase 87" commit (streaming dependency
+  updates) had no `PROJECT_STATE.md` bullet -- backfilled above with a real re-run of its benchmark and tests; and
+  NFR-7's "no file exceeds ~500 lines" claim no longer holds (`matrix_runner.py` 995 lines, `validate_data_contracts.py`
+  738 lines) -- named as a partial regression, not silently kept "verified".
+  Release artifacts prepared, honestly scoped (not a 1.0/GA claim given the open gaps above): `VERSION` (0.108.0),
+  `docs/RELEASE_NOTES.md`. No git tag was created; that is left to the project owner.
+  Verified: full suite 1023/1023 (also resolves Phase 107's "full run result below"); `validate_data_contracts`
+  55/55; `check_ground_truth_boundary` clean.
+
+- Arc F (Phases 103-108) is complete. The master spec's phase list ends at Phase 108; no further phase is defined.

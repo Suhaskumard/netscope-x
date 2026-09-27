@@ -1,10 +1,11 @@
 # NETSCOPE-X — Known Limitations
 
-Phase 69 deliverable (spec §"PHASE 69 — FINAL HARDENING AND RELEASE" documentation set). Consolidates
-every limitation accumulated across Phases 1-69, each cross-referenced to where it was first
-documented, so nothing is silently dropped or claimed resolved when it isn't. See
-`docs/acceptance_testing.md` for the full requirement-by-requirement verification this list is drawn
-from.
+Phase 69 deliverable (spec §"PHASE 69 — FINAL HARDENING AND RELEASE" documentation set), reconciled by
+the Phase 108 final cross-phase acceptance audit. Consolidates every limitation accumulated across
+Phases 1-108, each cross-referenced to where it was first documented, so nothing is silently dropped or
+claimed resolved when it isn't. See `docs/acceptance_testing_phase108.md` for the current
+requirement-by-requirement verification this list is drawn from (`docs/acceptance_testing.md` is the
+original Phase 69 pass, kept as historical record).
 
 ## Environment constraints (this development session)
 
@@ -21,33 +22,43 @@ from.
 
 ## Real, unresolved product gaps (not environment-caused)
 
-- **FR-1.42 — no frontend feature UI exists.** `frontend/` remains the Phase 06 placeholder scaffold
-  (`App.tsx`, `main.tsx`) through Phase 68. None of the 9 required screens (Overview, Topology
-  Explorer, Node Investigation, Timeline, Anomaly Investigation, Causal Analysis, Simulation,
-  Counterfactual, Experiment Lab) has been built. All 68 prior phases focused on backend/research
-  plumbing; frontend was never picked up as a phase's scope in this run.
-- **5 of 12 API route groups are unwired.** `GET /anomalies`, `GET /behaviors/{node_id}`,
-  `POST /simulation`, `POST /counterfactual`, and `POST /experiments` all raise `NotYetImplemented`
-  (501) even though their backing computation (anomaly detection, role classification, failure
-  injection, counterfactual execution, and experiment construction respectively) is real and unit
-  tested. See `docs/acceptance_testing.md` FR-1.41 row for the full list and reasoning for why this
-  phase did not wire them. (Update: Phase 102 wired `POST /experiments` and built the Experiment Lab frontend.)
-- **SEC-5 — no resource limits.** `POST /capture`, `POST /simulation`, and `POST /counterfactual` have
-  no request size limit, timeout, or concurrency cap. Not fixed this phase: choosing real limits
-  without a load-testing basis would itself be an unjustified magic number (NFR-4/NFR-9).
+- **FR-1.42 — only 3 of 9 frontend screens exist.** `frontend/` had only the Phase 06 placeholder
+  scaffold through Phase 96. Phases 97/99/102 built real, API-backed screens for Topology Explorer
+  (`Explorer.tsx`), Causal Analysis (`Attribution.tsx`), and Experiment Lab (`ExperimentLab.tsx`).
+  Overview, Node Investigation, Timeline (as its own screen), Anomaly Investigation, Simulation, and
+  Counterfactual still do not exist. Re-verified Phase 108 — see `docs/acceptance_testing_phase108.md`.
+- **4 of 12 API route groups are unwired** (was 5 through Phase 101). `GET /anomalies`,
+  `GET /behaviors/{node_id}`, `POST /simulation`, and `POST /counterfactual` all raise
+  `NotYetImplemented` (501) even though their backing computation (anomaly detection, role
+  classification, failure injection, and counterfactual execution respectively) is real and unit
+  tested. `POST /experiments` was wired Phase 102 (`backend/app/experiments_runner.py`, opt-in,
+  rate-limited). See `docs/acceptance_testing_phase108.md` FR-1.41 row for the current list and reasoning.
+- **SEC-5 — no resource limits on `/capture`, `/simulation`, `/counterfactual`.** Still open through
+  Phase 108. Phase 102 added a real limiter, but scoped only to `POST /experiments` (one job at a
+  time, per-tenant hourly cap). Not generalized: choosing real limits for the other routes without a
+  load-testing basis would itself be an unjustified magic number (NFR-4/NFR-9).
+- **NFR-7 — two files have grown past the ~500-line bar Phase 69 used.** `experiments/matrix_runner.py`
+  (995 lines) and `scripts/validate_data_contracts.py` (738 lines), grown across phases 68-105 as
+  matrix/ablation/contract logic accumulated. Neither is broken or untested; named honestly by the
+  Phase 108 audit rather than kept silently "verified". Not split in Phase 108 (a refactor, not an
+  audit finding).
 
 ## Deliberately deferred (a documented decision, not an oversight)
 
-- **PERF-1 through PERF-7 — no benchmarking has been run.** FR-1.40's own phase note (Phase 68)
-  explicitly defers this: "PERF-1..8 benchmarking and provisional-constant recalibration are
-  explicitly deferred (FR-1.40 asks to measure, not tune)." No throughput, latency, memory, or
-  render-time number appears anywhere in this repository's docs, and none should be trusted if it
-  ever does without a citation to a real benchmark run.
+- **PERF-1 through PERF-7 — no system-level benchmarking has been run.** FR-1.40's own phase note
+  (Phase 68) explicitly defers this: "PERF-1..8 benchmarking and provisional-constant recalibration are
+  explicitly deferred (FR-1.40 asks to measure, not tune)." Still true through Phase 107. Real,
+  component-level numbers now exist for several not-yet-wired subsystems (Phase 85 incremental
+  topology, 86 streaming anomaly detection, 88 twin-sync daemon, 90 multi-collector capture, 93 HA
+  failover) but none is a system-level PERF-1..7 sign-off on the shipped, wired pipeline.
 - **REL-11 — large-dataset degradation is untested.** Ties directly to the PERF deferral above; no
-  large-scale run has been attempted.
-- **SEC-8 — no authentication/API-abuse protection.** Documented as an explicit, revisitable decision
-  in `docs/requirements/system_requirements.md` since Phase 03: the current scope is a controlled
-  lab/local-research context.
+  large-scale run has been attempted through Phase 107.
+- **SEC-8 — auth/API-abuse protection exists but is opt-in, off by default.** Was fully deferred
+  through Phase 90. Phase 91 (`backend/app/tenancy/`) and Phase 92 (`backend/app/auth/`) built real,
+  tested Bearer-credential auth and per-tenant isolation, but both `auth_enabled` and
+  `tenancy_enabled` default to `False` (`backend/app/core/config.py`), so a default deployment is
+  still unauthenticated; there is no general API-abuse rate limiting beyond Phase 102's
+  experiment-run limiter, and no audit logging or credential rotation.
 - **`anomaly_detection` is unscored in the Phase 68 experimental matrix**, per Phase 42's own decision
   not to build a synthetic anomaly-injection dataset (a "separate, much larger capability nobody has
   asked for" — `experiments/metrics/anomaly_evaluation.py`'s own docstring).
