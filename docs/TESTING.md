@@ -17,6 +17,10 @@ rule, restated every phase). Breakdown by layer:
 | `experiments/tests/` (11 files) | Artifact I/O, synthetic traffic generation, every evaluation metric module, and the full matrix runner |
 | `simulator/tests/` (8 files) | Lab traffic/protocol generators, scenario generation, ground-truth generation + integrity, controlled live capture (interface authorization and now interface-unavailable handling) |
 
+## Reproducibility package (Phase 106)
+
+`sh repro/run.sh` re-runs everything below in a container and compares to `repro/expected_results.json`; see `docs/architecture/reproducibility_package.md`.
+
 ## Other verification gates
 
 Run these after any change touching Pydantic models or the ground-truth/inference boundary:

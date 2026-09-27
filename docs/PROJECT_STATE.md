@@ -2591,4 +2591,12 @@ None yet — no experiments have been run.
   in `docs/architecture/longitudinal_drift.md`.
   Verified: 5 new tests; full suite 1014/1014; `validate_data_contracts` 55/55; `check_ground_truth_boundary` clean.
 
-- Next: Phase 106 (Full Reproducibility Package, Arc F). Not started; awaiting explicit request.
+- Full reproducibility package (Phase 106, master spec addendum) is built. `sh repro/run.sh` (or `repro/run.ps1`) builds `repro/Dockerfile`
+  and runs `scripts/run_reproducibility_check.py`: pytest per layer + `validate_data_contracts` + `check_ground_truth_boundary`, compared
+  EXACTLY to the committed `repro/expected_results.json` (663 / 264 / 91 = 1018 tests, contracts 55/55, boundary clean); report in
+  `repro_out/`. It re-runs the same suite on pinned deps, not an independent re-derivation, and does not re-run the long studies. Details
+  in `docs/architecture/reproducibility_package.md`.
+  Verified: 4 new tests; the runner was run end to end locally (result below). The Docker container path and the fresh-clone check were
+  NOT exercised: the Docker daemon was not running in this environment.
+
+- Next: Phase 107 (Research Paper Draft, Arc F). Not started; awaiting explicit request.
